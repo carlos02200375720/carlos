@@ -1,0 +1,6 @@
+{
+  "name": "Live Stream, E-Commerce & Social App",
+  "description": "A full-stack social platform combining video reels, live streaming with real-time chat, an integrated e-commerce store with catalog, cart, checkout, payment simulation, presence indicator, private 1-on-1 messaging, and creator/buyer dashboards.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

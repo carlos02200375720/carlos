@@ -1,0 +1,369 @@
+import React, { useState, useEffect, useRef } from "react";
+import { Users, Send, X, MessageSquare, ShieldCheck, Heart } from "lucide-react";
+import { User, ChatMessage } from "../types";
+import { motion, AnimatePresence } from "motion/react";
+
+interface SocialPanelProps {
+  users: User[];
+  currentUser: User;
+  messages: ChatMessage[];
+  activeChatUser: User | null;
+  onSelectChatUser: (user: User | null) => void;
+  onSendPrivateMessage: (text: string) => void;
+  unreadCounts: Record<string, number>;
+  clearUnreads: (userId: string) => void;
+  onClose: () => void;
+}
+
+export default function SocialPanel({
+  users,
+  currentUser,
+  messages,
+  activeChatUser,
+  onSelectChatUser,
+  onSendPrivateMessage,
+  unreadCounts,
+  clearUnreads,
+  onClose,
+}: SocialPanelProps) {
+  const [activeSection, setActiveSection] = useState<"friends" | "discover">("friends");
+
+  const [chatInput, setChatInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [navBarHeight, setNavBarHeight] = useState(64);
+
+  // Auto-scroll private chat to bottom
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, activeChatUser]);
+
+  useEffect(() => {
+    const navBar = document.getElementById("bottom-nav-bar");
+    if (navBar) {
+      setNavBarHeight(navBar.offsetHeight);
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          setNavBarHeight(entry.target.clientHeight);
+        }
+      });
+      observer.observe(navBar);
+      return () => observer.disconnect();
+    } else {
+      setNavBarHeight(0);
+    }
+  }, [activeChatUser]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+    onSendPrivateMessage(chatInput);
+    setChatInput("");
+  };
+
+  const handleSelectUser = (user: User) => {
+    onSelectChatUser(user);
+    clearUnreads(user.id);
+  };
+
+  // Filter out current user from listing and apply search query
+  const listUsers = users
+    .filter((u) => u.id !== currentUser.id)
+    .filter((u) => {
+      const query = searchQuery.toLowerCase().trim();
+      if (!query) return true;
+      return (
+        u.name.toLowerCase().includes(query) ||
+        u.username.toLowerCase().includes(query) ||
+        (u.bio && u.bio.toLowerCase().includes(query))
+      );
+    });
+
+  // Split into "chats already initiated" and "other registered users"
+  const chatConversationsUsers = listUsers.filter((u) => {
+    const hasMessages = messages.some(
+      (msg) =>
+        (msg.senderId === currentUser.id && msg.receiverId === u.id) ||
+        (msg.senderId === u.id && msg.receiverId === currentUser.id)
+    );
+    const hasUnreads = unreadCounts[u.id] > 0;
+    return hasMessages || hasUnreads;
+  });
+
+  const otherRegisteredUsers = listUsers.filter((u) => {
+    const hasMessages = messages.some(
+      (msg) =>
+        (msg.senderId === currentUser.id && msg.receiverId === u.id) ||
+        (msg.senderId === u.id && msg.receiverId === currentUser.id)
+    );
+    const hasUnreads = unreadCounts[u.id] > 0;
+    return !hasMessages && !hasUnreads;
+  });
+
+  return (
+    <div
+      className="w-full bg-slate-950 flex flex-col justify-between text-slate-100 relative"
+      id="social-page"
+      style={{ height: `calc(100dvh - ${navBarHeight}px)` }}
+    >
+      {/* Header */}
+      {!activeChatUser && (
+        <div className="p-4 border-b border-slate-850 flex items-center gap-3 bg-slate-900/60 shrink-0">
+          <div className="relative flex-1">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+              <Users className="w-4 h-4 text-amber-400" />
+            </span>
+            <input
+              type="text"
+              placeholder="Buscar usuarios..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 text-xs text-white pl-10 pr-10 py-2.5 rounded-full focus:outline-none focus:border-amber-500 placeholder-slate-500 transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-white text-[10px] uppercase font-bold tracking-wider"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+            title="Volver a Reels"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
+      {/* Content Switch: Users List vs Active Chat */}
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {!activeChatUser ? (
+          /* USERS LIST VIEW */
+          <div className="flex-1 overflow-y-auto p-4 max-w-md mx-auto w-full">
+            {/* TABS HEADER */}
+            <div className="flex border-b border-slate-800 mb-6 w-full">
+              <button
+                onClick={() => setActiveSection("friends")}
+                className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider text-center border-b-2 transition-all cursor-pointer ${
+                  activeSection === "friends"
+                    ? "border-amber-500 text-amber-500"
+                    : "border-transparent text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                <div className="flex items-center justify-center space-x-1.5">
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Amigo</span>
+                  <span className="text-[9px] bg-slate-900 text-slate-500 font-mono font-bold px-1.5 py-0.5 rounded-full">
+                    {chatConversationsUsers.length}
+                  </span>
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveSection("discover")}
+                className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider text-center border-b-2 transition-all cursor-pointer ${
+                  activeSection === "discover"
+                    ? "border-amber-500 text-amber-500"
+                    : "border-transparent text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                <div className="flex items-center justify-center space-x-1.5">
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Conocer</span>
+                  <span className="text-[9px] bg-slate-900 text-slate-500 font-mono font-bold px-1.5 py-0.5 rounded-full">
+                    {otherRegisteredUsers.length}
+                  </span>
+                </div>
+              </button>
+            </div>
+
+            {/* TAB CONTENTS */}
+            <AnimatePresence mode="wait">
+              {activeSection === "friends" ? (
+                <motion.div
+                  key="friends-list"
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  {chatConversationsUsers.length === 0 ? (
+                    <div className="p-8 rounded-xl border border-dashed border-slate-800 text-center bg-slate-900/10">
+                      <p className="text-xs text-slate-400 font-medium">No tienes conversaciones con amigos.</p>
+                      <p className="text-[10px] text-slate-500 mt-1">Busca a alguien en la pestaña "Conocer persona" para comenzar a chatear.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {chatConversationsUsers.map((user) => (
+                        <div
+                          key={user.id}
+                          onClick={() => handleSelectUser(user)}
+                          className="flex items-center justify-between p-3 rounded-xl border border-slate-900 hover:border-slate-800 bg-slate-900/40 hover:bg-slate-900/70 cursor-pointer transition-all group"
+                          id={`social-user-active-${user.id}`}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="relative">
+                              <img
+                                src={user.avatar}
+                                alt={user.name}
+                                referrerPolicy="no-referrer"
+                                className="w-10 h-10 rounded-full object-cover border border-slate-850"
+                              />
+                              {/* Online indicator dot */}
+                              <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-slate-950 ${user.isOnline ? "bg-emerald-500 animate-pulse" : "bg-slate-600"}`}></span>
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-slate-200 group-hover:text-amber-400 transition-colors">@{user.username}</h4>
+                              <p className="text-[10px] text-slate-500 truncate max-w-[150px]">{user.bio}</p>
+                            </div>
+                          </div>
+
+                          {/* Right notification badge */}
+                          {unreadCounts[user.id] > 0 ? (
+                            <span className="bg-rose-500 text-white font-bold font-mono text-[9px] px-2 py-0.5 rounded-full">
+                              {unreadCounts[user.id]}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 font-mono font-semibold">
+                              {user.isOnline ? "online" : "offline"}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="discover-list"
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  {otherRegisteredUsers.length === 0 ? (
+                    <div className="p-8 rounded-xl border border-dashed border-slate-800 text-center bg-slate-900/10">
+                      <p className="text-xs text-slate-400 font-medium">No hay otras personas disponibles.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {otherRegisteredUsers.map((user) => (
+                        <div
+                          key={user.id}
+                          onClick={() => handleSelectUser(user)}
+                          className="flex items-center justify-between p-3 rounded-xl border border-slate-900 hover:border-slate-800 bg-slate-900/40 hover:bg-slate-900/70 cursor-pointer transition-all group"
+                          id={`social-user-all-${user.id}`}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="relative">
+                              <img
+                                src={user.avatar}
+                                alt={user.name}
+                                referrerPolicy="no-referrer"
+                                className="w-10 h-10 rounded-full object-cover border border-slate-850"
+                              />
+                              {/* Online indicator dot */}
+                              <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-slate-950 ${user.isOnline ? "bg-emerald-500 animate-pulse" : "bg-slate-600"}`}></span>
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-slate-200 group-hover:text-amber-400 transition-colors">@{user.username}</h4>
+                              <p className="text-[10px] text-slate-500 truncate max-w-[150px]">{user.bio}</p>
+                            </div>
+                          </div>
+
+                          {/* Right notification badge */}
+                          {unreadCounts[user.id] > 0 ? (
+                            <span className="bg-rose-500 text-white font-bold font-mono text-[9px] px-2 py-0.5 rounded-full">
+                              {unreadCounts[user.id]}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 font-mono font-semibold">
+                              {user.isOnline ? "online" : "offline"}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        ) : (
+          /* 1-on-1 CHAT WINDOW VIEW */
+          <div className="flex-1 flex flex-col justify-between overflow-hidden max-w-lg mx-auto w-full border-x border-slate-900 bg-slate-950">
+            {/* Chat Partner details header */}
+            <div className="px-4 py-3 bg-slate-900 border-b border-slate-850 flex items-center justify-between shrink-0">
+              <button
+                onClick={() => onSelectChatUser(null)}
+                className="text-xs text-amber-500 hover:underline font-semibold cursor-pointer flex items-center space-x-1"
+              >
+                <span>← Volver</span>
+              </button>
+              <div className="flex flex-col items-center">
+                <span className="text-xs font-bold text-slate-200">@{activeChatUser.username}</span>
+                <span className="text-[9px] text-emerald-400 font-medium flex items-center space-x-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>Canal de chat encriptado</span>
+                </span>
+              </div>
+              <img
+                src={activeChatUser.avatar}
+                alt={activeChatUser.username}
+                referrerPolicy="no-referrer"
+                className="w-6 h-6 rounded-full object-cover border border-slate-850"
+              />
+            </div>
+
+            {/* Message log */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-950/40">
+              {messages.length === 0 && (
+                <div className="h-full flex flex-col items-center justify-center text-center text-slate-600 p-4">
+                  <MessageSquare className="w-8 h-8 text-slate-800 mb-2" />
+                  <p className="text-xs font-semibold">No hay mensajes previos</p>
+                  <p className="text-[10px] text-slate-600 mt-0.5">Comienza a escribir para conversar privadamente con el creador.</p>
+                </div>
+              )}
+
+              {messages.map((msg) => {
+                const isMe = msg.senderId === currentUser.id;
+                return (
+                  <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[75%] p-3 rounded-2xl text-xs leading-relaxed border ${isMe ? "bg-amber-500 text-slate-950 border-amber-400 rounded-tr-none" : "bg-slate-900 text-slate-200 border-slate-850 rounded-tl-none"}`}>
+                      <p>{msg.text}</p>
+                      <span className={`text-[8px] block text-right mt-1 font-mono ${isMe ? "text-slate-950/70" : "text-slate-500"}`}>
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Private chat submit input form */}
+            <form onSubmit={handleSubmit} className="p-3 border-t border-slate-850 bg-slate-900/40 flex items-center space-x-2 shrink-0">
+              <input
+                type="text"
+                placeholder="Escribe un mensaje privado..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                className="flex-1 bg-slate-950 border border-slate-800 text-xs text-white px-4 py-2.5 rounded-full focus:outline-none focus:border-amber-500 placeholder-slate-600 transition-all"
+              />
+              <button
+                type="submit"
+                className="p-3 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-bold rounded-full transition-all cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
