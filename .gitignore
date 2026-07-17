@@ -6,3 +6,4 @@ coverage/
 *.log
 .env*
 !.env.example
+mall-1bucket.json

@@ -6,6 +6,8 @@ import { createServer as createViteServer } from "vite";
 import { User, Reel, Product, Order, ChatMessage, LiveSession, Comment } from "./src/types";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
+import { Storage } from "@google-cloud/storage";
+import multer from "multer";
 
 // Configure dotenv to read environment variables
 dotenv.config();
@@ -28,6 +30,59 @@ const UserSchema = new mongoose.Schema({
 });
 
 const MongoUser = (mongoose.models.User || mongoose.model("User", UserSchema)) as any;
+
+// Mongoose Publicacion Schema
+const PublicacionSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  url: { type: String, required: true },
+  title: { type: String },
+  description: { type: String },
+  createdAt: { type: Date, default: Date.now },
+  creatorId: { type: String }
+});
+
+const MongoPublicacion = (mongoose.models.Publicacion || mongoose.model("Publicacion", PublicacionSchema)) as any;
+
+// Google Cloud Storage setup
+const storage = new Storage({
+  keyFilename: path.join(process.cwd(), "mall-1bucket.json"),
+});
+const bucketName = "mall-1bucket";
+const bucket = storage.bucket(bucketName);
+
+// Configure multer for memory storage
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB max limit
+  }
+});
+
+// Helper: Upload file to GCS
+const uploadToGCS = (file: Express.Multer.File, folder: string = "publicaciones"): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const uniqueName = `${Date.now()}-${generateId()}-${file.originalname.replace(/\s+/g, "_")}`;
+    const blob = bucket.file(`${folder}/${uniqueName}`);
+    
+    const blobStream = blob.createWriteStream({
+      resumable: false,
+      metadata: {
+        contentType: file.mimetype,
+      },
+    });
+
+    blobStream.on("error", (err) => {
+      reject(err);
+    });
+
+    blobStream.on("finish", () => {
+      const publicUrl = `https://storage.googleapis.com/${bucketName}/${blob.name}`;
+      resolve(publicUrl);
+    });
+
+    blobStream.end(file.buffer);
+  });
+};
 
 // In-memory Database (will act as runtime cache and fallback)
 let users: User[] = [
@@ -259,6 +314,97 @@ async function startServer() {
   app.use(express.json());
 
   // --- API ENDPOINTS ---
+
+  // Upload file to Google Cloud Storage & register in MongoDB
+  app.post("/api/upload", upload.single("file"), async (req: any, res: any) => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: "No se proporcionó ningún archivo" });
+        return;
+      }
+
+      const { title, description, creatorId } = req.body;
+      
+      console.log(`🚀 Iniciando subida de archivo a GCS: ${req.file.originalname}`);
+      const publicUrl = await uploadToGCS(req.file, "publicaciones");
+      console.log(`✅ Archivo subido con éxito a GCS: ${publicUrl}`);
+
+      // Crear registro en MongoDB
+      let savedPublicacionObj = null;
+      if (mongoose.connection.readyState === 1) {
+        try {
+          const id = "pub_" + generateId();
+          const newPublicacion = new MongoPublicacion({
+            id,
+            url: publicUrl,
+            title: title || req.file.originalname,
+            description: description || "",
+            creatorId: creatorId || "current_user",
+            createdAt: new Date()
+          });
+
+          savedPublicacionObj = await newPublicacion.save();
+          console.log(`💾 Publicación guardada en MongoDB Atlas con id: ${id}`);
+        } catch (dbErr) {
+          console.error("❌ Error al guardar la publicación en MongoDB:", dbErr);
+        }
+      } else {
+        console.log("⚠️ MongoDB no está conectado. No se guardó el registro en base de datos.");
+      }
+
+      res.json({
+        success: true,
+        message: "Archivo subido y registrado exitosamente",
+        url: publicUrl,
+        publicacion: savedPublicacionObj
+      });
+    } catch (error: any) {
+      console.error("❌ Error en el proceso de upload:", error);
+      res.status(500).json({ error: "Error interno del servidor durante el upload", details: error.message });
+    }
+  });
+
+  // Alias /upload for compliance with generic requests
+  app.post("/upload", upload.single("file"), async (req: any, res: any) => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: "No se proporcionó ningún archivo" });
+        return;
+      }
+
+      const { title, description, creatorId } = req.body;
+      const publicUrl = await uploadToGCS(req.file, "publicaciones");
+
+      let savedPublicacionObj = null;
+      if (mongoose.connection.readyState === 1) {
+        try {
+          const id = "pub_" + generateId();
+          const newPublicacion = new MongoPublicacion({
+            id,
+            url: publicUrl,
+            title: title || req.file.originalname,
+            description: description || "",
+            creatorId: creatorId || "current_user",
+            createdAt: new Date()
+          });
+
+          savedPublicacionObj = await newPublicacion.save();
+        } catch (dbErr) {
+          console.error("❌ Error al guardar la publicación en MongoDB:", dbErr);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: "Archivo subido y registrado exitosamente",
+        url: publicUrl,
+        publicacion: savedPublicacionObj
+      });
+    } catch (error: any) {
+      console.error("❌ Error en /upload:", error);
+      res.status(500).json({ error: "Error interno del servidor", details: error.message });
+    }
+  });
 
   // Get all users
   app.get("/api/users", (req, res) => {
