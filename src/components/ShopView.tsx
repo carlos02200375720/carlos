@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X } from "lucide-react";
+import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X, Video } from "lucide-react";
 import { Product, CartItem, Order, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -100,6 +100,7 @@ interface ShopViewProps {
   products: Product[];
   cart: CartItem[];
   users: User[];
+  currentUser: User;
   onAddToCart: (product: Product) => void;
   onRemoveFromCart: (productId: string) => void;
   onUpdateCartQuantity: (productId: string, qty: number) => void;
@@ -114,6 +115,7 @@ export default function ShopView({
   products,
   cart,
   users,
+  currentUser,
   onAddToCart,
   onRemoveFromCart,
   onUpdateCartQuantity,
@@ -126,6 +128,8 @@ export default function ShopView({
   // Navigation states: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou'
   const [activeStep, setActiveStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>('catalog');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProductMediaUrl, setSelectedProductMediaUrl] = useState<string>("");
+  const [selectedVariants, setSelectedVariants] = useState<{[key: string]: string}>({});
   const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("todos");
@@ -137,6 +141,22 @@ export default function ShopView({
   const [expiry, setExpiry] = useState("09/29");
   const [cvv, setCvv] = useState("384");
   const [isFormValid, setIsFormValid] = useState(true);
+
+  useEffect(() => {
+    if (currentUser?.username === "invitado") {
+      setName("");
+      setAddress("");
+      setCardNumber("");
+      setExpiry("");
+      setCvv("");
+    } else {
+      setName(currentUser?.name || "Carlos Gómez");
+      setAddress("Avenida de la Constitución 142, Piso 4B, Madrid");
+      setCardNumber("4152 8391 0023 9482");
+      setExpiry("09/29");
+      setCvv("384");
+    }
+  }, [currentUser]);
 
   // Success Order State
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
@@ -178,6 +198,8 @@ export default function ShopView({
   useEffect(() => {
     if (selectedProductDirectly) {
       setSelectedProduct(selectedProductDirectly);
+      setSelectedProductMediaUrl(selectedProductDirectly.imageUrl);
+      setSelectedVariants({});
       setActiveStep('detail');
       clearDirectProduct();
     }
@@ -185,6 +207,8 @@ export default function ShopView({
 
   const handleProductSelect = (product: Product) => {
     setSelectedProduct(product);
+    setSelectedProductMediaUrl(product.imageUrl);
+    setSelectedVariants({});
     setActiveStep('detail');
   };
 
@@ -223,11 +247,23 @@ export default function ShopView({
     if (selectedCategory && selectedCategory !== "todos") {
       const cat = CATEGORIES.find(c => c.id === selectedCategory);
       if (cat) {
-        const term = cat.queryTerm.toLowerCase();
-        const matchesCategory = 
-          product.name.toLowerCase().includes(term) ||
-          product.description.toLowerCase().includes(term);
-        if (!matchesCategory) return false;
+        if (product.category) {
+          // Direct match with selected category display name
+          if (product.category.toLowerCase() !== cat.name.toLowerCase()) {
+            return false;
+          }
+        } else {
+          // Fallback matching using queryTerm for legacy/seeded products
+          const term = cat.queryTerm.toLowerCase();
+          if (term) {
+            const matchesCategory = 
+              product.name.toLowerCase().includes(term) ||
+              product.description.toLowerCase().includes(term);
+            if (!matchesCategory) return false;
+          } else {
+            return false;
+          }
+        }
       }
     }
 
@@ -464,14 +500,70 @@ export default function ShopView({
             >
               {/* Image & Showcase */}
               <div className="space-y-4">
-                <div className="aspect-square rounded-2xl overflow-hidden border border-slate-200 bg-slate-50">
-                  <img
-                    src={selectedProduct.imageUrl}
-                    alt={selectedProduct.name}
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
-                  />
+                {/* Main Media Viewer */}
+                <div className="aspect-square rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 relative flex items-center justify-center">
+                  {selectedProductMediaUrl && selectedProductMediaUrl.toLowerCase().includes(".mp4") ? (
+                    <video
+                      src={selectedProductMediaUrl}
+                      controls
+                      autoPlay
+                      muted
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={selectedProductMediaUrl || selectedProduct.imageUrl}
+                      alt={selectedProduct.name}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  )}
                 </div>
+
+                {/* Media Thumbnails list (including photos and videos) */}
+                {((selectedProduct.images && selectedProduct.images.length > 1) || (selectedProduct.videos && selectedProduct.videos.length > 0)) && (
+                  <div className="flex space-x-2 overflow-x-auto py-1 no-scrollbar">
+                    {/* Main image thumbnail */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProductMediaUrl(selectedProduct.imageUrl)}
+                      className={`w-12 h-12 rounded-lg overflow-hidden border-2 shrink-0 cursor-pointer ${
+                        selectedProductMediaUrl === selectedProduct.imageUrl ? "border-amber-500" : "border-slate-200"
+                      }`}
+                    >
+                      <img src={selectedProduct.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </button>
+
+                    {/* Additional photos */}
+                    {selectedProduct.images?.filter(url => url !== selectedProduct.imageUrl).map((url, idx) => (
+                      <button
+                        key={`img-${idx}`}
+                        type="button"
+                        onClick={() => setSelectedProductMediaUrl(url)}
+                        className={`w-12 h-12 rounded-lg overflow-hidden border-2 shrink-0 cursor-pointer ${
+                          selectedProductMediaUrl === url ? "border-amber-500" : "border-slate-200"
+                        }`}
+                      >
+                        <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      </button>
+                    ))}
+
+                    {/* Videos */}
+                    {selectedProduct.videos?.map((url, idx) => (
+                      <button
+                        key={`vid-${idx}`}
+                        type="button"
+                        onClick={() => setSelectedProductMediaUrl(url)}
+                        className={`w-12 h-12 rounded-lg overflow-hidden border-2 bg-slate-900 flex items-center justify-center shrink-0 relative cursor-pointer ${
+                          selectedProductMediaUrl === url ? "border-amber-500" : "border-slate-200"
+                        }`}
+                      >
+                        <Video className="w-4 h-4 text-white" />
+                        <span className="absolute bottom-0 right-0 bg-slate-950 text-white text-[6px] font-bold px-0.5">MP4</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 
                 {/* Security badges */}
                 <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 grid grid-cols-3 gap-2 text-center text-[10px] text-slate-500 font-semibold">
@@ -523,9 +615,47 @@ export default function ShopView({
                   <p className="text-sm text-slate-600 mt-4 leading-relaxed whitespace-pre-line">{selectedProduct.description}</p>
                   
                   {/* Stock status indicator */}
-                  <div className="mt-4 inline-block px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-700 border border-amber-500/20">
-                    {selectedProduct.stock > 0 ? `${selectedProduct.stock} unidades en almacén` : "Temporalmente Agotado"}
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    <div className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-700 border border-amber-500/20">
+                      {selectedProduct.stock > 0 ? `${selectedProduct.stock} unidades en almacén` : "Temporalmente Agotado"}
+                    </div>
+                    {/* Shipping Cost */}
+                    <div className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200 flex items-center space-x-1">
+                      <Truck className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Envío: {selectedProduct.shippingCost && selectedProduct.shippingCost > 0 ? `$${selectedProduct.shippingCost.toFixed(2)}` : "GRATIS"}</span>
+                    </div>
                   </div>
+
+                  {/* Product Variants Selection */}
+                  {selectedProduct.variants && selectedProduct.variants.length > 0 && (
+                    <div className="mt-6 space-y-4 border-t border-slate-100 pt-4">
+                      <p className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Selecciona tus opciones:</p>
+                      {selectedProduct.variants.map((v, idx) => (
+                        <div key={idx} className="space-y-1.5 text-left">
+                          <label className="block text-[11px] font-bold text-slate-500">{v.name}</label>
+                          <div className="flex flex-wrap gap-2">
+                            {v.options.map((opt, oIdx) => {
+                              const isSelected = selectedVariants[v.name] === opt;
+                              return (
+                                <button
+                                  key={oIdx}
+                                  type="button"
+                                  onClick={() => setSelectedVariants({ ...selectedVariants, [v.name]: opt })}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                                    isSelected 
+                                      ? "bg-slate-950 text-white border-slate-950 shadow-sm" 
+                                      : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                                  }`}
+                                >
+                                  {opt}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
@@ -537,7 +667,25 @@ export default function ShopView({
                   <button
                     onClick={() => {
                       if (selectedProduct.stock > 0) {
-                        onAddToCart(selectedProduct);
+                        const finalVariants = { ...selectedVariants };
+                        if (selectedProduct.variants && selectedProduct.variants.length > 0) {
+                          selectedProduct.variants.forEach((v) => {
+                            if (!finalVariants[v.name]) {
+                              finalVariants[v.name] = v.options[0];
+                            }
+                          });
+                        }
+                        
+                        const variantStr = Object.entries(finalVariants)
+                          .map(([k, v]) => `${k}: ${v}`)
+                          .join(", ");
+                        
+                        const customizedProduct = {
+                          ...selectedProduct,
+                          name: variantStr ? `${selectedProduct.name} (${variantStr})` : selectedProduct.name
+                        };
+                        
+                        onAddToCart(customizedProduct);
                         setShowCartDrawer(true);
                       }
                     }}

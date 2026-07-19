@@ -26,7 +26,9 @@ const UserSchema = new mongoose.Schema({
   followers: { type: Number, default: 0 },
   following: { type: Number, default: 0 },
   savedReelIds: { type: [String], default: [] },
-  coverPhoto: { type: String }
+  coverPhoto: { type: String },
+  isGuest: { type: Boolean, default: false },
+  password: { type: String }
 });
 
 const MongoUser = (mongoose.models.User || mongoose.model("User", UserSchema)) as any;
@@ -42,6 +44,54 @@ const PublicacionSchema = new mongoose.Schema({
 });
 
 const MongoPublicacion = (mongoose.models.Publicacion || mongoose.model("Publicacion", PublicacionSchema)) as any;
+
+// Mongoose Product Schema
+const ProductSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  description: { type: String },
+  price: { type: Number, required: true },
+  imageUrl: { type: String },
+  stock: { type: Number, default: 0 },
+  sellerId: { type: String },
+  rating: { type: Number, default: 5 },
+  shippingCost: { type: Number, default: 0 },
+  images: { type: [String], default: [] },
+  videos: { type: [String], default: [] },
+  variants: [{
+    name: { type: String },
+    options: { type: [String] }
+  }],
+  category: { type: String }
+});
+
+const MongoProduct = (mongoose.models.Product || mongoose.model("Product", ProductSchema)) as any;
+
+// Mongoose Reel Schema
+const ReelSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  videoUrl: { type: String },
+  thumbnailUrl: { type: String },
+  description: { type: String },
+  creatorId: { type: String },
+  creatorName: { type: String },
+  creatorAvatar: { type: String },
+  likes: { type: Number, default: 0 },
+  comments: [{
+    id: { type: String },
+    username: { type: String },
+    avatar: { type: String },
+    text: { type: String },
+    createdAt: { type: String }
+  }],
+  shares: { type: Number, default: 0 },
+  views: { type: Number, default: 0 },
+  productId: { type: String },
+  type: { type: String, default: "video" },
+  images: { type: [String], default: [] }
+});
+
+const MongoReel = (mongoose.models.Reel || mongoose.model("Reel", ReelSchema)) as any;
 
 // Google Cloud Storage setup
 const storage = new Storage({
@@ -61,7 +111,28 @@ const upload = multer({
 // Helper: Upload file to GCS
 const uploadToGCS = (file: Express.Multer.File, folder: string = "publicaciones"): Promise<string> => {
   return new Promise((resolve, reject) => {
-    const uniqueName = `${Date.now()}-${generateId()}-${file.originalname.replace(/\s+/g, "_")}`;
+    let originalName = file.originalname.replace(/\s+/g, "_");
+    const mimeType = file.mimetype.toLowerCase();
+
+    // Enforce correct extensions on upload as requested
+    if (mimeType.startsWith("video/")) {
+      if (!originalName.toLowerCase().endsWith(".mp4")) {
+        originalName += ".mp4";
+      }
+    } else if (mimeType.startsWith("image/")) {
+      const lowerName = originalName.toLowerCase();
+      if (!lowerName.endsWith(".png") && !lowerName.endsWith(".jpeg") && !lowerName.endsWith(".jpg") && !lowerName.endsWith(".webp")) {
+        if (mimeType.includes("png")) {
+          originalName += ".png";
+        } else if (mimeType.includes("webp")) {
+          originalName += ".webp";
+        } else {
+          originalName += ".jpeg";
+        }
+      }
+    }
+
+    const uniqueName = `${Date.now()}-${generateId()}-${originalName}`;
     const blob = bucket.file(`${folder}/${uniqueName}`);
     
     const blobStream = blob.createWriteStream({
@@ -95,162 +166,33 @@ let users: User[] = [
     isOnline: true,
     followers: 124,
     following: 348,
-    coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80"
+    coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+    isGuest: false
   },
   {
-    id: "user_2",
-    username: "cyber_synth",
-    name: "Alex Rivers",
-    avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=120&q=80",
-    bio: "Live DJ, modular synthesizers, and electronic beats. 🎵 Streaming my jam sessions live!",
+    id: "user_guest",
+    username: "invitado",
+    name: "Invitado",
+    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+    bio: "Modo invitado. Regístrate o inicia sesión para disfrutar la experiencia completa.",
     isOnline: true,
-    followers: 5430,
-    following: 112,
-    coverPhoto: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=800&q=80"
-  },
-  {
-    id: "user_3",
-    username: "fitness_guru",
-    name: "Sophia Chen",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80",
-    bio: "Daily workouts, healthy lifestyle, and custom high-performance activewear. 💪 Let's stay active together!",
-    isOnline: false,
-    followers: 12800,
-    following: 405,
-    coverPhoto: "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&q=80"
-  },
-  {
-    id: "user_4",
-    username: "neon_crafter",
-    name: "Lucas Gray",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80",
-    bio: "Handmade cyber-decor and neon lamps. Bringing future neon lights into your warm home. 💡⚡",
-    isOnline: true,
-    followers: 3210,
-    following: 89,
-    coverPhoto: "https://images.unsplash.com/photo-1500485035595-cbe6f645feb1?auto=format&fit=crop&w=800&q=80"
-  },
-];
-
-
-let products: Product[] = [
-  {
-    id: "prod_1",
-    name: "Modular Synth Keys",
-    description: "Compact Eurorack compatible MIDI keyboard with glowing visual oscillator waves, tactile buttons, and velocity-sensitive silicone keys.",
-    price: 199.99,
-    imageUrl: "https://images.unsplash.com/photo-1598653222000-6b7b7a552625?auto=format&fit=crop&w=600&q=80",
-    stock: 5,
-    sellerId: "user_2",
-    rating: 4.8,
-  },
-  {
-    id: "prod_2",
-    name: "Cyberpunk RGB Headphones",
-    description: "Deep bass Bluetooth headphones with programmable glowing RGB strip lights, memory foam cups, and active hybrid noise-cancellation.",
-    price: 89.50,
-    imageUrl: "https://images.unsplash.com/photo-1546435770-a3e426bf472b?auto=format&fit=crop&w=600&q=80",
-    stock: 12,
-    sellerId: "user_2",
-    rating: 4.6,
-  },
-  {
-    id: "prod_3",
-    name: "Eco-Flex Yoga Mat",
-    description: "100% biodegradable non-slip grip yoga mat in premium lavender, featuring alignment markings and a dual-layer tear-resistant weave.",
-    price: 45.00,
-    imageUrl: "https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?auto=format&fit=crop&w=600&q=80",
-    stock: 20,
-    sellerId: "user_3",
-    rating: 4.9,
-  },
-  {
-    id: "prod_4",
-    name: "Cyber Lotus Neon Lamp",
-    description: "Intricate laser-cut acrylic neon lotus desktop lamp with 16 custom color modes, smart app controller, and solid timber base.",
-    price: 120.00,
-    imageUrl: "https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=600&q=80",
-    stock: 8,
-    sellerId: "user_4",
-    rating: 4.7,
-  },
-];
-
-let reels: Reel[] = [
-  {
-    id: "reel_1",
-    videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-dj-playing-music-on-a-mixer-41556-large.mp4",
-    thumbnailUrl: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=300&q=80",
-    description: "Patching some modular chords for tonight's live streaming set. Check out my custom MIDI keyboard tagged below! 🎹🔊 #synth #ambient #livemusic #cyberpunk",
-    creatorId: "user_2",
-    creatorName: "Alex Rivers",
-    creatorAvatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=120&q=80",
-    likes: 1420,
-    comments: [
-      { id: "c_1", username: "cg0220037", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80", text: "Incredible modular patch! The synthesizer sounds so warm. 🔥", createdAt: "2026-07-16T10:00:00Z" },
-      { id: "c_2", username: "fitness_guru", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80", text: "Perfect background beats for my yoga routines!", createdAt: "2026-07-16T10:30:00Z" }
-    ],
-    shares: 89,
-    views: 4200,
-    productId: "prod_1"
-  },
-  {
-    id: "reel_2",
-    videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-young-woman-with-goggles-and-neon-lights-42511-large.mp4",
-    thumbnailUrl: "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=300&q=80",
-    description: "Mid-week warm up routine with our new Eco-Flex lavender mat. Focus, breath, stretch! 🧘‍♀️🌿 #fitness #yoga #wellness #eco",
-    creatorId: "user_3",
-    creatorName: "Sophia Chen",
-    creatorAvatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80",
-    likes: 932,
-    comments: [
-      { id: "c_3", username: "neon_crafter", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80", text: "Need one of those mats! The alignment marks are so useful.", createdAt: "2026-07-16T09:15:00Z" }
-    ],
-    shares: 35,
-    views: 2150,
-    productId: "prod_3"
-  },
-  {
-    id: "reel_3",
-    videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-girl-in-neon-sign-light-over-black-background-34304-large.mp4",
-    thumbnailUrl: "https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=300&q=80",
-    description: "The Cyber Lotus neon lamp is finally back in stock! Each acrylic petal is hand-etched for optimum light diffusion. 🌌💡 #neonart #homedecor #handcraft #cyberpunk",
-    creatorId: "user_4",
-    creatorName: "Lucas Gray",
-    creatorAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80",
-    likes: 2105,
-    comments: [
-      { id: "c_4", username: "cyber_synth", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=120&q=80", text: "Fits the studio vibe perfectly, ordering right now!", createdAt: "2026-07-16T08:00:00Z" }
-    ],
-    shares: 201,
-    views: 8400,
-    productId: "prod_4"
+    followers: 0,
+    following: 0,
+    coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+    isGuest: true
   }
 ];
 
-let chatMessages: ChatMessage[] = [
-  { id: "m_1", senderId: "user_2", receiverId: "current_user", text: "Hey Carlos! Thanks for the comment on my latest modular synthesizers reel.", timestamp: "2026-07-16T11:00:00Z" },
-  { id: "m_2", senderId: "current_user", receiverId: "user_2", text: "Of course Alex! It sounds incredible. Is the custom keyboard available for shipping?", timestamp: "2026-07-16T11:02:00Z" },
-  { id: "m_3", senderId: "user_2", receiverId: "current_user", text: "Yes! Worldwide shipping, and I assemble them myself. Let me know if you have any questions!", timestamp: "2026-07-16T11:05:00Z" }
-];
+
+let products: Product[] = [];
+
+let reels: Reel[] = [];
+
+let chatMessages: ChatMessage[] = [];
 
 let orders: Order[] = [];
 
-let liveSessions: LiveSession[] = [
-  {
-    id: "live_alex",
-    creatorId: "user_2",
-    creatorName: "Alex Rivers",
-    creatorAvatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=120&q=80",
-    title: "Synthesizer Soundscape Live Jam 🌌🎛️",
-    viewersCount: 42,
-    isLive: true,
-    chatMessages: [
-      { id: "lc_1", username: "neon_crafter", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80", text: "Sounds amazing from the start!", createdAt: "2026-07-16T13:45:00Z" },
-      { id: "lc_2", username: "fitness_guru", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80", text: "Tuning in from the treadmill, loving the beats!", createdAt: "2026-07-16T13:48:00Z" }
-    ]
-  }
-];
+let liveSessions: LiveSession[] = [];
 
 // Active WebSocket Client Map: Key is userId
 const activeClients = new Map<string, WebSocket>();
@@ -271,10 +213,27 @@ async function connectToMongoDB() {
     mongoUri = mongoUri.slice(1, -1).trim();
   }
 
+  // Robustly remove < and > surrounding password if present
+  const match = mongoUri.match(/(mongodb\+srv:\/\/.*?):(.*?)@(.*)/);
+  if (match) {
+    const [_, prefix, pass, suffix] = match;
+    if (pass.startsWith('<') && pass.endsWith('>')) {
+      const cleanPass = pass.slice(1, -1);
+      mongoUri = `${prefix}:${cleanPass}@${suffix}`;
+    }
+  }
+
   try {
     console.log("🔌 Connecting to MongoDB Atlas...");
     await mongoose.connect(mongoUri);
     console.log("✅ Successfully connected to MongoDB Atlas!");
+
+    // Delete test / mock data if they exist in MongoDB to allow testing with real data as requested by user
+    console.log("🧹 Wiping test/mock accounts, products and reels from MongoDB Atlas...");
+    await MongoUser.deleteMany({ username: { $nin: ["cg0220037", "invitado"] }, id: { $ne: "current_user" } });
+    await MongoProduct.deleteMany({ id: { $in: ["prod_1", "prod_2", "prod_3", "prod_4"] } });
+    await MongoReel.deleteMany({ id: { $in: ["reel_1", "reel_2", "reel_3"] } });
+    console.log("🧹 Test/mock data wiped successfully!");
 
     // Seed initial users if database is empty
     const count = await MongoUser.countDocuments();
@@ -295,9 +254,83 @@ async function connectToMongoDB() {
         followers: u.followers || 0,
         following: u.following || 0,
         savedReelIds: u.savedReelIds || [],
-        coverPhoto: u.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80"
+        coverPhoto: u.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+        isGuest: u.isGuest || false,
+        password: u.password || ""
       }));
+
+      // Ensure the guest user "invitado" is always present in memory
+      if (!users.some(u => u.username === "invitado")) {
+        users.push({
+          id: "user_guest",
+          username: "invitado",
+          name: "Invitado",
+          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+          bio: "Modo invitado. Regístrate o inicia sesión para disfrutar la experiencia completa.",
+          isOnline: true,
+          followers: 0,
+          following: 0,
+          coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+          isGuest: true
+        });
+      }
+
       console.log(`📦 Loaded ${users.length} users successfully from MongoDB Atlas!`);
+    }
+
+    // Seed or Load Products from MongoDB Atlas
+    const productCount = await MongoProduct.countDocuments();
+    if (productCount === 0) {
+      console.log("🌱 Seeding default products to MongoDB...");
+      await MongoProduct.insertMany(products as any);
+      console.log("🌱 Seeding products completed!");
+    } else {
+      console.log("📦 Loading products from MongoDB...");
+      const dbProducts = await MongoProduct.find();
+      products = dbProducts.map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description || "",
+        price: p.price,
+        imageUrl: p.imageUrl || "",
+        stock: p.stock !== undefined ? p.stock : 10,
+        sellerId: p.sellerId || "current_user",
+        rating: p.rating || 5,
+        shippingCost: p.shippingCost || 0,
+        images: p.images || [],
+        videos: p.videos || [],
+        variants: p.variants || [],
+        category: p.category || ""
+      }));
+      console.log(`📦 Loaded ${products.length} products successfully from MongoDB Atlas!`);
+    }
+ 
+    // Seed or Load Reels from MongoDB Atlas
+    const reelCount = await MongoReel.countDocuments();
+    if (reelCount === 0) {
+      console.log("🌱 Seeding default reels to MongoDB...");
+      await MongoReel.insertMany(reels as any);
+      console.log("🌱 Seeding reels completed!");
+    } else {
+      console.log("📦 Loading reels from MongoDB...");
+      const dbReels = await MongoReel.find();
+      reels = dbReels.map(r => ({
+        id: r.id,
+        videoUrl: r.videoUrl || "",
+        thumbnailUrl: r.thumbnailUrl || "",
+        description: r.description || "",
+        creatorId: r.creatorId || "current_user",
+        creatorName: r.creatorName || "Carlos Gómez",
+        creatorAvatar: r.creatorAvatar || "",
+        likes: r.likes || 0,
+        comments: r.comments || [],
+        shares: r.shares || 0,
+        views: r.views || 0,
+        productId: r.productId || undefined,
+        type: r.type || "video",
+        images: r.images || []
+      }));
+      console.log(`📦 Loaded ${reels.length} reels successfully from MongoDB Atlas!`);
     }
   } catch (error) {
     console.error("❌ Failed to connect to MongoDB Atlas:", error);
@@ -305,8 +338,10 @@ async function connectToMongoDB() {
 }
 
 async function startServer() {
-  // Connect to MongoDB
-  await connectToMongoDB();
+  // Connect to MongoDB asynchronously to avoid blocking the server startup on port 3000
+  connectToMongoDB().catch((err) => {
+    console.error("❌ Error running connectToMongoDB asynchronously:", err);
+  });
 
   const app = express();
   const PORT = 3000;
@@ -460,7 +495,7 @@ async function startServer() {
 
   // Update current user profile info
   app.post("/api/users/current/update", async (req, res) => {
-    const { name, username, bio, avatar, coverPhoto } = req.body;
+    const { name, username, bio, avatar, coverPhoto, password } = req.body;
     const currentUserObj = users.find((u) => u.id === "current_user");
     if (!currentUserObj) {
       res.status(404).json({ error: "Current user not found" });
@@ -472,13 +507,14 @@ async function startServer() {
     if (bio !== undefined) currentUserObj.bio = bio;
     if (avatar !== undefined) currentUserObj.avatar = avatar;
     if (coverPhoto !== undefined) currentUserObj.coverPhoto = coverPhoto;
+    if (password !== undefined) currentUserObj.password = password;
 
     // Save to MongoDB Atlas if connection is active
     if (mongoose.connection.readyState === 1) {
       try {
         await MongoUser.findOneAndUpdate(
           { id: currentUserObj.id },
-          { name, username, bio, avatar, coverPhoto },
+          { name, username, bio, avatar, coverPhoto, password },
           { new: true, upsert: true }
         );
         console.log(`💾 User profile updated in MongoDB Atlas for ${currentUserObj.username}`);
@@ -506,7 +542,7 @@ async function startServer() {
 
   // Register a new user in MongoDB Atlas
   app.post("/api/users/register", async (req, res) => {
-    const { name, username, bio, avatar, coverPhoto } = req.body;
+    const { name, username, bio, avatar, coverPhoto, password } = req.body;
     if (!name || !username) {
       res.status(400).json({ error: "Name and username are required" });
       return;
@@ -530,7 +566,8 @@ async function startServer() {
       coverPhoto: coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
       followers: 0,
       following: 0,
-      isOnline: true
+      isOnline: true,
+      password: password || ""
     };
 
     // Add to cache/memory list
@@ -555,7 +592,7 @@ async function startServer() {
 
   // Switch current active user (swaps details in memory and saves to Mongo)
   app.post("/api/users/current/switch", async (req, res) => {
-    const { targetUsername } = req.body;
+    const { targetUsername, password } = req.body;
     if (!targetUsername) {
       res.status(400).json({ error: "Target username is required" });
       return;
@@ -565,6 +602,16 @@ async function startServer() {
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
+    }
+
+    // Require password if the user has a password registered or is the default non-guest user
+    // The Guest ("invitado") doesn't require a password.
+    if (targetUsername !== "invitado") {
+      const expectedPassword = targetUser.password || (targetUser.username === "cg0220037" ? "123456" : "");
+      if (expectedPassword && expectedPassword !== password) {
+        res.status(401).json({ error: "La contraseña ingresada es incorrecta. Por favor verifícala." });
+        return;
+      }
     }
 
     const currentUserObj = users.find(u => u.id === "current_user");
@@ -584,6 +631,8 @@ async function startServer() {
       originalUserInList.followers = currentUserObj.followers;
       originalUserInList.following = currentUserObj.following;
       originalUserInList.savedReelIds = currentUserObj.savedReelIds;
+      originalUserInList.isGuest = currentUserObj.isGuest;
+      originalUserInList.password = currentUserObj.password;
 
       if (mongoose.connection.readyState === 1) {
         try {
@@ -597,7 +646,9 @@ async function startServer() {
               coverPhoto: currentUserObj.coverPhoto,
               followers: currentUserObj.followers,
               following: currentUserObj.following,
-              savedReelIds: currentUserObj.savedReelIds
+              savedReelIds: currentUserObj.savedReelIds,
+              isGuest: currentUserObj.isGuest,
+              password: currentUserObj.password
             },
             { upsert: true }
           );
@@ -617,7 +668,9 @@ async function startServer() {
         followers: currentUserObj.followers,
         following: currentUserObj.following,
         savedReelIds: currentUserObj.savedReelIds || [],
-        isOnline: currentUserObj.isOnline
+        isOnline: currentUserObj.isOnline,
+        isGuest: currentUserObj.isGuest,
+        password: currentUserObj.password
       };
       users.push(backupUser);
       if (mongoose.connection.readyState === 1) {
@@ -640,6 +693,8 @@ async function startServer() {
     currentUserObj.followers = targetUser.followers;
     currentUserObj.following = targetUser.following;
     currentUserObj.savedReelIds = targetUser.savedReelIds || [];
+    currentUserObj.isGuest = targetUser.isGuest || false;
+    currentUserObj.password = targetUser.password || (targetUser.username === "cg0220037" ? "123456" : "");
 
     // Save the new current_user state in Mongo as well
     if (mongoose.connection.readyState === 1) {
@@ -654,7 +709,9 @@ async function startServer() {
             coverPhoto: targetUser.coverPhoto,
             followers: targetUser.followers,
             following: targetUser.following,
-            savedReelIds: targetUser.savedReelIds || []
+            savedReelIds: targetUser.savedReelIds || [],
+            isGuest: targetUser.isGuest || false,
+            password: targetUser.password || (targetUser.username === "cg0220037" ? "123456" : "")
           },
           { upsert: true }
         );
@@ -741,6 +798,151 @@ async function startServer() {
       return;
     }
     res.json(product);
+  });
+
+  // Create a new publication (video, image, or carousel)
+  app.post("/api/reels", async (req: any, res: any) => {
+    try {
+      const { videoUrl, thumbnailUrl, description, creatorId, type, images, productId } = req.body;
+      const creator = users.find(u => u.id === (creatorId || "current_user"));
+      if (!creator) {
+        res.status(404).json({ error: "Creator not found" });
+        return;
+      }
+
+      const newReel: Reel = {
+        id: "reel_" + generateId(),
+        videoUrl: videoUrl || "",
+        thumbnailUrl: thumbnailUrl || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=300&q=80",
+        description: description || "",
+        creatorId: creator.id,
+        creatorName: creator.name,
+        creatorAvatar: creator.avatar,
+        likes: 0,
+        comments: [],
+        shares: 0,
+        views: 0,
+        productId: productId || undefined,
+        type: type || "video",
+        images: images || []
+      };
+
+      // Add to memory list
+      reels.unshift(newReel);
+
+      // Save to MongoDB Atlas if connected
+      if (mongoose.connection.readyState === 1) {
+        try {
+          const mongoReel = new MongoReel(newReel);
+          await mongoReel.save();
+          console.log(`💾 Saved new publication ${newReel.id} to MongoDB Atlas`);
+        } catch (dbErr) {
+          console.error("❌ Failed to save publication to MongoDB Atlas:", dbErr);
+        }
+      }
+
+      // Broadcast new reel event
+      broadcastToAll({
+        type: "reel_created",
+        reel: newReel
+      });
+
+      res.status(201).json({ success: true, reel: newReel });
+    } catch (err: any) {
+      console.error("Error creating publication:", err);
+      res.status(500).json({ error: "Failed to create publication", details: err.message });
+    }
+  });
+
+  // Create a new product for sale
+  app.post("/api/products", async (req: any, res: any) => {
+    try {
+      const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, variants, category } = req.body;
+      const seller = users.find(u => u.id === (sellerId || "current_user"));
+      if (!seller) {
+        res.status(404).json({ error: "Seller not found" });
+        return;
+      }
+
+      const newProduct: Product = {
+        id: "prod_" + generateId(),
+        name: name || "Producto sin nombre",
+        description: description || "",
+        price: Number(price) || 0,
+        imageUrl: imageUrl || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=300&q=80",
+        stock: Number(stock) || 0,
+        sellerId: seller.id,
+        rating: 5,
+        shippingCost: Number(shippingCost) || 0,
+        images: images || [],
+        videos: videos || [],
+        variants: variants || [],
+        category: category || ""
+      };
+
+      // Add to memory list
+      products.unshift(newProduct);
+
+      // Save to MongoDB Atlas if connected
+      if (mongoose.connection.readyState === 1) {
+        try {
+          const mongoProduct = new MongoProduct(newProduct);
+          await mongoProduct.save();
+          console.log(`💾 Saved new product ${newProduct.id} to MongoDB Atlas`);
+        } catch (dbErr) {
+          console.error("❌ Failed to save product to MongoDB Atlas:", dbErr);
+        }
+      }
+
+      // Also automatically create a matching Reel publication for the Reels section (Reels feed)
+      const newReel: Reel = {
+        id: "reel_" + generateId(),
+        videoUrl: newProduct.videos && newProduct.videos.length > 0 ? newProduct.videos[0] : "",
+        thumbnailUrl: newProduct.imageUrl,
+        description: `🛍️ ¡Nuevo producto en la categoría ${newProduct.category || "General"}!\n\n✨ **${newProduct.name}**\n\n${newProduct.description}`,
+        creatorId: seller.id,
+        creatorName: seller.name,
+        creatorAvatar: seller.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+        likes: 0,
+        comments: [],
+        shares: 0,
+        views: 0,
+        productId: newProduct.id,
+        type: newProduct.videos && newProduct.videos.length > 0 ? "video" : (newProduct.images && newProduct.images.length > 1 ? "carousel" : "image"),
+        images: newProduct.images || []
+      };
+
+      // Add to memory list
+      reels.unshift(newReel);
+
+      // Save companion Reel to MongoDB Atlas if connected
+      if (mongoose.connection.readyState === 1) {
+        try {
+          const mongoReel = new MongoReel(newReel);
+          await mongoReel.save();
+          console.log(`💾 Saved companion reel ${newReel.id} for product ${newProduct.id} to MongoDB Atlas`);
+        } catch (dbErr) {
+          console.error("❌ Failed to save companion reel to MongoDB Atlas:", dbErr);
+        }
+      }
+
+      // Broadcast product event
+      broadcastToAll({
+        type: "product_created",
+        product: newProduct
+      });
+
+      // Broadcast companion reel event
+      broadcastToAll({
+        type: "reel_created",
+        reel: newReel
+      });
+
+      res.status(201).json({ success: true, product: newProduct, reel: newReel });
+    } catch (err: any) {
+      console.error("Error creating product:", err);
+      res.status(500).json({ error: "Failed to create product", details: err.message });
+    }
   });
 
   // Create purchase order (checkout)

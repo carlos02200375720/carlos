@@ -4,6 +4,3 @@ dist/
 coverage/
 .DS_Store
 *.log
-.env*
-!.env.example
-mall-1bucket.json

@@ -1,16 +1,21 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Play, ShoppingBag, Radio, User as UserIcon, MessageSquare, Bell, Heart } from "lucide-react";
+import { Play, ShoppingBag, Radio, User as UserIcon, MessageSquare, Bell, Heart, ShieldCheck } from "lucide-react";
 import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession } from "./types";
 import ReelsView from "./components/ReelsView";
 import ShopView from "./components/ShopView";
 import LiveView from "./components/LiveView";
 import SocialPanel from "./components/SocialPanel";
 import ProfileView from "./components/ProfileView";
+import LoginView from "./components/LoginView";
 import { motion, AnimatePresence } from "motion/react";
 
 export default function App() {
   // Navigation states: 'reels' | 'shop' | 'messages' | 'live' | 'profile'
   const [activeTab, setActiveTab] = useState<'reels' | 'shop' | 'messages' | 'live' | 'profile'>('reels');
+
+  // Guest intercept notice modal states
+  const [showGuestNoticeModal, setShowGuestNoticeModal] = useState(false);
+  const [guestNoticeAction, setGuestNoticeAction] = useState("");
 
   // Core Data State
   const [users, setUsers] = useState<User[]>([]);
@@ -20,15 +25,16 @@ export default function App() {
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
 
   // Current User (Session source of truth)
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => localStorage.getItem("isLoggedIn") === "true");
   const [currentUser, setCurrentUser] = useState<User>({
     id: "current_user",
-    username: "cg0220037",
-    name: "Carlos Gómez",
+    username: "invitado",
+    name: "Invitado",
     avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-    bio: "Tech enthusiast, creator, and shopaholic. ✨ Building the future of interactive social commerce.",
+    bio: "Modo invitado. Regístrate o inicia sesión para disfrutar la experiencia completa.",
     isOnline: true,
-    followers: 124,
-    following: 348,
+    followers: 0,
+    following: 0,
   });
 
   // Selected details (for cross-tab linkage)
@@ -71,16 +77,35 @@ export default function App() {
       .then((data) => setLiveSessions(data))
       .catch((err) => console.error("Error fetching live sessions:", err));
 
-    // 5. Fetch Current User details (to sync savedReelIds)
-    fetch("/api/users/current_user")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.user) {
-          setCurrentUser(data.user);
-          setSavedReelIds(data.user.savedReelIds || []);
-        }
+    // 5. Restore session from localStorage if logged in
+    const savedUsername = localStorage.getItem("loggedInUsername");
+    const savedPassword = localStorage.getItem("loggedInPassword") || "";
+    if (savedUsername) {
+      fetch("/api/users/current/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUsername: savedUsername, password: savedPassword }),
       })
-      .catch((err) => console.error("Error fetching current user details:", err));
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.success && data.user) {
+            setCurrentUser(data.user);
+            setSavedReelIds(data.user.savedReelIds || []);
+          }
+        })
+        .catch((err) => console.error("Error switching session user on boot:", err));
+    } else {
+      // Fetch default server current_user details
+      fetch("/api/users/current_user")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.user) {
+            setCurrentUser(data.user);
+            setSavedReelIds(data.user.savedReelIds || []);
+          }
+        })
+        .catch((err) => console.error("Error fetching current user details:", err));
+    }
   }, []);
 
   // Fetch Private Chats on Active User change
@@ -391,8 +416,47 @@ export default function App() {
     setActiveTab('messages');
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("isLoggedIn");
+    localStorage.removeItem("loggedInUsername");
+    setIsLoggedIn(false);
+    fetch("/api/users/current/switch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetUsername: "invitado" }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.user) {
+          setCurrentUser(data.user);
+          setSavedReelIds(data.user.savedReelIds || []);
+        }
+      })
+      .catch((err) => console.error("Logout switch error:", err));
+  };
+
   const totalUnreads: number = Object.values(unreadCounts).reduce<number>((acc, val) => acc + (val as number), 0);
   const isDarkNavActive = activeTab === 'reels' || activeTab === 'messages';
+
+  if (!isLoggedIn) {
+    return (
+      <LoginView
+        users={users}
+        onRefreshUsers={() => {
+          fetch("/api/users")
+            .then((res) => res.json())
+            .then((data) => setUsers(data))
+            .catch((err) => console.error("Error refreshing users:", err));
+        }}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          setSavedReelIds(user.savedReelIds || []);
+          setIsLoggedIn(true);
+          setActiveTab('reels');
+        }}
+      />
+    );
+  }
 
   return (
     <div className="w-full min-h-screen bg-white text-slate-900 font-sans flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950">
@@ -411,12 +475,17 @@ export default function App() {
             {activeTab === 'reels' && (
               <ReelsView
                 reels={reels}
+                currentUser={currentUser}
                 onProductClick={handleProductDetailsLink}
                 onCreatorClick={handleCreatorProfileLink}
                 onLikeReel={handleLikeReel}
                 onAddComment={handleAddComment}
                 savedReelIds={savedReelIds}
                 onToggleSaveReel={handleToggleSaveReel}
+                onGuestInteraction={(action) => {
+                  setGuestNoticeAction(action);
+                  setShowGuestNoticeModal(true);
+                }}
               />
             )}
 
@@ -425,6 +494,7 @@ export default function App() {
                 products={products}
                 cart={cart}
                 users={users}
+                currentUser={currentUser}
                 onAddToCart={handleAddToCart}
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}
@@ -465,6 +535,7 @@ export default function App() {
                     .then((data) => setUsers(data))
                     .catch((err) => console.error("Error refreshing users:", err));
                 }}
+                onLogout={handleLogout}
               />
             )}
 
@@ -528,7 +599,14 @@ export default function App() {
    
             {/* Tab: Messages (between Market and Directos) */}
             <button
-              onClick={() => { setActiveTab('messages'); }}
+              onClick={() => {
+                if (currentUser.username === "invitado") {
+                  setGuestNoticeAction("chatear y ver tus mensajes");
+                  setShowGuestNoticeModal(true);
+                } else {
+                  setActiveTab('messages');
+                }
+              }}
               className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all relative ${
                 activeTab === 'messages'
                   ? "text-amber-500 scale-105"
@@ -551,7 +629,14 @@ export default function App() {
    
             {/* Tab 3: Live */}
             <button
-              onClick={() => { setActiveTab('live'); }}
+              onClick={() => {
+                if (currentUser.username === "invitado") {
+                  setGuestNoticeAction("transmitir en vivo y participar en directos");
+                  setShowGuestNoticeModal(true);
+                } else {
+                  setActiveTab('live');
+                }
+              }}
               className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all ${
                 activeTab === 'live'
                   ? "text-amber-500 scale-105"
@@ -589,6 +674,58 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Guest Intercept Modal */}
+      <AnimatePresence>
+        {showGuestNoticeModal && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.6 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowGuestNoticeModal(false)}
+              className="fixed inset-0 bg-black/80 z-[200] backdrop-blur-sm"
+            />
+            {/* Modal Card */}
+            <div className="fixed inset-0 flex items-center justify-center p-4 z-[201] pointer-events-none">
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                className="bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl p-6 w-full max-w-sm shadow-2xl pointer-events-auto text-center"
+              >
+                <div className="mx-auto w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">
+                  <ShieldCheck className="w-6 h-6 text-amber-500" />
+                </div>
+                
+                <h3 className="font-display font-black text-sm text-white">Iniciar Sesión Requerido</h3>
+                <p className="text-xs text-slate-400 mt-2.5 leading-relaxed">
+                  Para poder <span className="text-amber-400 font-bold">{guestNoticeAction}</span>, necesitas una cuenta registrada.
+                </p>
+
+                <div className="mt-6 space-y-2">
+                  <button
+                    onClick={() => {
+                      setShowGuestNoticeModal(false);
+                      handleLogout();
+                    }}
+                    className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-[0.98] transition-all text-slate-950 font-bold text-xs rounded-xl cursor-pointer"
+                  >
+                    Iniciar Sesión / Registrarse
+                  </button>
+                  <button
+                    onClick={() => setShowGuestNoticeModal(false)}
+                    className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-[0.98] transition-all text-slate-300 hover:text-white font-semibold text-xs rounded-xl cursor-pointer"
+                  >
+                    Seguir explorando
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
 
     </div>
   );

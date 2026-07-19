@@ -1,26 +1,30 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Heart, MessageCircle, Share2, ShoppingBag, Volume2, VolumeX, Send, X, Play, Bookmark } from "lucide-react";
-import { Reel, Product, Comment } from "../types";
+import { Reel, Product, Comment, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 
 interface ReelsViewProps {
   reels: Reel[];
+  currentUser: User;
   onProductClick: (product: Product) => void;
   onCreatorClick: (creatorId: string) => void;
   onLikeReel: (reelId: string) => void;
   onAddComment: (reelId: string, text: string) => void;
   savedReelIds: string[];
   onToggleSaveReel: (reelId: string) => void;
+  onGuestInteraction: (action: string) => void;
 }
 
 export default function ReelsView({
   reels,
+  currentUser,
   onProductClick,
   onCreatorClick,
   onLikeReel,
   onAddComment,
   savedReelIds,
   onToggleSaveReel,
+  onGuestInteraction,
 }: ReelsViewProps) {
   const [activeReelIndex, setActiveReelIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
@@ -76,12 +80,20 @@ export default function ReelsView({
   };
 
   const handleDoubleTap = (reelId: string) => {
+    if (currentUser?.username === "invitado") {
+      onGuestInteraction("dar me gusta");
+      return;
+    }
     onLikeReel(reelId);
     setLikedAnim(reelId);
     setTimeout(() => setLikedAnim(null), 800);
   };
 
   const handleShare = (reelId: string) => {
+    if (currentUser?.username === "invitado") {
+      onGuestInteraction("compartir publicaciones");
+      return;
+    }
     setShowShareModal(reelId);
     setCopiedLink(false);
   };
@@ -163,19 +175,35 @@ export default function ReelsView({
                 className="h-full w-full snap-start relative flex items-center justify-center bg-black overflow-hidden"
                 style={{ height: "100%" }}
               >
-                {/* Vertical Video Element */}
-                <video
-                  ref={(el) => {
-                    videoRefs.current[reel.id] = el;
-                  }}
-                  src={reel.videoUrl}
-                  loop
-                  muted={isMuted}
-                  playsInline
-                  onClick={() => handleVideoClick(reel.id)}
-                  onDoubleClick={() => handleDoubleTap(reel.id)}
-                  className="w-full h-full object-cover cursor-pointer"
-                />
+                {/* Type-Responsive Media Element */}
+                {reel.type === "image" ? (
+                  <img
+                    src={reel.images?.[0] || reel.thumbnailUrl}
+                    alt={reel.description}
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    onDoubleClick={() => handleDoubleTap(reel.id)}
+                    className="w-full h-full object-cover cursor-pointer"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : reel.type === "carousel" ? (
+                  <ReelCarousel 
+                    images={reel.images || [reel.thumbnailUrl]} 
+                    onDoubleClick={() => handleDoubleTap(reel.id)}
+                  />
+                ) : (
+                  <video
+                    ref={(el) => {
+                      videoRefs.current[reel.id] = el;
+                    }}
+                    src={reel.videoUrl}
+                    loop
+                    muted={isMuted}
+                    playsInline
+                    onClick={() => handleVideoClick(reel.id)}
+                    onDoubleClick={() => handleDoubleTap(reel.id)}
+                    className="w-full h-full object-cover cursor-pointer"
+                  />
+                )}
 
                 {/* Floating Large Double Tap Heart Animation */}
                 <AnimatePresence>
@@ -237,7 +265,13 @@ export default function ReelsView({
                   {/* Likes Button */}
                   <div className="flex flex-col items-center">
                     <button
-                      onClick={() => onLikeReel(reel.id)}
+                      onClick={() => {
+                        if (currentUser?.username === "invitado") {
+                          onGuestInteraction("dar me gusta");
+                        } else {
+                          onLikeReel(reel.id);
+                        }
+                      }}
                       className="p-3 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/10 text-white hover:text-rose-500 hover:scale-110 active:scale-95 transition-all cursor-pointer"
                       id={`like-btn-${reel.id}`}
                     >
@@ -251,7 +285,13 @@ export default function ReelsView({
                   {/* Comments Button */}
                   <div className="flex flex-col items-center">
                     <button
-                      onClick={() => setShowComments(reel.id)}
+                      onClick={() => {
+                        if (currentUser?.username === "invitado") {
+                          onGuestInteraction("comentar");
+                        } else {
+                          setShowComments(reel.id);
+                        }
+                      }}
                       className="p-3 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/10 text-white hover:text-amber-400 hover:scale-110 transition-all cursor-pointer"
                       id={`comment-btn-${reel.id}`}
                     >
@@ -265,7 +305,13 @@ export default function ReelsView({
                   {/* Share Button */}
                   <div className="flex flex-col items-center">
                     <button
-                      onClick={() => handleShare(reel.id)}
+                      onClick={() => {
+                        if (currentUser?.username === "invitado") {
+                          onGuestInteraction("compartir");
+                        } else {
+                          handleShare(reel.id);
+                        }
+                      }}
                       className="p-3 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/10 text-white hover:text-cyan-400 hover:scale-110 transition-all cursor-pointer"
                       id={`share-btn-${reel.id}`}
                     >
@@ -279,7 +325,13 @@ export default function ReelsView({
                   {/* Save (Bookmark) Button */}
                   <div className="flex flex-col items-center">
                     <button
-                      onClick={() => onToggleSaveReel(reel.id)}
+                      onClick={() => {
+                        if (currentUser?.username === "invitado") {
+                          onGuestInteraction("guardar publicaciones");
+                        } else {
+                          onToggleSaveReel(reel.id);
+                        }
+                      }}
                       className={`p-3 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/10 hover:scale-110 active:scale-95 transition-all cursor-pointer ${savedReelIds.includes(reel.id) ? "text-amber-500" : "text-white hover:text-amber-400"}`}
                       id={`save-btn-${reel.id}`}
                     >
@@ -492,6 +544,60 @@ export default function ReelsView({
           </div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function ReelCarousel({ images, onDoubleClick }: { images: string[]; onDoubleClick: () => void }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const nextImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentIndex((prev) => (prev + 1) % images.length);
+  };
+
+  const prevImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentIndex((prev) => (prev - 1 + images.length) % images.length);
+  };
+
+  return (
+    <div className="w-full h-full relative flex items-center justify-center bg-black select-none" onDoubleClick={onDoubleClick}>
+      <img
+        src={images[currentIndex]}
+        alt={`Carousel ${currentIndex + 1}`}
+        className="w-full h-full object-cover"
+        referrerPolicy="no-referrer"
+      />
+      {images.length > 1 && (
+        <>
+          {/* Navigation Arrows */}
+          <button
+            onClick={prevImage}
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/60 transition-colors cursor-pointer z-10"
+          >
+            ←
+          </button>
+          <button
+            onClick={nextImage}
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/60 transition-colors cursor-pointer z-10"
+          >
+            →
+          </button>
+
+          {/* Dots Indicator */}
+          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 flex space-x-1.5 z-10">
+            {images.map((_, idx) => (
+              <span
+                key={idx}
+                className={`w-1.5 h-1.5 rounded-full transition-all ${
+                  idx === currentIndex ? "bg-amber-500 scale-125" : "bg-white/50"
+                }`}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -9,6 +9,8 @@ export interface User {
   following: number;
   savedReelIds?: string[];
   coverPhoto?: string;
+  isGuest?: boolean;
+  password?: string;
 }
 
 export interface Comment {
@@ -32,6 +34,8 @@ export interface Reel {
   shares: number;
   views: number;
   productId?: string; // Tagged product
+  type?: 'video' | 'image' | 'carousel';
+  images?: string[]; // For carrousels or single images
 }
 
 export interface Product {
@@ -43,6 +47,14 @@ export interface Product {
   stock: number;
   sellerId: string;
   rating: number;
+  shippingCost?: number;
+  images?: string[]; // Multiple photos of products
+  videos?: string[]; // Video of products
+  variants?: {
+    name: string; // e.g., "Talla" or "Color"
+    options: string[]; // e.g., ["S", "M"], ["Negro", "Rojo"]
+  }[];
+  category?: string;
 }
 
 export interface CartItem {
