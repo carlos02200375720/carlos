@@ -11,6 +11,7 @@ export interface User {
   coverPhoto?: string;
   isGuest?: boolean;
   password?: string;
+  email?: string;
 }
 
 export interface Comment {

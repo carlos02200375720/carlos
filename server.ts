@@ -8,8 +8,9 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import { Storage } from "@google-cloud/storage";
 import multer from "multer";
+import fs from "fs";
 
-// Configure dotenv to read environment variables
+// Configure dotenv to read environment variables first
 dotenv.config();
 
 // Unique ID generator
@@ -28,7 +29,8 @@ const UserSchema = new mongoose.Schema({
   savedReelIds: { type: [String], default: [] },
   coverPhoto: { type: String },
   isGuest: { type: Boolean, default: false },
-  password: { type: String }
+  password: { type: String },
+  email: { type: String, default: "" }
 });
 
 const MongoUser = (mongoose.models.User || mongoose.model("User", UserSchema)) as any;
@@ -94,10 +96,41 @@ const ReelSchema = new mongoose.Schema({
 const MongoReel = (mongoose.models.Reel || mongoose.model("Reel", ReelSchema)) as any;
 
 // Google Cloud Storage setup
-const storage = new Storage({
-  keyFilename: path.join(process.cwd(), "mall-1bucket.json"),
-});
-const bucketName = "mall-1bucket";
+let storage: Storage;
+const googleJsonPath = path.join(process.cwd(), "google.json");
+const mallJsonPath = path.join(process.cwd(), "mall-1bucket.json");
+
+if (fs.existsSync(googleJsonPath)) {
+  storage = new Storage({
+    keyFilename: googleJsonPath,
+  });
+  console.log("📂 Storage client initialized using google.json");
+} else if (fs.existsSync(mallJsonPath)) {
+  storage = new Storage({
+    keyFilename: mallJsonPath,
+  });
+  console.log("📂 Storage client initialized using mall-1bucket.json");
+} else if (process.env.GOOGLE) {
+  try {
+    const googleCredentials = JSON.parse(process.env.GOOGLE);
+    storage = new Storage({
+      credentials: {
+        client_email: googleCredentials.client_email,
+        private_key: googleCredentials.private_key,
+      },
+      projectId: googleCredentials.project_id,
+    });
+    console.log("📂 Storage client initialized using GOOGLE env variable JSON");
+  } catch (err) {
+    console.error("❌ Error parsing GOOGLE env var JSON:", err);
+    storage = new Storage();
+  }
+} else {
+  storage = new Storage();
+  console.log("📂 Storage client initialized with default environment credentials");
+}
+
+const bucketName = process.env.BUCKET_NAME || "mall-1bucket";
 const bucket = storage.bucket(bucketName);
 
 // Configure multer for memory storage
@@ -121,11 +154,25 @@ const uploadToGCS = (file: Express.Multer.File, folder: string = "publicaciones"
       }
     } else if (mimeType.startsWith("image/")) {
       const lowerName = originalName.toLowerCase();
-      if (!lowerName.endsWith(".png") && !lowerName.endsWith(".jpeg") && !lowerName.endsWith(".jpg") && !lowerName.endsWith(".webp")) {
+      const validExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".heic", ".heif"];
+      const hasValidExt = validExtensions.some(ext => lowerName.endsWith(ext));
+      if (!hasValidExt) {
         if (mimeType.includes("png")) {
           originalName += ".png";
         } else if (mimeType.includes("webp")) {
           originalName += ".webp";
+        } else if (mimeType.includes("gif")) {
+          originalName += ".gif";
+        } else if (mimeType.includes("svg")) {
+          originalName += ".svg";
+        } else if (mimeType.includes("avif")) {
+          originalName += ".avif";
+        } else if (mimeType.includes("heic")) {
+          originalName += ".heic";
+        } else if (mimeType.includes("heif")) {
+          originalName += ".heif";
+        } else if (mimeType.includes("jpeg") || mimeType.includes("jpg")) {
+          originalName += ".jpeg";
         } else {
           originalName += ".jpeg";
         }
@@ -155,33 +202,98 @@ const uploadToGCS = (file: Express.Multer.File, folder: string = "publicaciones"
   });
 };
 
-// In-memory Database (will act as runtime cache and fallback)
-let users: User[] = [
-  {
-    id: "current_user",
-    username: "cg0220037",
-    name: "Carlos Gómez",
-    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-    bio: "Tech enthusiast, creator, and shopaholic. ✨ Building the future of interactive social commerce.",
-    isOnline: true,
-    followers: 124,
-    following: 348,
-    coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-    isGuest: false
-  },
-  {
-    id: "user_guest",
-    username: "invitado",
-    name: "Invitado",
-    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-    bio: "Modo invitado. Regístrate o inicia sesión para disfrutar la experiencia completa.",
-    isOnline: true,
-    followers: 0,
-    following: 0,
-    coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-    isGuest: true
+// Helper: Upload base64 data URL to GCS
+async function uploadBase64ToGCS(base64Str: string, folder: string = "profiles"): Promise<string> {
+  // Check if it's a valid data URL
+  if (!base64Str || !base64Str.startsWith("data:")) {
+    return base64Str;
   }
-];
+
+  // Parse the data URL
+  const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  if (!matches || matches.length !== 3) {
+    return base64Str;
+  }
+
+  const mimeType = matches[1];
+  const base64Data = matches[2];
+  const buffer = Buffer.from(base64Data, "base64");
+
+  // Determine file extension
+  let extension = "jpg";
+  const lowerMime = mimeType.toLowerCase();
+  if (lowerMime.includes("png")) {
+    extension = "png";
+  } else if (lowerMime.includes("webp")) {
+    extension = "webp";
+  } else if (lowerMime.includes("gif")) {
+    extension = "gif";
+  } else if (lowerMime.includes("svg")) {
+    extension = "svg";
+  } else if (lowerMime.includes("avif")) {
+    extension = "avif";
+  } else if (lowerMime.includes("heic")) {
+    extension = "heic";
+  } else if (lowerMime.includes("heif")) {
+    extension = "heif";
+  } else if (lowerMime.includes("jpeg") || lowerMime.includes("jpg")) {
+    extension = "jpeg";
+  }
+
+  const filename = `${Date.now()}-${generateId()}.${extension}`;
+  const blob = bucket.file(`${folder}/${filename}`);
+
+  return new Promise<string>((resolve, reject) => {
+    const blobStream = blob.createWriteStream({
+      resumable: false,
+      metadata: {
+        contentType: mimeType,
+      },
+    });
+
+    blobStream.on("error", (err) => {
+      console.error("❌ Error uploading base64 to GCS:", err);
+      reject(err);
+    });
+
+    blobStream.on("finish", () => {
+      const publicUrl = `https://storage.googleapis.com/${bucketName}/${blob.name}`;
+      resolve(publicUrl);
+    });
+
+    blobStream.end(buffer);
+  });
+}
+
+// Helper: Get all users from MongoDB Atlas directly (0% mock data, always real-time database state)
+async function getUsers(): Promise<User[]> {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const dbUsers = await MongoUser.find({
+        id: { $nin: ["current_user", "user_guest"] },
+        username: { $ne: "invitado" }
+      });
+      return dbUsers.map((u: any) => ({
+        id: u.id,
+        username: u.username,
+        name: u.name,
+        avatar: u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+        bio: u.bio || "Creador en la plataforma",
+        isOnline: u.isOnline !== undefined ? u.isOnline : false,
+        followers: u.followers || 0,
+        following: u.following || 0,
+        savedReelIds: u.savedReelIds || [],
+        coverPhoto: u.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+        isGuest: u.isGuest || false,
+        password: u.password || "",
+        email: u.email || ""
+      }));
+    }
+  } catch (err) {
+    console.error("Error fetching users from MongoDB:", err);
+  }
+  return [];
+}
 
 
 let products: Product[] = [];
@@ -197,11 +309,14 @@ let liveSessions: LiveSession[] = [];
 // Active WebSocket Client Map: Key is userId
 const activeClients = new Map<string, WebSocket>();
 
+// Store the original ID of the active current_user (defaults to guest user's ID)
+let activeOriginalUserId = "user_guest";
+
 // Connect to MongoDB Atlas and load/seed users
 async function connectToMongoDB() {
-  let mongoUri = process.env.MONGO_URI;
+  let mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
   if (!mongoUri) {
-    console.log("⚠️ MONGO_URI environment variable is missing. Running with in-memory database fallback.");
+    console.log("⚠️ MONGO_URI / MONGODB_URI environment variable is missing. Running with in-memory database fallback.");
     return;
   }
   
@@ -213,12 +328,37 @@ async function connectToMongoDB() {
     mongoUri = mongoUri.slice(1, -1).trim();
   }
 
-  // Robustly remove < and > surrounding password if present
-  const match = mongoUri.match(/(mongodb\+srv:\/\/.*?):(.*?)@(.*)/);
-  if (match) {
-    const [_, prefix, pass, suffix] = match;
-    if (pass.startsWith('<') && pass.endsWith('>')) {
-      const cleanPass = pass.slice(1, -1);
+  // Parse credentials and host to properly clean and encode password
+  const uriMatch = mongoUri.match(/^(mongodb(?:\+srv)?:\/\/)([^:]+):(.*)@([^/]+)(.*)$/);
+  if (uriMatch) {
+    const [_, protocol, username, password, host, rest] = uriMatch;
+    let cleanPass = password;
+    // Remove angle brackets if user left them in from Atlas template
+    if (cleanPass.startsWith('<') && cleanPass.endsWith('>')) {
+      cleanPass = cleanPass.slice(1, -1);
+    }
+    // Encode special characters in password (such as '@') if not already encoded
+    try {
+      const decodedPass = decodeURIComponent(cleanPass);
+      cleanPass = encodeURIComponent(decodedPass);
+    } catch (e) {
+      if (cleanPass.includes('@')) {
+        cleanPass = cleanPass.replace(/@/g, '%40');
+      }
+    }
+    mongoUri = `${protocol}${username}:${cleanPass}@${host}${rest}`;
+  } else {
+    // Fallback simple replacement if it doesn't match standard regex
+    const simpleMatch = mongoUri.match(/(mongodb\+srv:\/\/.*?):(.*?)@(.*)/);
+    if (simpleMatch) {
+      const [_, prefix, pass, suffix] = simpleMatch;
+      let cleanPass = pass;
+      if (cleanPass.startsWith('<') && cleanPass.endsWith('>')) {
+        cleanPass = cleanPass.slice(1, -1);
+      }
+      if (cleanPass.includes('@')) {
+        cleanPass = cleanPass.replace(/@/g, '%40');
+      }
       mongoUri = `${prefix}:${cleanPass}@${suffix}`;
     }
   }
@@ -228,55 +368,20 @@ async function connectToMongoDB() {
     await mongoose.connect(mongoUri);
     console.log("✅ Successfully connected to MongoDB Atlas!");
 
-    // Delete test / mock data if they exist in MongoDB to allow testing with real data as requested by user
-    console.log("🧹 Wiping test/mock accounts, products and reels from MongoDB Atlas...");
-    await MongoUser.deleteMany({ username: { $nin: ["cg0220037", "invitado"] }, id: { $ne: "current_user" } });
-    await MongoProduct.deleteMany({ id: { $in: ["prod_1", "prod_2", "prod_3", "prod_4"] } });
-    await MongoReel.deleteMany({ id: { $in: ["reel_1", "reel_2", "reel_3"] } });
-    console.log("🧹 Test/mock data wiped successfully!");
+    // Delete any guest users ("user_guest", "current_user", "invitado") from the database to ensure zero trace of them
+    console.log("🧹 Purging any leftover guest/anonymous profiles from database...");
+    await MongoUser.deleteMany({
+      $or: [
+        { id: "user_guest" },
+        { id: "current_user" },
+        { username: "invitado" }
+      ]
+    });
+    console.log("🧹 Guest/anonymous profiles purged successfully!");
 
-    // Seed initial users if database is empty
-    const count = await MongoUser.countDocuments();
-    if (count === 0) {
-      console.log("🌱 Seeding default users to MongoDB...");
-      await MongoUser.insertMany(users as any);
-      console.log("🌱 Seeding completed!");
-    } else {
-      console.log("📦 Loading existing users from MongoDB...");
-      const dbUsers = await MongoUser.find();
-      users = dbUsers.map(u => ({
-        id: u.id,
-        username: u.username,
-        name: u.name,
-        avatar: u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-        bio: u.bio || "Creador en la plataforma",
-        isOnline: u.isOnline !== undefined ? u.isOnline : true,
-        followers: u.followers || 0,
-        following: u.following || 0,
-        savedReelIds: u.savedReelIds || [],
-        coverPhoto: u.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-        isGuest: u.isGuest || false,
-        password: u.password || ""
-      }));
-
-      // Ensure the guest user "invitado" is always present in memory
-      if (!users.some(u => u.username === "invitado")) {
-        users.push({
-          id: "user_guest",
-          username: "invitado",
-          name: "Invitado",
-          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-          bio: "Modo invitado. Regístrate o inicia sesión para disfrutar la experiencia completa.",
-          isOnline: true,
-          followers: 0,
-          following: 0,
-          coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-          isGuest: true
-        });
-      }
-
-      console.log(`📦 Loaded ${users.length} users successfully from MongoDB Atlas!`);
-    }
+    console.log("📦 Loading existing users from MongoDB...");
+    const dbUsers = await MongoUser.find();
+    console.log(`📦 Loaded ${dbUsers.length} users successfully from MongoDB Atlas!`);
 
     // Seed or Load Products from MongoDB Atlas
     const productCount = await MongoProduct.countDocuments();
@@ -441,14 +546,109 @@ async function startServer() {
     }
   });
 
+  // Subir foto de perfil (avatar)
+  app.post(['/api/upload-avatar', '/upload-avatar'], upload.single('avatar'), async (req: any, res: any) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No se subió archivo' });
+
+      const userId = req.body.userId || "current_user";
+      console.log(`🚀 Iniciando subida de avatar para el usuario: ${userId}`);
+      const publicUrl = await uploadToGCS(req.file, "avatars");
+      console.log(`✅ Avatar subido con éxito a GCS: ${publicUrl}`);
+
+      // Update in MongoDB if connected
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoUser.findOneAndUpdate({ id: userId }, { avatar: publicUrl });
+          console.log(`💾 Avatar actualizado en MongoDB para: ${userId}`);
+        } catch (dbErr) {
+          console.error("❌ Error al guardar el avatar en MongoDB:", dbErr);
+        }
+      }
+
+      res.status(200).json({ success: true, url: publicUrl });
+    } catch (err: any) {
+      console.error("❌ Error al subir avatar:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Subir foto de portada (cover)
+  app.post(['/api/upload-cover', '/upload-cover'], upload.single('cover'), async (req: any, res: any) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No se subió archivo' });
+
+      const userId = req.body.userId || "current_user";
+      console.log(`🚀 Iniciando subida de portada para el usuario: ${userId}`);
+      const publicUrl = await uploadToGCS(req.file, "covers");
+      console.log(`✅ Portada subida con éxito a GCS: ${publicUrl}`);
+
+      // Update in MongoDB if connected
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoUser.findOneAndUpdate({ id: userId }, { coverPhoto: publicUrl });
+          console.log(`💾 Portada actualizada en MongoDB para: ${userId}`);
+        } catch (dbErr) {
+          console.error("❌ Error al guardar la portada en MongoDB:", dbErr);
+        }
+      }
+
+      res.status(200).json({ success: true, url: publicUrl });
+    } catch (err: any) {
+      console.error("❌ Error al subir portada:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Get all users
-  app.get("/api/users", (req, res) => {
-    res.json(users);
+  app.get("/api/users", async (req, res) => {
+    const dbUsers = await getUsers();
+    res.json(dbUsers);
   });
 
   // Get specific user profile with their products, reels, and orders
-  app.get("/api/users/:id", (req, res) => {
-    const user = users.find((u) => u.id === req.params.id);
+  app.get("/api/users/:id", async (req, res) => {
+    const dbUsers = await getUsers();
+    let user = dbUsers.find((u) => u.id === req.params.id);
+
+    // Dynamic current_user resolver to avoid seeding mock guest users at startup
+    if (!user && req.params.id === "current_user") {
+      // Look for any real registered user in the DB to represent the session
+      const realUser = dbUsers.find(u => u.id !== "current_user");
+      if (realUser) {
+        user = {
+          ...realUser,
+          id: "current_user"
+        };
+        if (mongoose.connection.readyState === 1) {
+          try {
+            await MongoUser.findOneAndUpdate(
+              { id: "current_user" },
+              {
+                name: realUser.name,
+                username: realUser.username,
+                bio: realUser.bio,
+                avatar: realUser.avatar,
+                coverPhoto: realUser.coverPhoto,
+                followers: realUser.followers,
+                following: realUser.following,
+                savedReelIds: realUser.savedReelIds || [],
+                isGuest: false,
+                password: realUser.password
+              },
+              { upsert: true }
+            );
+            activeOriginalUserId = realUser.id;
+          } catch (err) {
+            console.error("Failed to automatically assign active session user:", err);
+          }
+        }
+      } else {
+        res.status(404).json({ error: "No users exist in the database. Please register first." });
+        return;
+      }
+    }
+
     if (!user) {
        res.status(404).json({ error: "User not found" });
        return;
@@ -469,11 +669,16 @@ async function startServer() {
   });
 
   // Toggle save/unsave a reel
-  app.post("/api/users/current/save", (req, res) => {
+  app.post("/api/users/current/save", async (req, res) => {
     const { reelId } = req.body;
-    const currentUserObj = users.find((u) => u.id === "current_user");
+    let currentUserObj = null;
+    
+    if (mongoose.connection.readyState === 1) {
+      currentUserObj = await MongoUser.findOne({ id: "current_user" });
+    }
+    
     if (!currentUserObj) {
-      res.status(404).json({ error: "Current user not found" });
+      res.status(401).json({ error: "Debe iniciar sesión para realizar esta acción." });
       return;
     }
 
@@ -490,34 +695,83 @@ async function startServer() {
       saved = true;
     }
 
+    if (mongoose.connection.readyState === 1) {
+      await MongoUser.findOneAndUpdate(
+        { id: "current_user" },
+        { savedReelIds: currentUserObj.savedReelIds }
+      );
+    }
+
     res.json({ success: true, saved, savedReelIds: currentUserObj.savedReelIds });
   });
 
   // Update current user profile info
   app.post("/api/users/current/update", async (req, res) => {
     const { name, username, bio, avatar, coverPhoto, password } = req.body;
-    const currentUserObj = users.find((u) => u.id === "current_user");
+    let currentUserObj = null;
+
+    if (mongoose.connection.readyState === 1) {
+      currentUserObj = await MongoUser.findOne({ id: "current_user" });
+    }
+
     if (!currentUserObj) {
-      res.status(404).json({ error: "Current user not found" });
+      res.status(401).json({ error: "Debe iniciar sesión para realizar esta acción." });
       return;
     }
 
-    if (name !== undefined) currentUserObj.name = name;
-    if (username !== undefined) currentUserObj.username = username;
-    if (bio !== undefined) currentUserObj.bio = bio;
-    if (avatar !== undefined) currentUserObj.avatar = avatar;
-    if (coverPhoto !== undefined) currentUserObj.coverPhoto = coverPhoto;
-    if (password !== undefined) currentUserObj.password = password;
+    const updateFields: any = {};
+    if (name !== undefined) updateFields.name = name;
+    if (username !== undefined) updateFields.username = username;
+    if (bio !== undefined) updateFields.bio = bio;
+    if (password !== undefined) updateFields.password = password;
 
-    // Save to MongoDB Atlas if connection is active
+    if (avatar !== undefined) {
+      if (avatar && avatar.startsWith("data:")) {
+        try {
+          console.log("📸 Base64 avatar detected in update, uploading to GCS...");
+          updateFields.avatar = await uploadBase64ToGCS(avatar, "avatars");
+          console.log(`✅ Base64 avatar uploaded to GCS: ${updateFields.avatar}`);
+        } catch (uploadErr) {
+          console.error("❌ Failed to upload base64 avatar to GCS:", uploadErr);
+          updateFields.avatar = avatar;
+        }
+      } else {
+        updateFields.avatar = avatar;
+      }
+    }
+
+    if (coverPhoto !== undefined) {
+      if (coverPhoto && coverPhoto.startsWith("data:")) {
+        try {
+          console.log("📸 Base64 cover photo detected in update, uploading to GCS...");
+          updateFields.coverPhoto = await uploadBase64ToGCS(coverPhoto, "covers");
+          console.log(`✅ Base64 cover photo uploaded to GCS: ${updateFields.coverPhoto}`);
+        } catch (uploadErr) {
+          console.error("❌ Failed to upload base64 cover photo to GCS:", uploadErr);
+          updateFields.coverPhoto = coverPhoto;
+        }
+      } else {
+        updateFields.coverPhoto = coverPhoto;
+      }
+    }
+
+    let updatedUser = currentUserObj;
     if (mongoose.connection.readyState === 1) {
       try {
-        await MongoUser.findOneAndUpdate(
-          { id: currentUserObj.id },
-          { name, username, bio, avatar, coverPhoto, password },
+        updatedUser = await MongoUser.findOneAndUpdate(
+          { id: "current_user" },
+          updateFields,
           { new: true, upsert: true }
         );
-        console.log(`💾 User profile updated in MongoDB Atlas for ${currentUserObj.username}`);
+        console.log(`💾 User profile updated in MongoDB Atlas for ${updatedUser.username}`);
+
+        if (activeOriginalUserId && activeOriginalUserId !== "user_guest") {
+          await MongoUser.findOneAndUpdate(
+            { id: activeOriginalUserId },
+            updateFields
+          );
+          console.log(`💾 Synchronized updated profile fields with original user record: ${activeOriginalUserId}`);
+        }
       } catch (err) {
         console.error("Failed to update profile in MongoDB:", err);
       }
@@ -530,111 +784,202 @@ async function startServer() {
         if (avatar !== undefined) r.creatorAvatar = avatar;
       }
       r.comments.forEach(c => {
-        if (c.username === "cg0220037" || c.username === currentUserObj.username) {
+        if (c.username === "cg0220037" || c.username === updatedUser.username) {
           if (username !== undefined) c.username = username;
           if (avatar !== undefined) c.avatar = avatar;
         }
       });
     });
 
-    res.json({ success: true, user: currentUserObj });
+    res.json({ success: true, user: updatedUser });
   });
 
   // Register a new user in MongoDB Atlas
   app.post("/api/users/register", async (req, res) => {
-    const { name, username, bio, avatar, coverPhoto, password } = req.body;
+    const { name, username, bio, avatar, coverPhoto, password, email } = req.body;
     if (!name || !username) {
       res.status(400).json({ error: "Name and username are required" });
       return;
     }
+    if (!email || !email.trim()) {
+      res.status(400).json({ error: "El correo electrónico es un requisito obligatorio." });
+      return;
+    }
 
     const cleanUsername = username.replace(/\s+/g, "").toLowerCase();
+    const cleanEmail = email.trim().toLowerCase();
     
-    // Check if username already exists in cache/memory or database
-    const existingUser = users.find(u => u.username === cleanUsername);
+    // Check if username already exists in database (excluding the temporary current_user session)
+    let existingUser = null;
+    let existingEmail = null;
+    if (mongoose.connection.readyState === 1) {
+      existingUser = await MongoUser.findOne({ username: cleanUsername, id: { $ne: "current_user" } });
+      existingEmail = await MongoUser.findOne({ email: cleanEmail, id: { $ne: "current_user" } });
+    }
+
     if (existingUser) {
-      res.status(400).json({ error: "El nombre de usuario ya está registrado." });
+      res.status(400).json({ error: "⚠️ El nombre de usuario ya está registrado." });
       return;
+    }
+
+    if (existingEmail) {
+      res.status(400).json({ error: "⚠️ Este correo electrónico ya está registrado con otra cuenta." });
+      return;
+    }
+
+    let resolvedAvatar = avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
+    let resolvedCoverPhoto = coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80";
+
+    if (avatar && avatar.startsWith("data:")) {
+      try {
+        console.log("📸 Base64 avatar detected in registration, uploading to GCS...");
+        resolvedAvatar = await uploadBase64ToGCS(avatar, "avatars");
+        console.log(`✅ Base64 avatar uploaded to GCS: ${resolvedAvatar}`);
+      } catch (uploadErr) {
+        console.error("❌ Failed to upload base64 avatar during registration:", uploadErr);
+      }
+    }
+
+    if (coverPhoto && coverPhoto.startsWith("data:")) {
+      try {
+        console.log("📸 Base64 cover photo detected in registration, uploading to GCS...");
+        resolvedCoverPhoto = await uploadBase64ToGCS(coverPhoto, "covers");
+        console.log(`✅ Base64 cover photo uploaded to GCS: ${resolvedCoverPhoto}`);
+      } catch (uploadErr) {
+        console.error("❌ Failed to upload base64 cover photo during registration:", uploadErr);
+      }
     }
 
     const newUser: User = {
       id: "user_" + generateId(),
       name,
       username: cleanUsername,
+      email: email.trim(),
       bio: bio || "Nuevo creador de contenido en la plataforma",
-      avatar: avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-      coverPhoto: coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+      avatar: resolvedAvatar,
+      coverPhoto: resolvedCoverPhoto,
       followers: 0,
       following: 0,
       isOnline: true,
       password: password || ""
     };
 
-    // Add to cache/memory list
-    users.push(newUser);
-
     // Save to MongoDB if connected
+    let updatedCurrentUser = null;
     if (mongoose.connection.readyState === 1) {
       try {
         const mongoUser = new MongoUser(newUser);
         await mongoUser.save();
         console.log(`💾 Registered new user @${newUser.username} in MongoDB Atlas!`);
+
+        // Automatically set active session to this newly registered user
+        updatedCurrentUser = await MongoUser.findOneAndUpdate(
+          { id: "current_user" },
+          {
+            name: newUser.name,
+            username: newUser.username,
+            email: newUser.email,
+            bio: newUser.bio,
+            avatar: newUser.avatar,
+            coverPhoto: newUser.coverPhoto,
+            followers: newUser.followers,
+            following: newUser.following,
+            savedReelIds: newUser.savedReelIds || [],
+            isGuest: false,
+            password: newUser.password
+          },
+          { upsert: true, new: true }
+        );
+        activeOriginalUserId = newUser.id;
+        console.log(`💾 Automatically set active session to @${newUser.username}`);
       } catch (err) {
         console.error("Failed to save registered user to MongoDB:", err);
       }
     }
 
-    res.json({ success: true, user: newUser });
+    const returnedUser = updatedCurrentUser || {
+      ...newUser,
+      id: "current_user",
+      isGuest: false
+    };
+
+    res.json({ success: true, user: returnedUser });
   });
 
-  // Store the original ID of the active current_user (defaults to Carlos's original ID)
-  let activeOriginalUserId = "current_user_original";
-
-  // Switch current active user (swaps details in memory and saves to Mongo)
+  // Switch current active user (swaps details and saves to Mongo)
   app.post("/api/users/current/switch", async (req, res) => {
-    const { targetUsername, password } = req.body;
-    if (!targetUsername) {
-      res.status(400).json({ error: "Target username is required" });
-      return;
-    }
+    try {
+      const { targetUsername, password } = req.body;
+      if (!targetUsername) {
+        res.status(400).json({ error: "Target username is required" });
+        return;
+      }
 
-    const targetUser = users.find(u => u.username === targetUsername && u.id !== "current_user");
-    if (!targetUser) {
-      res.status(404).json({ error: "User not found" });
-      return;
-    }
+      let targetUser = null;
+      if (mongoose.connection.readyState === 1) {
+        targetUser = await MongoUser.findOne({ username: targetUsername, id: { $ne: "current_user" } });
+      }
+      if (!targetUser) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
 
-    // Require password if the user has a password registered or is the default non-guest user
-    // The Guest ("invitado") doesn't require a password.
-    if (targetUsername !== "invitado") {
-      const expectedPassword = targetUser.password || (targetUser.username === "cg0220037" ? "123456" : "");
+      // Require password if the user has a password registered
+      const expectedPassword = targetUser.password || "";
       if (expectedPassword && expectedPassword !== password) {
         res.status(401).json({ error: "La contraseña ingresada es incorrecta. Por favor verifícala." });
         return;
       }
-    }
 
-    const currentUserObj = users.find(u => u.id === "current_user");
-    if (!currentUserObj) {
-      res.status(404).json({ error: "Current user state not found" });
-      return;
-    }
-
-    // 1. Save the active state of "current_user" back to its original record in the list and MongoDB
-    const originalUserInList = users.find(u => u.id === activeOriginalUserId);
-    if (originalUserInList) {
-      originalUserInList.name = currentUserObj.name;
-      originalUserInList.username = currentUserObj.username;
-      originalUserInList.bio = currentUserObj.bio;
-      originalUserInList.avatar = currentUserObj.avatar;
-      originalUserInList.coverPhoto = currentUserObj.coverPhoto;
-      originalUserInList.followers = currentUserObj.followers;
-      originalUserInList.following = currentUserObj.following;
-      originalUserInList.savedReelIds = currentUserObj.savedReelIds;
-      originalUserInList.isGuest = currentUserObj.isGuest;
-      originalUserInList.password = currentUserObj.password;
-
+      let currentUserObj = null;
       if (mongoose.connection.readyState === 1) {
+        try {
+          currentUserObj = await MongoUser.findOneAndUpdate(
+            { id: "current_user" },
+            {
+              $setOnInsert: {
+                id: "current_user",
+                username: targetUser.username,
+                name: targetUser.name,
+                avatar: targetUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+                bio: targetUser.bio || "",
+                isOnline: true,
+                followers: targetUser.followers || 0,
+                following: targetUser.following || 0,
+                coverPhoto: targetUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+                isGuest: false,
+                password: targetUser.password || "",
+                savedReelIds: targetUser.savedReelIds || []
+              }
+            },
+            { upsert: true, new: true }
+          );
+        } catch (upsertErr: any) {
+          console.warn("⚠️ Race condition caught during initial current_user upsert, fetching existing:", upsertErr.message);
+          currentUserObj = await MongoUser.findOne({ id: "current_user" });
+        }
+      }
+
+      // If we are offline or still couldn't resolve, create a transient memory fallback object
+      if (!currentUserObj) {
+        currentUserObj = {
+          id: "current_user",
+          username: targetUser.username,
+          name: targetUser.name,
+          avatar: targetUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+          bio: targetUser.bio || "",
+          isOnline: true,
+          followers: targetUser.followers || 0,
+          following: targetUser.following || 0,
+          coverPhoto: targetUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+          isGuest: false,
+          password: targetUser.password || "",
+          savedReelIds: targetUser.savedReelIds || []
+        };
+      }
+
+      // 1. Save the active state of "current_user" back to its original record in MongoDB (if activeOriginalUserId is valid)
+      if (mongoose.connection.readyState === 1 && activeOriginalUserId) {
         try {
           await MongoUser.findOneAndUpdate(
             { id: activeOriginalUserId },
@@ -648,7 +993,8 @@ async function startServer() {
               following: currentUserObj.following,
               savedReelIds: currentUserObj.savedReelIds,
               isGuest: currentUserObj.isGuest,
-              password: currentUserObj.password
+              password: currentUserObj.password,
+              email: currentUserObj.email || ""
             },
             { upsert: true }
           );
@@ -656,72 +1002,42 @@ async function startServer() {
           console.error("Failed to save original user state in MongoDB on switch:", err);
         }
       }
-    } else {
-      // If the original user wasn't in the list, create their separate backup record now
-      const backupUser: User = {
-        id: activeOriginalUserId,
-        name: currentUserObj.name,
-        username: currentUserObj.username,
-        bio: currentUserObj.bio,
-        avatar: currentUserObj.avatar,
-        coverPhoto: currentUserObj.coverPhoto,
-        followers: currentUserObj.followers,
-        following: currentUserObj.following,
-        savedReelIds: currentUserObj.savedReelIds || [],
-        isOnline: currentUserObj.isOnline,
-        isGuest: currentUserObj.isGuest,
-        password: currentUserObj.password
-      };
-      users.push(backupUser);
+
+      // 2. Set the new original ID and copy targetUser's details into "current_user"
+      activeOriginalUserId = targetUser.id;
+
+      // Save the new current_user state in Mongo as well
+      let updatedCurrentUser = currentUserObj;
       if (mongoose.connection.readyState === 1) {
         try {
-          await new MongoUser(backupUser).save();
+          updatedCurrentUser = await MongoUser.findOneAndUpdate(
+            { id: "current_user" },
+            {
+              name: targetUser.name,
+              username: targetUser.username,
+              bio: targetUser.bio,
+              avatar: targetUser.avatar,
+              coverPhoto: targetUser.coverPhoto,
+              followers: targetUser.followers,
+              following: targetUser.following,
+              savedReelIds: targetUser.savedReelIds || [],
+              isGuest: targetUser.isGuest || false,
+              password: targetUser.password || "",
+              email: targetUser.email || ""
+            },
+            { new: true, upsert: true }
+          );
         } catch (err) {
-          console.error("Failed to save backup user in MongoDB on switch:", err);
+          console.error("Failed to update current_user in MongoDB on switch:", err);
         }
       }
+
+      console.log(`🔄 Switched session user to @${updatedCurrentUser.username} (original id: ${activeOriginalUserId})`);
+      res.json({ success: true, user: updatedCurrentUser });
+    } catch (routeErr: any) {
+      console.error("❌ Exception caught in user/switch endpoint:", routeErr);
+      res.status(500).json({ error: "Internal server error switching user profile", details: routeErr.message });
     }
-
-    // 2. Set the new original ID and copy targetUser's details into "current_user"
-    activeOriginalUserId = targetUser.id;
-    
-    currentUserObj.name = targetUser.name;
-    currentUserObj.username = targetUser.username;
-    currentUserObj.bio = targetUser.bio;
-    currentUserObj.avatar = targetUser.avatar;
-    currentUserObj.coverPhoto = targetUser.coverPhoto;
-    currentUserObj.followers = targetUser.followers;
-    currentUserObj.following = targetUser.following;
-    currentUserObj.savedReelIds = targetUser.savedReelIds || [];
-    currentUserObj.isGuest = targetUser.isGuest || false;
-    currentUserObj.password = targetUser.password || (targetUser.username === "cg0220037" ? "123456" : "");
-
-    // Save the new current_user state in Mongo as well
-    if (mongoose.connection.readyState === 1) {
-      try {
-        await MongoUser.findOneAndUpdate(
-          { id: "current_user" },
-          {
-            name: targetUser.name,
-            username: targetUser.username,
-            bio: targetUser.bio,
-            avatar: targetUser.avatar,
-            coverPhoto: targetUser.coverPhoto,
-            followers: targetUser.followers,
-            following: targetUser.following,
-            savedReelIds: targetUser.savedReelIds || [],
-            isGuest: targetUser.isGuest || false,
-            password: targetUser.password || (targetUser.username === "cg0220037" ? "123456" : "")
-          },
-          { upsert: true }
-        );
-      } catch (err) {
-        console.error("Failed to update current_user in MongoDB on switch:", err);
-      }
-    }
-
-    console.log(`🔄 Switched session user to @${currentUserObj.username} (original id: ${activeOriginalUserId})`);
-    res.json({ success: true, user: currentUserObj });
   });
 
   // Get all video reels
@@ -804,7 +1120,12 @@ async function startServer() {
   app.post("/api/reels", async (req: any, res: any) => {
     try {
       const { videoUrl, thumbnailUrl, description, creatorId, type, images, productId } = req.body;
-      const creator = users.find(u => u.id === (creatorId || "current_user"));
+      
+      let creator = null;
+      if (mongoose.connection.readyState === 1) {
+        creator = await MongoUser.findOne({ id: creatorId || "current_user" });
+      }
+
       if (!creator) {
         res.status(404).json({ error: "Creator not found" });
         return;
@@ -858,7 +1179,12 @@ async function startServer() {
   app.post("/api/products", async (req: any, res: any) => {
     try {
       const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, variants, category } = req.body;
-      const seller = users.find(u => u.id === (sellerId || "current_user"));
+      
+      let seller = null;
+      if (mongoose.connection.readyState === 1) {
+        seller = await MongoUser.findOne({ id: sellerId || "current_user" });
+      }
+
       if (!seller) {
         res.status(404).json({ error: "Seller not found" });
         return;
@@ -1025,9 +1351,13 @@ async function startServer() {
   });
 
   // Create a live stream session (Go Live)
-  app.post("/api/live", (req, res) => {
+  app.post("/api/live", async (req, res) => {
     const { title, creatorId } = req.body;
-    const creator = users.find((u) => u.id === (creatorId || "current_user"));
+    
+    let creator = null;
+    if (mongoose.connection.readyState === 1) {
+      creator = await MongoUser.findOne({ id: creatorId || "current_user" });
+    }
 
     if (!creator) {
       res.status(404).json({ error: "Creator not found" });
@@ -1117,11 +1447,13 @@ async function startServer() {
             activeClients.set(clientUserId!, ws);
 
             // Update user online status
-            const user = users.find((u) => u.id === clientUserId);
-            if (user) user.isOnline = true;
-
-            // Broadcast updated presence list
-            broadcastPresence();
+            if (mongoose.connection.readyState === 1) {
+              MongoUser.findOneAndUpdate({ id: clientUserId }, { isOnline: true })
+                .then(() => broadcastPresence())
+                .catch((err: any) => console.error("Error setting user online in WS:", err));
+            } else {
+              broadcastPresence();
+            }
             break;
           }
 
@@ -1239,9 +1571,13 @@ async function startServer() {
     ws.on("close", () => {
       if (clientUserId) {
         activeClients.delete(clientUserId);
-        const user = users.find((u) => u.id === clientUserId);
-        if (user) user.isOnline = false;
-        broadcastPresence();
+        if (mongoose.connection.readyState === 1) {
+          MongoUser.findOneAndUpdate({ id: clientUserId }, { isOnline: false })
+            .then(() => broadcastPresence())
+            .catch((err: any) => console.error("Error setting user offline in WS close:", err));
+        } else {
+          broadcastPresence();
+        }
       }
 
       if (currentStreamId) {
@@ -1251,19 +1587,24 @@ async function startServer() {
   });
 
   // Helper: Broadcast presence list
-  function broadcastPresence() {
-    const presenceData = users.map((u) => ({
-      id: u.id,
-      username: u.username,
-      name: u.name,
-      avatar: u.avatar,
-      isOnline: u.isOnline
-    }));
+  async function broadcastPresence() {
+    try {
+      const dbUsers = await getUsers();
+      const presenceData = dbUsers.map((u) => ({
+        id: u.id,
+        username: u.username,
+        name: u.name,
+        avatar: u.avatar,
+        isOnline: u.isOnline
+      }));
 
-    broadcastToAll({
-      type: "presence_list",
-      users: presenceData
-    });
+      broadcastToAll({
+        type: "presence_list",
+        users: presenceData
+      });
+    } catch (err) {
+      console.error("Error in broadcastPresence:", err);
+    }
   }
 
   // Helper: Handle client leaving live stream

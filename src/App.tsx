@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Play, ShoppingBag, Radio, User as UserIcon, MessageSquare, Bell, Heart, ShieldCheck } from "lucide-react";
+import { Play, ShoppingBag, Radio, User as UserIcon, MessageSquare, Bell, Heart, ShieldCheck, Camera, Upload, LogOut, AlertTriangle } from "lucide-react";
 import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession } from "./types";
 import ReelsView from "./components/ReelsView";
 import ShopView from "./components/ShopView";
@@ -13,10 +13,6 @@ export default function App() {
   // Navigation states: 'reels' | 'shop' | 'messages' | 'live' | 'profile'
   const [activeTab, setActiveTab] = useState<'reels' | 'shop' | 'messages' | 'live' | 'profile'>('reels');
 
-  // Guest intercept notice modal states
-  const [showGuestNoticeModal, setShowGuestNoticeModal] = useState(false);
-  const [guestNoticeAction, setGuestNoticeAction] = useState("");
-
   // Core Data State
   const [users, setUsers] = useState<User[]>([]);
   const [reels, setReels] = useState<Reel[]>([]);
@@ -28,11 +24,11 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => localStorage.getItem("isLoggedIn") === "true");
   const [currentUser, setCurrentUser] = useState<User>({
     id: "current_user",
-    username: "invitado",
-    name: "Invitado",
+    username: "",
+    name: "Cargando...",
     avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-    bio: "Modo invitado. Regístrate o inicia sesión para disfrutar la experiencia completa.",
-    isOnline: true,
+    bio: "",
+    isOnline: false,
     followers: 0,
     following: 0,
   });
@@ -46,6 +42,11 @@ export default function App() {
   const [privateMessages, setPrivateMessages] = useState<ChatMessage[]>([]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [savedReelIds, setSavedReelIds] = useState<string[]>([]);
+
+  // Force upload profile photo state
+  const [selectedForceAvatar, setSelectedForceAvatar] = useState<string | null>(null);
+  const [forceAvatarSaving, setForceAvatarSaving] = useState(false);
+  const [forceAvatarError, setForceAvatarError] = useState("");
 
   // WebSocket reference
   const socketRef = useRef<WebSocket | null>(null);
@@ -419,20 +420,53 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem("isLoggedIn");
     localStorage.removeItem("loggedInUsername");
+    localStorage.removeItem("loggedInPassword");
     setIsLoggedIn(false);
-    fetch("/api/users/current/switch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targetUsername: "invitado" }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.user) {
-          setCurrentUser(data.user);
-          setSavedReelIds(data.user.savedReelIds || []);
-        }
-      })
-      .catch((err) => console.error("Logout switch error:", err));
+    setCurrentUser({
+      id: "current_user",
+      username: "",
+      name: "Cargando...",
+      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+      bio: "",
+      isOnline: false,
+      followers: 0,
+      following: 0,
+    });
+    setSavedReelIds([]);
+  };
+
+  const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
+
+  const handleSaveForceAvatar = async () => {
+    if (!selectedForceAvatar) {
+      setForceAvatarError("Por favor, selecciona o sube una foto de perfil.");
+      return;
+    }
+    setForceAvatarSaving(true);
+    setForceAvatarError("");
+    try {
+      const response = await fetch("/api/users/current/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar: selectedForceAvatar }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setForceAvatarError(data.error || "No se pudo guardar la imagen.");
+      } else {
+        setCurrentUser(data.user);
+        // Refresh global users list to sync
+        fetch("/api/users")
+          .then((res) => res.json())
+          .then((usersData) => setUsers(usersData))
+          .catch((err) => console.error("Error refreshing users:", err));
+      }
+    } catch (err) {
+      console.error("Error saving profile picture:", err);
+      setForceAvatarError("Error de conexión al guardar.");
+    } finally {
+      setForceAvatarSaving(false);
+    }
   };
 
   const totalUnreads: number = Object.values(unreadCounts).reduce<number>((acc, val) => acc + (val as number), 0);
@@ -482,10 +516,7 @@ export default function App() {
                 onAddComment={handleAddComment}
                 savedReelIds={savedReelIds}
                 onToggleSaveReel={handleToggleSaveReel}
-                onGuestInteraction={(action) => {
-                  setGuestNoticeAction(action);
-                  setShowGuestNoticeModal(true);
-                }}
+                onGuestInteraction={() => {}}
               />
             )}
 
@@ -599,14 +630,7 @@ export default function App() {
    
             {/* Tab: Messages (between Market and Directos) */}
             <button
-              onClick={() => {
-                if (currentUser.username === "invitado") {
-                  setGuestNoticeAction("chatear y ver tus mensajes");
-                  setShowGuestNoticeModal(true);
-                } else {
-                  setActiveTab('messages');
-                }
-              }}
+              onClick={() => setActiveTab('messages')}
               className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all relative ${
                 activeTab === 'messages'
                   ? "text-amber-500 scale-105"
@@ -629,14 +653,7 @@ export default function App() {
    
             {/* Tab 3: Live */}
             <button
-              onClick={() => {
-                if (currentUser.username === "invitado") {
-                  setGuestNoticeAction("transmitir en vivo y participar en directos");
-                  setShowGuestNoticeModal(true);
-                } else {
-                  setActiveTab('live');
-                }
-              }}
+              onClick={() => setActiveTab('live')}
               className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all ${
                 activeTab === 'live'
                   ? "text-amber-500 scale-105"
@@ -675,57 +692,107 @@ export default function App() {
         </div>
       )}
 
-      {/* Guest Intercept Modal */}
-      <AnimatePresence>
-        {showGuestNoticeModal && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.6 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowGuestNoticeModal(false)}
-              className="fixed inset-0 bg-black/80 z-[200] backdrop-blur-sm"
-            />
-            {/* Modal Card */}
-            <div className="fixed inset-0 flex items-center justify-center p-4 z-[201] pointer-events-none">
-              <motion.div
-                initial={{ scale: 0.95, opacity: 0, y: 10 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.95, opacity: 0, y: 10 }}
-                className="bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl p-6 w-full max-w-sm shadow-2xl pointer-events-auto text-center"
-              >
-                <div className="mx-auto w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">
-                  <ShieldCheck className="w-6 h-6 text-amber-500" />
-                </div>
-                
-                <h3 className="font-display font-black text-sm text-white">Iniciar Sesión Requerido</h3>
-                <p className="text-xs text-slate-400 mt-2.5 leading-relaxed">
-                  Para poder <span className="text-amber-400 font-bold">{guestNoticeAction}</span>, necesitas una cuenta registrada.
-                </p>
+      {/* Forced Avatar Upload Modal */}
+      {isLoggedIn && currentUser.username && currentUser.avatar === DEFAULT_AVATAR && currentUser.username !== "invitado" && (
+        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl relative overflow-hidden text-center">
+            
+            {/* Ambient gold glow decoration */}
+            <div className="absolute -top-12 -left-12 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
+            <div className="absolute -bottom-12 -right-12 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
 
-                <div className="mt-6 space-y-2">
-                  <button
-                    onClick={() => {
-                      setShowGuestNoticeModal(false);
-                      handleLogout();
-                    }}
-                    className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-[0.98] transition-all text-slate-950 font-bold text-xs rounded-xl cursor-pointer"
-                  >
-                    Iniciar Sesión / Registrarse
-                  </button>
-                  <button
-                    onClick={() => setShowGuestNoticeModal(false)}
-                    className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-[0.98] transition-all text-slate-300 hover:text-white font-semibold text-xs rounded-xl cursor-pointer"
-                  >
-                    Seguir explorando
-                  </button>
-                </div>
-              </motion.div>
+            <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-4 border border-amber-500/20">
+              <Camera className="w-6 h-6 text-amber-500" />
             </div>
-          </>
-        )}
-      </AnimatePresence>
+
+            <h2 className="text-xl font-bold text-white tracking-tight">¡Sube tu foto de perfil!</h2>
+            <p className="text-slate-400 text-xs mt-2 leading-relaxed">
+              Para disfrutar de la plataforma y empezar a compartir contenido o interactuar en el mercado, es requisito obligatorio configurar tu foto de perfil real.
+            </p>
+
+            <div className="my-6">
+              <div className="flex flex-col items-center justify-center">
+                <div className="relative group">
+                  <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-800 bg-slate-950 flex items-center justify-center shadow-inner relative">
+                    {selectedForceAvatar ? (
+                      <img
+                        src={selectedForceAvatar}
+                        alt="Previsualización"
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <UserIcon className="w-12 h-12 text-slate-700" />
+                    )}
+                  </div>
+                  
+                  {/* File Upload Selector */}
+                  <input
+                    type="file"
+                    id="force-avatar-file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          if (typeof reader.result === "string") {
+                            setSelectedForceAvatar(reader.result);
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  <label
+                    htmlFor="force-avatar-file"
+                    className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center hover:bg-amber-400 transition-colors cursor-pointer border-2 border-slate-900 shadow-md animate-pulse"
+                  >
+                    <Upload className="w-4 h-4" />
+                  </label>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-2 font-mono">JPG, PNG o GIF (Máx 5MB)</p>
+              </div>
+            </div>
+
+            {forceAvatarError && (
+              <div className="text-[11px] text-rose-500 bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-xl font-medium mb-4 flex items-center justify-center space-x-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>{forceAvatarError}</span>
+              </div>
+            )}
+
+            <div className="space-y-2.5">
+              <button
+                type="button"
+                onClick={handleSaveForceAvatar}
+                disabled={forceAvatarSaving || !selectedForceAvatar}
+                className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-bold rounded-2xl text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-amber-500/10"
+              >
+                {forceAvatarSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Guardando foto...</span>
+                  </>
+                ) : (
+                  <span>Guardar foto de perfil</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full py-2.5 px-4 bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-slate-200 text-xs font-bold rounded-2xl border border-slate-800 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Cerrar sesión</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

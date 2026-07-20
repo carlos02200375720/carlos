@@ -120,6 +120,7 @@ export default function ProfileView({
 
   const handleRegisterUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isRegistering) return;
     setIsRegistering(true);
     setRegisterError("");
     setRegisterSuccess(false);
@@ -1100,44 +1101,6 @@ export default function ProfileView({
                     transition={{ duration: 0.15 }}
                     className="space-y-6"
                   >
-                    {/* Internal Navigation Sub-tabs */}
-                    <div className="flex border-b border-slate-200">
-                      <button
-                        type="button"
-                        onClick={() => setEditSection("edit_self")}
-                        className={`pb-3 text-xs font-bold px-4 -mb-px border-b-2 transition-all cursor-pointer ${
-                          editSection === "edit_self"
-                            ? "border-amber-500 text-slate-900 font-extrabold"
-                            : "border-transparent text-slate-400 hover:text-slate-600"
-                        }`}
-                      >
-                        Editar Mi Perfil
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditSection("register_new")}
-                        className={`pb-3 text-xs font-bold px-4 -mb-px border-b-2 transition-all cursor-pointer ${
-                          editSection === "register_new"
-                            ? "border-amber-500 text-slate-900 font-extrabold"
-                            : "border-transparent text-slate-400 hover:text-slate-600"
-                        }`}
-                      >
-                        Registrar Nuevo Creador (MongoDB)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditSection("switch_account")}
-                        className={`pb-3 text-xs font-bold px-4 -mb-px border-b-2 transition-all cursor-pointer ${
-                          editSection === "switch_account"
-                            ? "border-amber-500 text-slate-900 font-extrabold"
-                            : "border-transparent text-slate-400 hover:text-slate-600"
-                        }`}
-                      >
-                        Cambiar de Cuenta / Sesión
-                      </button>
-                    </div>
-
-                    {editSection === "edit_self" && (
                       <div>
                         <h3 className="font-display font-extrabold text-sm text-slate-900 mb-4 flex items-center space-x-2">
                           <Settings className="w-4 h-4 text-amber-500" />
@@ -1379,9 +1342,8 @@ export default function ProfileView({
                           </div>
                         </form>
                       </div>
-                    )}
 
-                    {editSection === "register_new" && (
+                    {false && (
                       <div className="space-y-6 bg-slate-50 border border-slate-100 p-6 rounded-2xl">
                         <div>
                           <h3 className="font-display font-extrabold text-sm text-slate-900 mb-1 flex items-center space-x-2">
@@ -1565,7 +1527,7 @@ export default function ProfileView({
                       </div>
                     )}
 
-                    {editSection === "switch_account" && (
+                    {false && (
                       <div className="space-y-6 bg-slate-50 border border-slate-100 p-6 rounded-2xl">
                         <div>
                           <h3 className="font-display font-extrabold text-sm text-slate-900 mb-1 flex items-center space-x-2">

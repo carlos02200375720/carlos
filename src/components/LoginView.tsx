@@ -34,8 +34,9 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
   const [regName, setRegName] = useState("");
   const [regUsername, setRegUsername] = useState("");
   const [regPassword, setRegPassword] = useState("");
+  const [regEmail, setRegEmail] = useState("");
   const [regBio, setRegBio] = useState("");
-  const [regAvatar, setRegAvatar] = useState(PRESET_AVATARS[0]);
+  const [regAvatar, setRegAvatar] = useState("https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80");
   const [regCoverPhoto, setRegCoverPhoto] = useState(PRESET_COVERS[0]);
   const [registerError, setRegisterError] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
@@ -46,6 +47,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
 
   const handleLogin = async (e: React.FormEvent, targetUsername?: string, targetPassword?: string) => {
     if (e) e.preventDefault();
+    if (isLoggingIn) return;
     setLoginError("");
     
     const usernameToUse = targetUsername || usernameInput;
@@ -84,10 +86,16 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isRegistering) return;
     setRegisterError("");
 
     if (!regName.trim() || !regUsername.trim()) {
       setRegisterError("El nombre completo y nombre de usuario son obligatorios.");
+      return;
+    }
+
+    if (!regEmail.trim()) {
+      setRegisterError("El correo electrónico es obligatorio.");
       return;
     }
 
@@ -111,6 +119,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
         body: JSON.stringify({
           name: regName.trim(),
           username: cleanUsername,
+          email: regEmail.trim(),
           bio: regBio.trim() || "Creador en la plataforma",
           avatar: regAvatar,
           coverPhoto: regCoverPhoto,
@@ -120,23 +129,12 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
 
       const data = await response.json();
       if (response.ok && data.success) {
-        // Automatically switch and log in as the newly registered user
-        const switchResponse = await fetch("/api/users/current/switch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ targetUsername: cleanUsername, password: regPassword.trim() }),
-        });
-        const switchData = await switchResponse.json();
-        
-        if (switchResponse.ok && switchData.success) {
-          localStorage.setItem("isLoggedIn", "true");
-          localStorage.setItem("loggedInUsername", cleanUsername);
-          localStorage.setItem("loggedInPassword", regPassword.trim());
-          onRefreshUsers();
-          onLoginSuccess(switchData.user);
-        } else {
-          setRegisterError("Registro exitoso, pero falló el inicio de sesión automático.");
-        }
+        // Automatically log in using the returned user session
+        localStorage.setItem("isLoggedIn", "true");
+        localStorage.setItem("loggedInUsername", cleanUsername);
+        localStorage.setItem("loggedInPassword", regPassword.trim());
+        onRefreshUsers();
+        onLoginSuccess(data.user);
       } else {
         setRegisterError(data.error || "Error al registrar el usuario.");
       }
@@ -146,10 +144,6 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
     } finally {
       setIsRegistering(false);
     }
-  };
-
-  const enterAsGuest = async () => {
-    await handleLogin(null as any, "invitado", "");
   };
 
   // Filter out system placeholders or the special 'current_user' shell from the display list
@@ -288,7 +282,6 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
                       id="login-password-input"
                       required
                     />
-                    <p className="text-[9px] text-slate-500 mt-1">El usuario administrador por defecto (cg0220037) tiene la contraseña: <strong>123456</strong></p>
                   </div>
 
                   {loginError && (
@@ -370,6 +363,19 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
                   </div>
 
                   <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Correo Electrónico (Obligatorio)</label>
+                    <input
+                      type="email"
+                      placeholder="ejemplo@correo.com"
+                      value={regEmail}
+                      onChange={(e) => setRegEmail(e.target.value)}
+                      className="w-full bg-slate-950 text-slate-100 placeholder-slate-600 rounded-xl px-4 py-2.5 text-xs border border-slate-800 focus:outline-none focus:border-amber-500"
+                      id="reg-email-input"
+                      required
+                    />
+                  </div>
+
+                  <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nombre de usuario (Único)</label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-xs">@</span>
@@ -408,39 +414,6 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
                       className="w-full bg-slate-950 text-slate-100 placeholder-slate-600 rounded-xl px-4 py-2.5 text-xs border border-slate-800 focus:outline-none focus:border-amber-500 resize-none"
                       id="reg-bio-input"
                     />
-                  </div>
-
-                  {/* Avatar Picker */}
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Elige tu Avatar</label>
-                    <div className="flex items-center space-x-3 bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/80">
-                      <img
-                        src={regAvatar}
-                        alt="Selected avatar"
-                        className="w-12 h-12 rounded-full object-cover border-2 border-amber-500"
-                      />
-                      <div className="flex-1">
-                        <div className="flex space-x-2">
-                          {PRESET_AVATARS.map((avatar, idx) => (
-                            <button
-                              key={idx}
-                              type="button"
-                              onClick={() => setRegAvatar(avatar)}
-                              className={`relative rounded-full overflow-hidden border-2 transition-all cursor-pointer ${
-                                regAvatar === avatar ? "border-amber-500 scale-105" : "border-transparent hover:border-slate-700"
-                              }`}
-                            >
-                              <img src={avatar} alt="Preset avatar" className="w-8 h-8 object-cover" />
-                              {regAvatar === avatar && (
-                                <div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center">
-                                  <Check className="w-4 h-4 text-white" />
-                                </div>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
                   {/* Cover Photo Picker */}
@@ -493,17 +466,6 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
             )}
           </div>
 
-          {/* Guest Entry Button */}
-          <div className="pt-4 border-t border-slate-800/80 flex flex-col items-center space-y-2 mt-4 md:mt-0">
-            <span className="text-[10px] text-slate-500">¿Quieres explorar primero?</span>
-            <button
-              onClick={enterAsGuest}
-              className="px-6 py-2 bg-slate-950/60 hover:bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
-              id="guest-access-btn"
-            >
-              Entrar como Invitado
-            </button>
-          </div>
         </div>
 
       </div>
