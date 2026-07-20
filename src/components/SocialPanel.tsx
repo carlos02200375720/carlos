@@ -102,6 +102,40 @@ export default function SocialPanel({
     return !hasMessages && !hasUnreads;
   });
 
+  if (currentUser.isGuest) {
+    return (
+      <div
+        className="w-full bg-slate-950 flex flex-col justify-center items-center text-slate-100 p-6 text-center relative"
+        id="social-page-guest-blocked"
+        style={{ height: `calc(100dvh - ${navBarHeight}px)` }}
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+          title="Cerrar"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="max-w-xs space-y-4">
+          <div className="mx-auto w-16 h-16 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-center text-amber-400 animate-pulse">
+            <MessageSquare className="w-8 h-8" />
+          </div>
+          <h2 className="text-lg font-bold text-white tracking-tight">Acceso Restringido</h2>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Debes registrarte o iniciar sesión con una cuenta para poder chatear y enviar mensajes directos en la plataforma.
+          </p>
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/15"
+          >
+            Entendido
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="w-full bg-slate-950 flex flex-col justify-between text-slate-100 relative"

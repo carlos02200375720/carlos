@@ -29,6 +29,7 @@ export interface Reel {
   description: string;
   creatorId: string;
   creatorName: string;
+  creatorUsername?: string;
   creatorAvatar: string;
   likes: number;
   comments: Comment[];

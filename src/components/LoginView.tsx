@@ -22,7 +22,10 @@ const PRESET_COVERS = [
 ];
 
 export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: LoginViewProps) {
-  const [activeTab, setActiveTab] = useState<"login" | "register">("login");
+  const [activeTab, setActiveTab] = useState<"login" | "register">(() => {
+    const saved = localStorage.getItem("authTab") as "login" | "register";
+    return saved || "login";
+  });
   
   // Login State
   const [usernameInput, setUsernameInput] = useState("");
@@ -211,10 +214,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
             </div>
           </div>
 
-          <div className="text-[9px] text-slate-500 font-mono relative z-10 flex items-center space-x-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            <span>Persistencia en MongoDB Atlas</span>
-          </div>
+
         </div>
 
         {/* Right Side: Authentication Forms */}
@@ -223,7 +223,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
             {/* Tab Swapping Header */}
             <div className="flex border-b border-slate-800 pb-3 mb-6">
               <button
-                onClick={() => { setActiveTab("login"); setLoginError(""); }}
+                onClick={() => { setActiveTab("login"); localStorage.setItem("authTab", "login"); setLoginError(""); }}
                 className={`text-xs font-bold px-4 py-2 rounded-xl transition-all mr-2 flex items-center space-x-2 ${
                   activeTab === "login"
                     ? "bg-amber-500 text-slate-950"
@@ -234,7 +234,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
                 <span>Iniciar Sesión</span>
               </button>
               <button
-                onClick={() => { setActiveTab("register"); setRegisterError(""); }}
+                onClick={() => { setActiveTab("register"); localStorage.setItem("authTab", "register"); setRegisterError(""); }}
                 className={`text-xs font-bold px-4 py-2 rounded-xl transition-all flex items-center space-x-2 ${
                   activeTab === "register"
                     ? "bg-amber-500 text-slate-950"

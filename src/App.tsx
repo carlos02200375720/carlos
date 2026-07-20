@@ -47,6 +47,7 @@ export default function App() {
   const [selectedForceAvatar, setSelectedForceAvatar] = useState<string | null>(null);
   const [forceAvatarSaving, setForceAvatarSaving] = useState(false);
   const [forceAvatarError, setForceAvatarError] = useState("");
+  const [guestInteractionAlert, setGuestInteractionAlert] = useState<string | null>(null);
 
   // WebSocket reference
   const socketRef = useRef<WebSocket | null>(null);
@@ -54,6 +55,9 @@ export default function App() {
 
   // Load initial catalog & files
   useEffect(() => {
+    // Asegurar que al abrir o refrescar la aplicación, la pestaña activa sea siempre 'reels' (Inicio)
+    setActiveTab('reels');
+
     // 1. Fetch Users
     fetch("/api/users")
       .then((res) => res.json())
@@ -422,17 +426,40 @@ export default function App() {
     localStorage.removeItem("loggedInUsername");
     localStorage.removeItem("loggedInPassword");
     setIsLoggedIn(false);
-    setCurrentUser({
-      id: "current_user",
-      username: "",
-      name: "Cargando...",
-      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-      bio: "",
-      isOnline: false,
-      followers: 0,
-      following: 0,
-    });
-    setSavedReelIds([]);
+    
+    // First notify server to clear session
+    fetch("/api/users/current/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    })
+      .then(() => {
+        // Fetch default guest user now that server has reset session
+        return fetch("/api/users/current_user");
+      })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.user) {
+          setCurrentUser(data.user);
+          setSavedReelIds([]);
+          setActiveTab('reels');
+        }
+      })
+      .catch((err) => {
+        console.error("Error setting guest user on logout:", err);
+        // Fallback default guest structure
+        setCurrentUser({
+          id: "current_user",
+          username: "invitado",
+          name: "Invitado",
+          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+          bio: "Explorando la plataforma",
+          isOnline: false,
+          followers: 0,
+          following: 0,
+        });
+        setSavedReelIds([]);
+        setActiveTab('reels');
+      });
   };
 
   const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
@@ -472,26 +499,6 @@ export default function App() {
   const totalUnreads: number = Object.values(unreadCounts).reduce<number>((acc, val) => acc + (val as number), 0);
   const isDarkNavActive = activeTab === 'reels' || activeTab === 'messages';
 
-  if (!isLoggedIn) {
-    return (
-      <LoginView
-        users={users}
-        onRefreshUsers={() => {
-          fetch("/api/users")
-            .then((res) => res.json())
-            .then((data) => setUsers(data))
-            .catch((err) => console.error("Error refreshing users:", err));
-        }}
-        onLoginSuccess={(user) => {
-          setCurrentUser(user);
-          setSavedReelIds(user.savedReelIds || []);
-          setIsLoggedIn(true);
-          setActiveTab('reels');
-        }}
-      />
-    );
-  }
-
   return (
     <div className="w-full min-h-screen bg-white text-slate-900 font-sans flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950">
       
@@ -516,7 +523,9 @@ export default function App() {
                 onAddComment={handleAddComment}
                 savedReelIds={savedReelIds}
                 onToggleSaveReel={handleToggleSaveReel}
-                onGuestInteraction={() => {}}
+                onGuestInteraction={(action) => {
+                  setGuestInteractionAlert(`Para ${action} en este reel, por favor inicia sesión o crea una cuenta de creador.`);
+                }}
               />
             )}
 
@@ -559,6 +568,11 @@ export default function App() {
                 onProfileUpdate={(updatedUser) => {
                   setCurrentUser(updatedUser);
                   setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+                  if (updatedUser.username !== "invitado") {
+                    setIsLoggedIn(true);
+                    setSelectedCreatorProfileId(null);
+                    setActiveTab('profile');
+                  }
                 }}
                 onRefreshUsers={() => {
                   fetch("/api/users")
@@ -685,7 +699,9 @@ export default function App() {
               id="tab-profile-btn"
             >
               <UserIcon className="w-5 h-5" />
-              <span className="text-[10px] font-bold tracking-tight">Dashboard</span>
+              <span className="text-[10px] font-bold tracking-tight">
+                {currentUser.username === "invitado" ? "Registro" : "Dashboard"}
+              </span>
             </button>
   
           </div>
@@ -779,17 +795,50 @@ export default function App() {
                   <span>Guardar foto de perfil</span>
                 )}
               </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Elegant Guest Notification Modal */}
+      {guestInteractionAlert && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in" id="guest-alert-modal">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-sm w-full shadow-2xl relative overflow-hidden text-center">
+            
+            {/* Ambient amber glow decoration */}
+            <div className="absolute -top-12 -left-12 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
+            <div className="absolute -bottom-12 -right-12 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
+
+            <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-4 border border-amber-500/20">
+              <span className="text-xl">🔒</span>
+            </div>
+
+            <h3 className="text-lg font-bold text-white tracking-tight font-display">Acceso Restringido</h3>
+            <p className="text-slate-400 text-xs mt-2 leading-relaxed">
+              {guestInteractionAlert}
+            </p>
+
+            <div className="mt-6 space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setGuestInteractionAlert(null);
+                  setActiveTab('profile');
+                }}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center space-x-2 shadow-lg hover:shadow-amber-500/10 transition-all cursor-pointer"
+              >
+                <span>Ir a Registro / Login</span>
+              </button>
 
               <button
                 type="button"
-                onClick={handleLogout}
-                className="w-full py-2.5 px-4 bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-slate-200 text-xs font-bold rounded-2xl border border-slate-800 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                onClick={() => setGuestInteractionAlert(null)}
+                className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-extrabold text-xs rounded-xl flex items-center justify-center space-x-2 transition-all cursor-pointer"
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Cerrar sesión</span>
+                <span>Seguir Explorando</span>
               </button>
             </div>
-
           </div>
         </div>
       )}

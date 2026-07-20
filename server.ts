@@ -77,6 +77,7 @@ const ReelSchema = new mongoose.Schema({
   description: { type: String },
   creatorId: { type: String },
   creatorName: { type: String },
+  creatorUsername: { type: String },
   creatorAvatar: { type: String },
   likes: { type: Number, default: 0 },
   comments: [{
@@ -419,22 +420,30 @@ async function connectToMongoDB() {
     } else {
       console.log("📦 Loading reels from MongoDB...");
       const dbReels = await MongoReel.find();
-      reels = dbReels.map(r => ({
-        id: r.id,
-        videoUrl: r.videoUrl || "",
-        thumbnailUrl: r.thumbnailUrl || "",
-        description: r.description || "",
-        creatorId: r.creatorId || "current_user",
-        creatorName: r.creatorName || "Carlos Gómez",
-        creatorAvatar: r.creatorAvatar || "",
-        likes: r.likes || 0,
-        comments: r.comments || [],
-        shares: r.shares || 0,
-        views: r.views || 0,
-        productId: r.productId || undefined,
-        type: r.type || "video",
-        images: r.images || []
-      }));
+      const userMap = new Map<string, any>();
+      dbUsers.forEach((u: any) => {
+        userMap.set(u.id, u);
+      });
+      reels = dbReels.map(r => {
+        const creatorUser = userMap.get(r.creatorId);
+        return {
+          id: r.id,
+          videoUrl: r.videoUrl || "",
+          thumbnailUrl: r.thumbnailUrl || "",
+          description: r.description || "",
+          creatorId: r.creatorId || "current_user",
+          creatorName: creatorUser ? creatorUser.name : (r.creatorName || "Carlos Gómez"),
+          creatorUsername: creatorUser ? creatorUser.username : (r.creatorUsername || undefined),
+          creatorAvatar: creatorUser ? creatorUser.avatar : (r.creatorAvatar || ""),
+          likes: r.likes || 0,
+          comments: r.comments || [],
+          shares: r.shares || 0,
+          views: r.views || 0,
+          productId: r.productId || undefined,
+          type: r.type || "video",
+          images: r.images || []
+        };
+      });
       console.log(`📦 Loaded ${reels.length} reels successfully from MongoDB Atlas!`);
     }
   } catch (error) {
@@ -612,40 +621,47 @@ async function startServer() {
     let user = dbUsers.find((u) => u.id === req.params.id);
 
     // Dynamic current_user resolver to avoid seeding mock guest users at startup
-    if (!user && req.params.id === "current_user") {
-      // Look for any real registered user in the DB to represent the session
-      const realUser = dbUsers.find(u => u.id !== "current_user");
-      if (realUser) {
-        user = {
-          ...realUser,
-          id: "current_user"
-        };
-        if (mongoose.connection.readyState === 1) {
-          try {
-            await MongoUser.findOneAndUpdate(
-              { id: "current_user" },
-              {
-                name: realUser.name,
-                username: realUser.username,
-                bio: realUser.bio,
-                avatar: realUser.avatar,
-                coverPhoto: realUser.coverPhoto,
-                followers: realUser.followers,
-                following: realUser.following,
-                savedReelIds: realUser.savedReelIds || [],
-                isGuest: false,
-                password: realUser.password
-              },
-              { upsert: true }
-            );
-            activeOriginalUserId = realUser.id;
-          } catch (err) {
-            console.error("Failed to automatically assign active session user:", err);
-          }
+    if (req.params.id === "current_user") {
+      let activeUser = null;
+      if (mongoose.connection.readyState === 1) {
+        if (activeOriginalUserId && activeOriginalUserId !== "user_guest") {
+          activeUser = await MongoUser.findOne({ id: activeOriginalUserId });
         }
+      }
+
+      if (activeUser) {
+        user = {
+          id: "current_user",
+          username: activeUser.username,
+          name: activeUser.name,
+          avatar: activeUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+          bio: activeUser.bio || "Creador en la plataforma",
+          isOnline: activeUser.isOnline !== undefined ? activeUser.isOnline : false,
+          followers: activeUser.followers || 0,
+          following: activeUser.following || 0,
+          savedReelIds: activeUser.savedReelIds || [],
+          coverPhoto: activeUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+          isGuest: activeUser.isGuest || false,
+          password: activeUser.password || "",
+          email: activeUser.email || ""
+        };
       } else {
-        res.status(404).json({ error: "No users exist in the database. Please register first." });
-        return;
+        // Fallback to transient memory guest user if no users are in DB yet or active user is guest
+        user = {
+          id: "current_user",
+          username: "invitado",
+          name: "Invitado",
+          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+          bio: "Explorando la plataforma",
+          isOnline: false,
+          followers: 0,
+          following: 0,
+          savedReelIds: [],
+          coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+          isGuest: true,
+          password: "",
+          email: ""
+        };
       }
     }
 
@@ -654,8 +670,8 @@ async function startServer() {
        return;
     }
 
-    const userProducts = products.filter((p) => p.sellerId === user.id);
-    const userReels = reels.filter((r) => r.creatorId === user.id);
+    const userProducts = products.filter((p) => p.sellerId === user.id || (user.id === "current_user" && p.sellerId === activeOriginalUserId));
+    const userReels = reels.filter((r) => r.creatorId === user.id || (user.id === "current_user" && r.creatorId === activeOriginalUserId));
     const userOrders = user.id === "current_user" ? orders : [];
     const userSavedReels = reels.filter((r) => (user.savedReelIds || []).includes(r.id));
 
@@ -674,7 +690,7 @@ async function startServer() {
     let currentUserObj = null;
     
     if (mongoose.connection.readyState === 1) {
-      currentUserObj = await MongoUser.findOne({ id: "current_user" });
+      currentUserObj = await MongoUser.findOne({ id: activeOriginalUserId });
     }
     
     if (!currentUserObj) {
@@ -697,7 +713,7 @@ async function startServer() {
 
     if (mongoose.connection.readyState === 1) {
       await MongoUser.findOneAndUpdate(
-        { id: "current_user" },
+        { id: activeOriginalUserId },
         { savedReelIds: currentUserObj.savedReelIds }
       );
     }
@@ -711,7 +727,7 @@ async function startServer() {
     let currentUserObj = null;
 
     if (mongoose.connection.readyState === 1) {
-      currentUserObj = await MongoUser.findOne({ id: "current_user" });
+      currentUserObj = await MongoUser.findOne({ id: activeOriginalUserId });
     }
 
     if (!currentUserObj) {
@@ -756,22 +772,14 @@ async function startServer() {
     }
 
     let updatedUser = currentUserObj;
-    if (mongoose.connection.readyState === 1) {
+    if (mongoose.connection.readyState === 1 && activeOriginalUserId !== "user_guest") {
       try {
         updatedUser = await MongoUser.findOneAndUpdate(
-          { id: "current_user" },
+          { id: activeOriginalUserId },
           updateFields,
-          { new: true, upsert: true }
+          { new: true }
         );
-        console.log(`💾 User profile updated in MongoDB Atlas for ${updatedUser.username}`);
-
-        if (activeOriginalUserId && activeOriginalUserId !== "user_guest") {
-          await MongoUser.findOneAndUpdate(
-            { id: activeOriginalUserId },
-            updateFields
-          );
-          console.log(`💾 Synchronized updated profile fields with original user record: ${activeOriginalUserId}`);
-        }
+        console.log(`💾 User profile updated directly in MongoDB Atlas for ${updatedUser.username}`);
       } catch (err) {
         console.error("Failed to update profile in MongoDB:", err);
       }
@@ -784,14 +792,19 @@ async function startServer() {
         if (avatar !== undefined) r.creatorAvatar = avatar;
       }
       r.comments.forEach(c => {
-        if (c.username === "cg0220037" || c.username === updatedUser.username) {
+        if (c.username === "cg0220037" || c.username === (updatedUser?.username || "")) {
           if (username !== undefined) c.username = username;
           if (avatar !== undefined) c.avatar = avatar;
         }
       });
     });
 
-    res.json({ success: true, user: updatedUser });
+    const returnedUser = {
+      ...(updatedUser?.toObject ? updatedUser.toObject() : updatedUser),
+      id: "current_user"
+    };
+
+    res.json({ success: true, user: returnedUser });
   });
 
   // Register a new user in MongoDB Atlas
@@ -865,31 +878,13 @@ async function startServer() {
     };
 
     // Save to MongoDB if connected
-    let updatedCurrentUser = null;
     if (mongoose.connection.readyState === 1) {
       try {
         const mongoUser = new MongoUser(newUser);
         await mongoUser.save();
         console.log(`💾 Registered new user @${newUser.username} in MongoDB Atlas!`);
 
-        // Automatically set active session to this newly registered user
-        updatedCurrentUser = await MongoUser.findOneAndUpdate(
-          { id: "current_user" },
-          {
-            name: newUser.name,
-            username: newUser.username,
-            email: newUser.email,
-            bio: newUser.bio,
-            avatar: newUser.avatar,
-            coverPhoto: newUser.coverPhoto,
-            followers: newUser.followers,
-            following: newUser.following,
-            savedReelIds: newUser.savedReelIds || [],
-            isGuest: false,
-            password: newUser.password
-          },
-          { upsert: true, new: true }
-        );
+        // Automatically set active session in-memory to this newly registered user
         activeOriginalUserId = newUser.id;
         console.log(`💾 Automatically set active session to @${newUser.username}`);
       } catch (err) {
@@ -897,7 +892,7 @@ async function startServer() {
       }
     }
 
-    const returnedUser = updatedCurrentUser || {
+    const returnedUser = {
       ...newUser,
       id: "current_user",
       isGuest: false
@@ -931,117 +926,80 @@ async function startServer() {
         return;
       }
 
-      let currentUserObj = null;
-      if (mongoose.connection.readyState === 1) {
-        try {
-          currentUserObj = await MongoUser.findOneAndUpdate(
-            { id: "current_user" },
-            {
-              $setOnInsert: {
-                id: "current_user",
-                username: targetUser.username,
-                name: targetUser.name,
-                avatar: targetUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-                bio: targetUser.bio || "",
-                isOnline: true,
-                followers: targetUser.followers || 0,
-                following: targetUser.following || 0,
-                coverPhoto: targetUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-                isGuest: false,
-                password: targetUser.password || "",
-                savedReelIds: targetUser.savedReelIds || []
-              }
-            },
-            { upsert: true, new: true }
-          );
-        } catch (upsertErr: any) {
-          console.warn("⚠️ Race condition caught during initial current_user upsert, fetching existing:", upsertErr.message);
-          currentUserObj = await MongoUser.findOne({ id: "current_user" });
-        }
-      }
-
-      // If we are offline or still couldn't resolve, create a transient memory fallback object
-      if (!currentUserObj) {
-        currentUserObj = {
-          id: "current_user",
-          username: targetUser.username,
-          name: targetUser.name,
-          avatar: targetUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-          bio: targetUser.bio || "",
-          isOnline: true,
-          followers: targetUser.followers || 0,
-          following: targetUser.following || 0,
-          coverPhoto: targetUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-          isGuest: false,
-          password: targetUser.password || "",
-          savedReelIds: targetUser.savedReelIds || []
-        };
-      }
-
-      // 1. Save the active state of "current_user" back to its original record in MongoDB (if activeOriginalUserId is valid)
-      if (mongoose.connection.readyState === 1 && activeOriginalUserId) {
-        try {
-          await MongoUser.findOneAndUpdate(
-            { id: activeOriginalUserId },
-            { 
-              name: currentUserObj.name,
-              username: currentUserObj.username,
-              bio: currentUserObj.bio,
-              avatar: currentUserObj.avatar,
-              coverPhoto: currentUserObj.coverPhoto,
-              followers: currentUserObj.followers,
-              following: currentUserObj.following,
-              savedReelIds: currentUserObj.savedReelIds,
-              isGuest: currentUserObj.isGuest,
-              password: currentUserObj.password,
-              email: currentUserObj.email || ""
-            },
-            { upsert: true }
-          );
-        } catch (err) {
-          console.error("Failed to save original user state in MongoDB on switch:", err);
-        }
-      }
-
-      // 2. Set the new original ID and copy targetUser's details into "current_user"
+      // Set the active session original user ID to targetUser's ID
       activeOriginalUserId = targetUser.id;
 
-      // Save the new current_user state in Mongo as well
-      let updatedCurrentUser = currentUserObj;
-      if (mongoose.connection.readyState === 1) {
-        try {
-          updatedCurrentUser = await MongoUser.findOneAndUpdate(
-            { id: "current_user" },
-            {
-              name: targetUser.name,
-              username: targetUser.username,
-              bio: targetUser.bio,
-              avatar: targetUser.avatar,
-              coverPhoto: targetUser.coverPhoto,
-              followers: targetUser.followers,
-              following: targetUser.following,
-              savedReelIds: targetUser.savedReelIds || [],
-              isGuest: targetUser.isGuest || false,
-              password: targetUser.password || "",
-              email: targetUser.email || ""
-            },
-            { new: true, upsert: true }
-          );
-        } catch (err) {
-          console.error("Failed to update current_user in MongoDB on switch:", err);
-        }
-      }
+      // Construct current_user payload for the frontend
+      const returnedUser = {
+        id: "current_user",
+        username: targetUser.username,
+        name: targetUser.name,
+        bio: targetUser.bio || "",
+        avatar: targetUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+        coverPhoto: targetUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+        followers: targetUser.followers || 0,
+        following: targetUser.following || 0,
+        savedReelIds: targetUser.savedReelIds || [],
+        isGuest: targetUser.isGuest || false,
+        password: targetUser.password || "",
+        email: targetUser.email || ""
+      };
 
-      console.log(`🔄 Switched session user to @${updatedCurrentUser.username} (original id: ${activeOriginalUserId})`);
-      res.json({ success: true, user: updatedCurrentUser });
+      console.log(`🔄 Switched session user to @${returnedUser.username} (original id: ${activeOriginalUserId})`);
+      res.json({ success: true, user: returnedUser });
     } catch (routeErr: any) {
       console.error("❌ Exception caught in user/switch endpoint:", routeErr);
       res.status(500).json({ error: "Internal server error switching user profile", details: routeErr.message });
     }
   });
 
+  // Logout active session on server
+  app.post("/api/users/current/logout", async (req, res) => {
+    try {
+      activeOriginalUserId = "user_guest";
+      console.log(`🔄 Session logged out on server. Reset activeOriginalUserId to user_guest`);
+      res.json({ success: true, message: "Logged out successfully" });
+    } catch (routeErr: any) {
+      console.error("❌ Exception caught in user/logout endpoint:", routeErr);
+      res.status(500).json({ error: "Internal server error on logout", details: routeErr.message });
+    }
+  });
+
   // Get all video reels
-  app.get("/api/reels", (req, res) => {
+  app.get("/api/reels", async (req, res) => {
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const dbUsers = await MongoUser.find();
+        const userMap = new Map<string, any>();
+        dbUsers.forEach((u: any) => {
+          userMap.set(u.id, u);
+        });
+
+        const dbReels = await MongoReel.find();
+        reels = dbReels.map(r => {
+          const creatorUser = userMap.get(r.creatorId);
+          return {
+            id: r.id,
+            videoUrl: r.videoUrl || "",
+            thumbnailUrl: r.thumbnailUrl || "",
+            description: r.description || "",
+            creatorId: r.creatorId || "current_user",
+            creatorName: creatorUser ? creatorUser.name : (r.creatorName || "Carlos Gómez"),
+            creatorUsername: creatorUser ? creatorUser.username : (r.creatorUsername || undefined),
+            creatorAvatar: creatorUser ? creatorUser.avatar : (r.creatorAvatar || ""),
+            likes: r.likes || 0,
+            comments: r.comments || [],
+            shares: r.shares || 0,
+            views: r.views || 0,
+            productId: r.productId || undefined,
+            type: r.type || "video",
+            images: r.images || []
+          };
+        });
+      } catch (err) {
+        console.error("❌ Failed to load live reels from MongoDB Atlas during GET:", err);
+      }
+    }
     res.json(reels);
   });
 
@@ -1102,12 +1060,56 @@ async function startServer() {
   });
 
   // Get all e-commerce products
-  app.get("/api/products", (req, res) => {
+  app.get("/api/products", async (req, res) => {
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const dbProducts = await MongoProduct.find();
+        products = dbProducts.map(p => ({
+          id: p.id,
+          name: p.name,
+          description: p.description || "",
+          price: p.price,
+          imageUrl: p.imageUrl || "",
+          stock: p.stock !== undefined ? p.stock : 10,
+          sellerId: p.sellerId || "current_user",
+          rating: p.rating || 5,
+          shippingCost: p.shippingCost || 0,
+          images: p.images || [],
+          videos: p.videos || [],
+          variants: p.variants || [],
+          category: p.category || ""
+        }));
+      } catch (err) {
+        console.error("❌ Failed to load live products from MongoDB Atlas during GET:", err);
+      }
+    }
     res.json(products);
   });
 
   // Get product by ID
-  app.get("/api/products/:id", (req, res) => {
+  app.get("/api/products/:id", async (req, res) => {
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const dbProducts = await MongoProduct.find();
+        products = dbProducts.map(p => ({
+          id: p.id,
+          name: p.name,
+          description: p.description || "",
+          price: p.price,
+          imageUrl: p.imageUrl || "",
+          stock: p.stock !== undefined ? p.stock : 10,
+          sellerId: p.sellerId || "current_user",
+          rating: p.rating || 5,
+          shippingCost: p.shippingCost || 0,
+          images: p.images || [],
+          videos: p.videos || [],
+          variants: p.variants || [],
+          category: p.category || ""
+        }));
+      } catch (err) {
+        console.error("❌ Failed to sync products on ID fetch:", err);
+      }
+    }
     const product = products.find((p) => p.id === req.params.id);
     if (!product) {
       res.status(404).json({ error: "Product not found" });
@@ -1121,13 +1123,18 @@ async function startServer() {
     try {
       const { videoUrl, thumbnailUrl, description, creatorId, type, images, productId } = req.body;
       
+      let lookupId = creatorId;
+      if (!lookupId || lookupId === "current_user") {
+        lookupId = activeOriginalUserId;
+      }
+      
       let creator = null;
-      if (mongoose.connection.readyState === 1) {
-        creator = await MongoUser.findOne({ id: creatorId || "current_user" });
+      if (mongoose.connection.readyState === 1 && lookupId && lookupId !== "user_guest") {
+        creator = await MongoUser.findOne({ id: lookupId });
       }
 
       if (!creator) {
-        res.status(404).json({ error: "Creator not found" });
+        res.status(403).json({ error: "Un usuario no registrado no puede realizar publicaciones." });
         return;
       }
 
@@ -1138,6 +1145,7 @@ async function startServer() {
         description: description || "",
         creatorId: creator.id,
         creatorName: creator.name,
+        creatorUsername: creator.username,
         creatorAvatar: creator.avatar,
         likes: 0,
         comments: [],
@@ -1180,13 +1188,18 @@ async function startServer() {
     try {
       const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, variants, category } = req.body;
       
+      let lookupId = sellerId;
+      if (!lookupId || lookupId === "current_user") {
+        lookupId = activeOriginalUserId;
+      }
+      
       let seller = null;
-      if (mongoose.connection.readyState === 1) {
-        seller = await MongoUser.findOne({ id: sellerId || "current_user" });
+      if (mongoose.connection.readyState === 1 && lookupId && lookupId !== "user_guest") {
+        seller = await MongoUser.findOne({ id: lookupId });
       }
 
       if (!seller) {
-        res.status(404).json({ error: "Seller not found" });
+        res.status(403).json({ error: "Un usuario no registrado no puede registrar productos para la venta." });
         return;
       }
 
@@ -1228,6 +1241,7 @@ async function startServer() {
         description: `🛍️ ¡Nuevo producto en la categoría ${newProduct.category || "General"}!\n\n✨ **${newProduct.name}**\n\n${newProduct.description}`,
         creatorId: seller.id,
         creatorName: seller.name,
+        creatorUsername: seller.username,
         creatorAvatar: seller.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
         likes: 0,
         comments: [],
@@ -1333,6 +1347,10 @@ async function startServer() {
 
   // Get historical chats with a partner
   app.get("/api/chats/:partnerId", (req, res) => {
+    if (activeOriginalUserId === "user_guest") {
+      res.status(403).json({ error: "Debes registrarte o iniciar sesión para ver tus chats." });
+      return;
+    }
     const partnerId = req.params.partnerId;
     const currentId = "current_user";
 
@@ -1354,13 +1372,18 @@ async function startServer() {
   app.post("/api/live", async (req, res) => {
     const { title, creatorId } = req.body;
     
+    let lookupId = creatorId;
+    if (!lookupId || lookupId === "current_user") {
+      lookupId = activeOriginalUserId;
+    }
+    
     let creator = null;
-    if (mongoose.connection.readyState === 1) {
-      creator = await MongoUser.findOne({ id: creatorId || "current_user" });
+    if (mongoose.connection.readyState === 1 && lookupId && lookupId !== "user_guest") {
+      creator = await MongoUser.findOne({ id: lookupId });
     }
 
     if (!creator) {
-      res.status(404).json({ error: "Creator not found" });
+      res.status(403).json({ error: "Un usuario no registrado no puede iniciar transmisiones en vivo." });
       return;
     }
 
@@ -1446,9 +1469,11 @@ async function startServer() {
             clientUserId = payload.userId || "current_user";
             activeClients.set(clientUserId!, ws);
 
+            const userIdToUpdate = clientUserId === "current_user" ? activeOriginalUserId : clientUserId;
+
             // Update user online status
-            if (mongoose.connection.readyState === 1) {
-              MongoUser.findOneAndUpdate({ id: clientUserId }, { isOnline: true })
+            if (mongoose.connection.readyState === 1 && userIdToUpdate !== "user_guest") {
+              MongoUser.findOneAndUpdate({ id: userIdToUpdate }, { isOnline: true })
                 .then(() => broadcastPresence())
                 .catch((err: any) => console.error("Error setting user online in WS:", err));
             } else {
@@ -1458,6 +1483,13 @@ async function startServer() {
           }
 
           case "private_msg": {
+            if (activeOriginalUserId === "user_guest") {
+              ws.send(JSON.stringify({
+                type: "error",
+                message: "Un usuario no registrado no puede enviar mensajes."
+              }));
+              break;
+            }
             const { senderId, receiverId, text } = payload;
             if (!senderId || !receiverId || !text) return;
 
@@ -1524,6 +1556,13 @@ async function startServer() {
           }
 
           case "live_msg": {
+            if (activeOriginalUserId === "user_guest") {
+              ws.send(JSON.stringify({
+                type: "error",
+                message: "Un usuario no registrado no puede enviar mensajes de chat en vivo."
+              }));
+              break;
+            }
             const { streamId, senderName, avatar, text } = payload;
             const session = liveSessions.find((s) => s.id === streamId);
             if (session && text) {
@@ -1571,8 +1610,9 @@ async function startServer() {
     ws.on("close", () => {
       if (clientUserId) {
         activeClients.delete(clientUserId);
-        if (mongoose.connection.readyState === 1) {
-          MongoUser.findOneAndUpdate({ id: clientUserId }, { isOnline: false })
+        const userIdToUpdate = clientUserId === "current_user" ? activeOriginalUserId : clientUserId;
+        if (mongoose.connection.readyState === 1 && userIdToUpdate !== "user_guest") {
+          MongoUser.findOneAndUpdate({ id: userIdToUpdate }, { isOnline: false })
             .then(() => broadcastPresence())
             .catch((err: any) => console.error("Error setting user offline in WS close:", err));
         } else {

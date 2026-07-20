@@ -150,6 +150,7 @@ export default function LiveView({
   const sendLiveMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || !activeSession) return;
+    if (currentUser.isGuest) return;
 
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({
@@ -164,6 +165,7 @@ export default function LiveView({
   };
 
   const sendReaction = (type: string) => {
+    if (currentUser.isGuest) return;
     if (!activeSession) return;
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({
@@ -439,32 +441,36 @@ export default function LiveView({
             {/* Chat send block & floating reactions triggers */}
             <div className="p-3 border-t border-slate-850 bg-slate-950/60">
               {/* Reaction shortcuts panel */}
-              <div className="flex items-center justify-around mb-2 px-1 py-1 bg-slate-900/80 rounded-xl border border-slate-800">
+              <div className={`flex items-center justify-around mb-2 px-1 py-1 bg-slate-900/80 rounded-xl border border-slate-800 ${currentUser.isGuest ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <button
                   onClick={() => sendReaction("heart")}
-                  className="p-1 hover:bg-slate-800 rounded text-base active:scale-90 transition-transform cursor-pointer"
+                  className={`p-1 hover:bg-slate-800 rounded text-base active:scale-90 transition-transform cursor-pointer ${currentUser.isGuest ? "pointer-events-none" : ""}`}
                   title="Love"
+                  disabled={currentUser.isGuest}
                 >
                   ❤️
                 </button>
                 <button
                   onClick={() => sendReaction("flame")}
-                  className="p-1 hover:bg-slate-800 rounded text-base active:scale-90 transition-transform cursor-pointer"
+                  className={`p-1 hover:bg-slate-800 rounded text-base active:scale-90 transition-transform cursor-pointer ${currentUser.isGuest ? "pointer-events-none" : ""}`}
                   title="Fire"
+                  disabled={currentUser.isGuest}
                 >
                   🔥
                 </button>
                 <button
                   onClick={() => sendReaction("star")}
-                  className="p-1 hover:bg-slate-800 rounded text-base active:scale-90 transition-transform cursor-pointer"
+                  className={`p-1 hover:bg-slate-800 rounded text-base active:scale-90 transition-transform cursor-pointer ${currentUser.isGuest ? "pointer-events-none" : ""}`}
                   title="Star"
+                  disabled={currentUser.isGuest}
                 >
                   ⭐
                 </button>
                 <button
                   onClick={() => sendReaction("zap")}
-                  className="p-1 hover:bg-slate-800 rounded text-base active:scale-90 transition-transform cursor-pointer"
+                  className={`p-1 hover:bg-slate-800 rounded text-base active:scale-90 transition-transform cursor-pointer ${currentUser.isGuest ? "pointer-events-none" : ""}`}
                   title="Energy"
+                  disabled={currentUser.isGuest}
                 >
                   ⚡
                 </button>
@@ -474,14 +480,16 @@ export default function LiveView({
               <form onSubmit={sendLiveMessage} className="flex items-center space-x-1.5">
                 <input
                   type="text"
-                  placeholder="Escribe en el chat..."
+                  placeholder={currentUser.isGuest ? "Regístrate para chatear..." : "Escribe en el chat..."}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  className="flex-1 bg-slate-900 text-xs text-white px-3 py-2 rounded-lg border border-slate-800 focus:outline-none focus:border-rose-500 placeholder-slate-600"
+                  disabled={currentUser.isGuest}
+                  className={`flex-1 bg-slate-900 text-xs text-white px-3 py-2 rounded-lg border border-slate-800 focus:outline-none focus:border-rose-500 placeholder-slate-600 ${currentUser.isGuest ? "opacity-50 cursor-not-allowed" : ""}`}
                 />
                 <button
                   type="submit"
-                  className="p-2 bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-bold rounded-lg transition-colors cursor-pointer"
+                  disabled={currentUser.isGuest}
+                  className={`p-2 bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-bold rounded-lg transition-colors cursor-pointer ${currentUser.isGuest ? "opacity-40 cursor-not-allowed pointer-events-none" : ""}`}
                 >
                   <Send className="w-3.5 h-3.5" />
                 </button>

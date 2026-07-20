@@ -53,6 +53,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
 
   // Media files states
   const [singleVideoFile, setSingleVideoFile] = useState<File | null>(null);
+  const [videoCoverFile, setVideoCoverFile] = useState<File | null>(null);
   const [singleImageFile, setSingleImageFile] = useState<File | null>(null);
   const [carouselImageFiles, setCarouselImageFiles] = useState<File[]>([]);
   const [productPhotoFiles, setProductPhotoFiles] = useState<File[]>([]);
@@ -63,6 +64,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
 
   // File input refs
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const videoCoverInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const carouselInputRef = useRef<HTMLInputElement>(null);
   const prodPhotosRef = useRef<HTMLInputElement>(null);
@@ -138,13 +140,23 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         // 1. Upload video
         const videoUrl = await uploadFileToGCS(singleVideoFile);
 
+        // Upload custom cover image if provided, otherwise fallback to default
+        let thumbnailUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=300&q=80";
+        if (videoCoverFile) {
+          try {
+            thumbnailUrl = await uploadFileToGCS(videoCoverFile);
+          } catch (coverErr) {
+            console.error("Error uploading custom cover, falling back:", coverErr);
+          }
+        }
+
         // 2. Register Reel
         const response = await fetch("/api/reels", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             videoUrl,
-            thumbnailUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=300&q=80",
+            thumbnailUrl,
             description,
             creatorId: currentUser.id,
             type: "video",

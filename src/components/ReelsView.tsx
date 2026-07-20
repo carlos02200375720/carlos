@@ -351,7 +351,7 @@ export default function ReelsView({
                       className="font-display font-bold text-sm tracking-wide flex items-center space-x-1.5 cursor-pointer hover:underline"
                       onClick={() => onCreatorClick(reel.creatorId)}
                     >
-                      <span>@{reel.creatorName.toLowerCase().replace(/\s+/g, "")}</span>
+                      <span>@{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}</span>
                       <span className="bg-amber-500/20 text-amber-400 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-amber-500/30">
                         Vendedor
                       </span>
