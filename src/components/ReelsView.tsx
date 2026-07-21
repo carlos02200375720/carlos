@@ -96,6 +96,16 @@ export default function ReelsView({
     }
     setShowShareModal(reelId);
     setCopiedLink(false);
+
+    fetch(`/api/reels/${reelId}/share`, { method: "POST" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.shares !== undefined) {
+          const reel = reels.find((r) => r.id === reelId);
+          if (reel) reel.shares = data.shares;
+        }
+      })
+      .catch((err) => console.error("Error updating shares:", err));
   };
 
   const copyToClipboard = (reelId: string) => {
@@ -107,6 +117,23 @@ export default function ReelsView({
   };
 
   const currentReel = reels[activeReelIndex];
+
+  const viewedReelsRef = useRef<Set<string>>(new Set());
+
+  // Track video views persistently
+  useEffect(() => {
+    if (currentReel?.id && !viewedReelsRef.current.has(currentReel.id)) {
+      viewedReelsRef.current.add(currentReel.id);
+      fetch(`/api/reels/${currentReel.id}/view`, { method: "POST" })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.views !== undefined) {
+            currentReel.views = data.views;
+          }
+        })
+        .catch((err) => console.error("Error updating views:", err));
+    }
+  }, [currentReel?.id]);
 
   // Look up tagged product details
   const [taggedProduct, setTaggedProduct] = useState<Product | null>(null);
@@ -169,6 +196,7 @@ export default function ReelsView({
         ) : (
           reels.map((reel, index) => {
             const isCurrent = index === activeReelIndex;
+            const isLiked = currentUser?.id ? (reel.likedBy || []).includes(currentUser.id) : false;
             return (
               <div
                 key={reel.id}
@@ -272,10 +300,14 @@ export default function ReelsView({
                           onLikeReel(reel.id);
                         }
                       }}
-                      className="p-3 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/10 text-white hover:text-rose-500 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                      className={`p-3 rounded-full bg-slate-900/60 backdrop-blur-md border hover:scale-110 active:scale-95 transition-all cursor-pointer ${
+                        isLiked
+                          ? "border-rose-500/50 text-rose-500 shadow-md shadow-rose-500/20"
+                          : "border-white/10 text-white hover:text-rose-500"
+                      }`}
                       id={`like-btn-${reel.id}`}
                     >
-                      <Heart className="w-5 h-5 fill-white/10 text-white" />
+                      <Heart className={`w-5 h-5 ${isLiked ? "fill-rose-500 text-rose-500" : "fill-white/10 text-white"}`} />
                     </button>
                     <span className="text-white text-xs font-semibold mt-1 drop-shadow-md">
                       {reel.likes}

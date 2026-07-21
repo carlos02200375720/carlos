@@ -497,11 +497,22 @@ export default function ProfileView({
                             className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
                             id={`admin-my-reel-${reel.id}`}
                           >
-                            <img
-                              src={reel.thumbnailUrl}
-                              alt="Reel thumbnail"
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
+                            {reel.type === "video" && (!reel.thumbnailUrl || reel.thumbnailUrl.includes("photo-1618005182384")) ? (
+                              <video
+                                src={reel.videoUrl}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                muted
+                                playsInline
+                                preload="metadata"
+                              />
+                            ) : (
+                              <img
+                                src={reel.thumbnailUrl || reel.images?.[0] || reel.videoUrl}
+                                alt="Portada publicación"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                referrerPolicy="no-referrer"
+                              />
+                            )}
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
                             
                             <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[10px] font-mono font-bold">
@@ -1292,11 +1303,22 @@ export default function ProfileView({
                         className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900"
                         id={`profile-reel-${reel.id}`}
                       >
-                        <img
-                          src={reel.thumbnailUrl}
-                          alt="Reel thumbnail"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
+                        {reel.type === "video" && (!reel.thumbnailUrl || reel.thumbnailUrl.includes("photo-1618005182384")) ? (
+                          <video
+                            src={reel.videoUrl}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                        ) : (
+                          <img
+                            src={reel.thumbnailUrl || reel.images?.[0] || reel.videoUrl}
+                            alt="Portada publicación"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            referrerPolicy="no-referrer"
+                          />
+                        )}
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
                         
                         <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[10px] font-mono font-bold">

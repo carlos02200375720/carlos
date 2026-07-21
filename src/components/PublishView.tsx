@@ -77,6 +77,51 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
   };
 
   // Upload file helper
+  const generateVideoThumbnail = (videoFile: File): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.src = URL.createObjectURL(videoFile);
+      video.muted = true;
+      video.playsInline = true;
+
+      video.onloadedmetadata = () => {
+        video.currentTime = Math.min(1.0, (video.duration || 1) / 2);
+      };
+
+      video.onseeked = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 360;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob((blob) => {
+              URL.revokeObjectURL(video.src);
+              if (blob) {
+                resolve(blob);
+              } else {
+                reject(new Error("No se pudo extraer la portada del video"));
+              }
+            }, "image/jpeg", 0.85);
+          } else {
+            URL.revokeObjectURL(video.src);
+            reject(new Error("No se pudo crear contexto del canvas"));
+          }
+        } catch (err) {
+          URL.revokeObjectURL(video.src);
+          reject(err);
+        }
+      };
+
+      video.onerror = (err) => {
+        URL.revokeObjectURL(video.src);
+        reject(err);
+      };
+    });
+  };
+
   const uploadFileToGCS = async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
@@ -140,13 +185,24 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         // 1. Upload video
         const videoUrl = await uploadFileToGCS(singleVideoFile);
 
-        // Upload custom cover image if provided, otherwise fallback to default
-        let thumbnailUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=300&q=80";
+        // Determine real cover thumbnail: custom image or auto-extracted video frame
+        let thumbnailUrl = "";
         if (videoCoverFile) {
           try {
             thumbnailUrl = await uploadFileToGCS(videoCoverFile);
           } catch (coverErr) {
-            console.error("Error uploading custom cover, falling back:", coverErr);
+            console.error("Error subiendo portada personalizada:", coverErr);
+          }
+        }
+
+        if (!thumbnailUrl) {
+          try {
+            const frameBlob = await generateVideoThumbnail(singleVideoFile);
+            const frameFile = new File([frameBlob], `thumb_${Date.now()}.jpg`, { type: "image/jpeg" });
+            thumbnailUrl = await uploadFileToGCS(frameFile);
+          } catch (frameErr) {
+            console.warn("No se pudo extraer miniatura del video:", frameErr);
+            thumbnailUrl = videoUrl;
           }
         }
 
@@ -476,6 +532,61 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-500 font-medium">El archivo cumple con el estándar requerido (.mp4)</p>
+                  
+                  {/* Custom video cover selector */}
+                  <div className="mt-3 pt-3 border-t border-slate-200 w-full text-left">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
+                      <span className="flex items-center space-x-1">
+                        <ImageIcon className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Portada / Imagen de Miniatura</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-normal">Opcional</span>
+                    </label>
+                    <input
+                      type="file"
+                      ref={videoCoverInputRef}
+                      accept="image/png, image/jpeg, image/jpg, image/webp"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) setVideoCoverFile(file);
+                      }}
+                      className="hidden"
+                    />
+                    {videoCoverFile ? (
+                      <div className="flex items-center space-x-2.5 p-2 bg-slate-100 rounded-lg">
+                        <img
+                          src={URL.createObjectURL(videoCoverFile)}
+                          alt="Portada"
+                          className="w-10 h-10 object-cover rounded border border-slate-200 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0 text-left">
+                          <p className="text-xs font-semibold text-slate-800 truncate">{videoCoverFile.name}</p>
+                          <p className="text-[10px] text-emerald-600 font-medium">Portada personalizada</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setVideoCoverFile(null)}
+                          className="p-1 hover:bg-slate-200 text-slate-500 rounded cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5 text-rose-500" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => videoCoverInputRef.current?.click()}
+                        className="w-full py-1.5 px-3 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Subir portada propia (Imagen)</span>
+                      </button>
+                    )}
+                    {!videoCoverFile && (
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        * Si no subes una imagen, la app generará automáticamente la portada desde tu video.
+                      </p>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="cursor-pointer space-y-2" onClick={() => videoInputRef.current?.click()}>

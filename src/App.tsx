@@ -223,10 +223,19 @@ export default function App() {
             setReels((prev) =>
               prev.map((r) => {
                 if (r.id === payload.reelId) {
-                  const updatedComments = payload.newComment 
-                    ? [...r.comments, payload.newComment] 
-                    : r.comments;
-                  return { ...r, likes: payload.likes, comments: updatedComments };
+                  let updatedComments = r.comments;
+                  if (payload.newComment) {
+                    const exists = r.comments.some((c) => c.id === payload.newComment.id);
+                    if (!exists) {
+                      updatedComments = [...r.comments, payload.newComment];
+                    }
+                  }
+                  return {
+                    ...r,
+                    likes: payload.likes !== undefined ? payload.likes : r.likes,
+                    likedBy: payload.likedBy || r.likedBy,
+                    comments: updatedComments
+                  };
                 }
                 return r;
               })
@@ -252,12 +261,20 @@ export default function App() {
   // --- API HANDLERS ---
 
   const handleLikeReel = (reelId: string) => {
-    fetch(`/api/reels/${reelId}/like`, { method: "POST" })
+    fetch(`/api/reels/${reelId}/like`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: currentUser.id }),
+    })
       .then((res) => res.json())
       .then((data) => {
         if (!data.error) {
           setReels((prev) =>
-            prev.map((r) => (r.id === reelId ? { ...r, likes: data.likes } : r))
+            prev.map((r) =>
+              r.id === reelId
+                ? { ...r, likes: data.likes, likedBy: data.likedBy || [] }
+                : r
+            )
           );
         }
       })
@@ -276,9 +293,16 @@ export default function App() {
     })
       .then((res) => res.json())
       .then((data) => {
-        if (!data.error) {
+        if (!data.error && data.id) {
           setReels((prev) =>
-            prev.map((r) => (r.id === reelId ? { ...r, comments: [...r.comments, data] } : r))
+            prev.map((r) => {
+              if (r.id === reelId) {
+                const exists = r.comments.some((c) => c.id === data.id);
+                if (exists) return r;
+                return { ...r, comments: [...r.comments, data] };
+              }
+              return r;
+            })
           );
         }
       })

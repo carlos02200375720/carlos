@@ -80,6 +80,7 @@ const ReelSchema = new mongoose.Schema({
   creatorUsername: { type: String },
   creatorAvatar: { type: String },
   likes: { type: Number, default: 0 },
+  likedBy: { type: [String], default: [] },
   comments: [{
     id: { type: String },
     username: { type: String },
@@ -436,6 +437,7 @@ async function connectToMongoDB() {
           creatorUsername: creatorUser ? creatorUser.username : (r.creatorUsername || undefined),
           creatorAvatar: creatorUser ? creatorUser.avatar : (r.creatorAvatar || ""),
           likes: r.likes || 0,
+          likedBy: r.likedBy || [],
           comments: r.comments || [],
           shares: r.shares || 0,
           views: r.views || 0,
@@ -988,6 +990,7 @@ async function startServer() {
             creatorUsername: creatorUser ? creatorUser.username : (r.creatorUsername || undefined),
             creatorAvatar: creatorUser ? creatorUser.avatar : (r.creatorAvatar || ""),
             likes: r.likes || 0,
+            likedBy: r.likedBy || [],
             comments: r.comments || [],
             shares: r.shares || 0,
             views: r.views || 0,
@@ -1003,28 +1006,53 @@ async function startServer() {
     res.json(reels);
   });
 
-  // Like a reel
-  app.post("/api/reels/:id/like", (req, res) => {
+  // Like a reel (1 like per user - toggle behavior)
+  app.post("/api/reels/:id/like", async (req, res) => {
     const reel = reels.find((r) => r.id === req.params.id);
     if (!reel) {
       res.status(404).json({ error: "Reel not found" });
       return;
     }
-    reel.likes += 1;
+
+    const userId = req.body?.userId || activeOriginalUserId || "current_user";
+    if (!reel.likedBy) {
+      reel.likedBy = [];
+    }
+
+    const index = reel.likedBy.indexOf(userId);
+    let isLiked = false;
+    if (index > -1) {
+      reel.likedBy.splice(index, 1);
+      isLiked = false;
+    } else {
+      reel.likedBy.push(userId);
+      isLiked = true;
+    }
+
+    reel.likes = reel.likedBy.length;
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await MongoReel.updateOne({ id: reel.id }, { $set: { likes: reel.likes, likedBy: reel.likedBy } });
+      } catch (err) {
+        console.error("❌ Failed to update likes in MongoDB:", err);
+      }
+    }
     
     // Broadcast metric update to all connected sockets
     broadcastToAll({
       type: "reel_updated",
       reelId: reel.id,
       likes: reel.likes,
+      likedBy: reel.likedBy,
       commentsCount: reel.comments.length
     });
 
-    res.json({ success: true, likes: reel.likes });
+    res.json({ success: true, likes: reel.likes, likedBy: reel.likedBy, isLiked });
   });
 
   // Post a comment on a reel
-  app.post("/api/reels/:id/comment", (req, res) => {
+  app.post("/api/reels/:id/comment", async (req, res) => {
     const reel = reels.find((r) => r.id === req.params.id);
     if (!reel) {
       res.status(404).json({ error: "Reel not found" });
@@ -1047,6 +1075,14 @@ async function startServer() {
 
     reel.comments.push(newComment);
 
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await MongoReel.updateOne({ id: reel.id }, { $set: { comments: reel.comments } });
+      } catch (err) {
+        console.error("❌ Failed to update comments in MongoDB:", err);
+      }
+    }
+
     // Broadcast metric update
     broadcastToAll({
       type: "reel_updated",
@@ -1057,6 +1093,46 @@ async function startServer() {
     });
 
     res.json(newComment);
+  });
+
+  // Record a view on a reel
+  app.post("/api/reels/:id/view", async (req, res) => {
+    const reel = reels.find((r) => r.id === req.params.id);
+    if (!reel) {
+      res.status(404).json({ error: "Reel not found" });
+      return;
+    }
+    reel.views = (reel.views || 0) + 1;
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await MongoReel.updateOne({ id: reel.id }, { $set: { views: reel.views } });
+      } catch (err) {
+        console.error("❌ Failed to update views in MongoDB:", err);
+      }
+    }
+
+    res.json({ success: true, views: reel.views });
+  });
+
+  // Record a share on a reel
+  app.post("/api/reels/:id/share", async (req, res) => {
+    const reel = reels.find((r) => r.id === req.params.id);
+    if (!reel) {
+      res.status(404).json({ error: "Reel not found" });
+      return;
+    }
+    reel.shares = (reel.shares || 0) + 1;
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await MongoReel.updateOne({ id: reel.id }, { $set: { shares: reel.shares } });
+      } catch (err) {
+        console.error("❌ Failed to update shares in MongoDB:", err);
+      }
+    }
+
+    res.json({ success: true, shares: reel.shares });
   });
 
   // Get all e-commerce products
@@ -1148,6 +1224,7 @@ async function startServer() {
         creatorUsername: creator.username,
         creatorAvatar: creator.avatar,
         likes: 0,
+        likedBy: [],
         comments: [],
         shares: 0,
         views: 0,
