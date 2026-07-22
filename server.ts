@@ -26,6 +26,7 @@ const UserSchema = new mongoose.Schema({
   isOnline: { type: Boolean, default: false },
   followers: { type: Number, default: 0 },
   following: { type: Number, default: 0 },
+  followingUserIds: { type: [String], default: [] },
   savedReelIds: { type: [String], default: [] },
   coverPhoto: { type: String },
   isGuest: { type: Boolean, default: false },
@@ -284,6 +285,7 @@ async function getUsers(): Promise<User[]> {
         isOnline: u.isOnline !== undefined ? u.isOnline : false,
         followers: u.followers || 0,
         following: u.following || 0,
+        followingUserIds: u.followingUserIds || [],
         savedReelIds: u.savedReelIds || [],
         coverPhoto: u.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
         isGuest: u.isGuest || false,
@@ -462,7 +464,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // --- API ENDPOINTS ---
 
@@ -641,6 +644,7 @@ async function startServer() {
           isOnline: activeUser.isOnline !== undefined ? activeUser.isOnline : false,
           followers: activeUser.followers || 0,
           following: activeUser.following || 0,
+          followingUserIds: activeUser.followingUserIds || [],
           savedReelIds: activeUser.savedReelIds || [],
           coverPhoto: activeUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
           isGuest: activeUser.isGuest || false,
@@ -721,6 +725,79 @@ async function startServer() {
     }
 
     res.json({ success: true, saved, savedReelIds: currentUserObj.savedReelIds });
+  });
+
+  // Toggle follow/unfollow a creator or user
+  app.post("/api/users/:targetUserId/follow", async (req, res) => {
+    const { targetUserId } = req.params;
+    let currentUserObj: any = null;
+    let targetUserObj: any = null;
+
+    if (mongoose.connection.readyState === 1) {
+      currentUserObj = await MongoUser.findOne({ id: activeOriginalUserId });
+      targetUserObj = await MongoUser.findOne({
+        $or: [{ id: targetUserId }, { username: targetUserId }]
+      });
+    }
+
+    if (!currentUserObj || currentUserObj.isGuest || currentUserObj.username === "invitado") {
+      res.status(401).json({ error: "Debe iniciar sesión para seguir a creadores." });
+      return;
+    }
+
+    if (!currentUserObj.followingUserIds) {
+      currentUserObj.followingUserIds = [];
+    }
+
+    const resolvedTargetId = targetUserObj ? targetUserObj.id : targetUserId;
+
+    if (resolvedTargetId === currentUserObj.id || resolvedTargetId === "current_user") {
+      res.status(400).json({ error: "No puedes seguirte a ti mismo." });
+      return;
+    }
+
+    const index = currentUserObj.followingUserIds.indexOf(resolvedTargetId);
+    let isFollowing = false;
+
+    if (index > -1) {
+      // Unfollow
+      currentUserObj.followingUserIds.splice(index, 1);
+      currentUserObj.following = Math.max(0, (currentUserObj.following || 1) - 1);
+      if (targetUserObj) {
+        targetUserObj.followers = Math.max(0, (targetUserObj.followers || 1) - 1);
+      }
+      isFollowing = false;
+    } else {
+      // Follow
+      currentUserObj.followingUserIds.push(resolvedTargetId);
+      currentUserObj.following = (currentUserObj.following || 0) + 1;
+      if (targetUserObj) {
+        targetUserObj.followers = (targetUserObj.followers || 0) + 1;
+      }
+      isFollowing = true;
+    }
+
+    if (mongoose.connection.readyState === 1) {
+      await MongoUser.findOneAndUpdate(
+        { id: currentUserObj.id },
+        { followingUserIds: currentUserObj.followingUserIds, following: currentUserObj.following }
+      );
+      if (targetUserObj) {
+        await MongoUser.findOneAndUpdate(
+          { id: targetUserObj.id },
+          { followers: targetUserObj.followers }
+        );
+      }
+    }
+
+    res.json({
+      success: true,
+      isFollowing,
+      followingUserIds: currentUserObj.followingUserIds,
+      targetUserId: resolvedTargetId,
+      targetFollowers: targetUserObj ? targetUserObj.followers : 0,
+      currentUserFollowing: currentUserObj.following
+    });
   });
 
   // Update current user profile info

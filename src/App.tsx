@@ -328,6 +328,35 @@ export default function App() {
       .catch((err) => console.error("Error toggling saved reel:", err));
   };
 
+  const handleToggleFollowUser = (targetUserId: string) => {
+    if (currentUser.username === "invitado" || currentUser.isGuest) {
+      setGuestInteractionAlert("Para seguir a creadores, por favor inicia sesión o crea una cuenta.");
+      return;
+    }
+    fetch(`/api/users/${targetUserId}/follow`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setCurrentUser((prev) => ({
+            ...prev,
+            followingUserIds: data.followingUserIds || [],
+            following: data.currentUserFollowing !== undefined ? data.currentUserFollowing : prev.following
+          }));
+          setUsers((prev) =>
+            prev.map((u) =>
+              u.id === data.targetUserId
+                ? { ...u, followers: data.targetFollowers }
+                : u
+            )
+          );
+        }
+      })
+      .catch((err) => console.error("Error toggling follow:", err));
+  };
+
   // Cart operations
   const handleAddToCart = (product: Product) => {
     setCart((prev) => {
@@ -547,6 +576,7 @@ export default function App() {
                 onAddComment={handleAddComment}
                 savedReelIds={savedReelIds}
                 onToggleSaveReel={handleToggleSaveReel}
+                onToggleFollowUser={handleToggleFollowUser}
                 onGuestInteraction={(action) => {
                   setGuestInteractionAlert(`Para ${action} en este reel, por favor inicia sesión o crea una cuenta de creador.`);
                 }}
@@ -627,11 +657,7 @@ export default function App() {
 
       {/* Bottom Floating Navigation Bar */}
       {!(activeTab === 'messages' && activeChatUser) && (
-        <div id="bottom-nav-bar" className={`fixed bottom-0 inset-x-0 py-3 px-6 z-30 shadow-md backdrop-blur-lg border-t transition-colors duration-300 ${
-          isDarkNavActive
-            ? "bg-slate-950/95 border-slate-900 text-white"
-            : "bg-white/95 border-slate-200 text-slate-800"
-        }`}>
+        <div id="bottom-nav-bar" className="fixed bottom-0 inset-x-0 py-3 px-6 z-30 shadow-md backdrop-blur-lg border-t border-slate-900 bg-black text-white">
           <div className="max-w-md mx-auto flex items-center justify-around">
             
             {/* Tab 1: Reels */}
@@ -640,9 +666,7 @@ export default function App() {
               className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all ${
                 activeTab === 'reels'
                   ? "text-amber-500 scale-105"
-                  : isDarkNavActive
-                    ? "text-slate-400 hover:text-white"
-                    : "text-slate-500 hover:text-slate-900"
+                  : "text-slate-400 hover:text-white"
               }`}
               id="tab-reels-btn"
             >
@@ -656,9 +680,7 @@ export default function App() {
               className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all ${
                 activeTab === 'shop'
                   ? "text-amber-500 scale-105"
-                  : isDarkNavActive
-                    ? "text-slate-400 hover:text-white"
-                    : "text-slate-500 hover:text-slate-900"
+                  : "text-slate-400 hover:text-white"
               }`}
               id="tab-shop-btn"
             >
@@ -672,9 +694,7 @@ export default function App() {
               className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all relative ${
                 activeTab === 'messages'
                   ? "text-amber-500 scale-105"
-                  : isDarkNavActive
-                    ? "text-slate-400 hover:text-white"
-                    : "text-slate-500 hover:text-slate-900"
+                  : "text-slate-400 hover:text-white"
               }`}
               id="tab-messages-btn"
             >
@@ -695,9 +715,7 @@ export default function App() {
               className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all ${
                 activeTab === 'live'
                   ? "text-amber-500 scale-105"
-                  : isDarkNavActive
-                    ? "text-slate-400 hover:text-white"
-                    : "text-slate-500 hover:text-slate-900"
+                  : "text-slate-400 hover:text-white"
               }`}
               id="tab-live-btn"
             >
@@ -716,9 +734,7 @@ export default function App() {
               className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all ${
                 activeTab === 'profile' && selectedCreatorProfileId === null
                   ? "text-amber-500 scale-105"
-                  : isDarkNavActive
-                    ? "text-slate-400 hover:text-white"
-                    : "text-slate-500 hover:text-slate-900"
+                  : "text-slate-400 hover:text-white"
               }`}
               id="tab-profile-btn"
             >

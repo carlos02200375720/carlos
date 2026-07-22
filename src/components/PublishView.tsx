@@ -171,6 +171,17 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+
+    // Validate 35 character max limit
+    if (publishType !== "product" && description.length > 35) {
+      setErrorMessage("La descripción excede el límite permitido de máximo 35 caracteres.");
+      return;
+    }
+    if (publishType === "product" && prodDescription.length > 35) {
+      setErrorMessage("La descripción del producto excede el límite permitido de máximo 35 caracteres.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -799,14 +810,24 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Descripción / Caption</label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-bold text-slate-700">Descripción / Caption</label>
+                <span className={`text-[10px] font-mono font-bold ${description.length >= 35 ? 'text-rose-600' : 'text-amber-600'}`}>
+                  {description.length} / 35 caracteres
+                </span>
+              </div>
               <textarea
-                placeholder="Escribe algo sobre tu publicación... #Moda #Tech #Estilo"
+                placeholder="Escribe una breve descripción (máximo 35 caracteres)..."
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                className="w-full text-xs font-sans p-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-slate-400 font-medium"
+                maxLength={35}
+                onChange={(e) => setDescription(e.target.value.slice(0, 35))}
+                rows={2}
+                className="w-full text-xs font-sans p-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-amber-500 font-medium"
               />
+              <p className="text-[10px] text-amber-600 font-semibold mt-1 flex items-center space-x-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>Atención: Este campo tiene un límite estricto de máximo 35 caracteres.</span>
+              </p>
             </div>
 
             <div>
@@ -870,15 +891,25 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Descripción Detallada *</label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-bold text-slate-700">Descripción Detallada *</label>
+                <span className={`text-[10px] font-mono font-bold ${prodDescription.length >= 35 ? 'text-rose-600' : 'text-amber-600'}`}>
+                  {prodDescription.length} / 35 caracteres
+                </span>
+              </div>
               <textarea
-                placeholder="Escribe detalles sobre la calidad del material, confección, etc..."
+                placeholder="Detalles del producto (máximo 35 caracteres)..."
                 value={prodDescription}
-                onChange={(e) => setProdDescription(e.target.value)}
-                rows={3}
-                className="w-full text-xs font-sans p-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-slate-400 font-medium"
+                maxLength={35}
+                onChange={(e) => setProdDescription(e.target.value.slice(0, 35))}
+                rows={2}
+                className="w-full text-xs font-sans p-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-amber-500 font-medium"
                 required
               />
+              <p className="text-[10px] text-amber-600 font-semibold mt-1 flex items-center space-x-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>Atención: La descripción del producto sólo admite máximo 35 caracteres.</span>
+              </p>
             </div>
 
             <div className="grid grid-cols-3 gap-4">

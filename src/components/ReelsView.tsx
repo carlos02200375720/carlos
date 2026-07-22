@@ -12,6 +12,7 @@ interface ReelsViewProps {
   onAddComment: (reelId: string, text: string) => void;
   savedReelIds: string[];
   onToggleSaveReel: (reelId: string) => void;
+  onToggleFollowUser?: (creatorId: string) => void;
   onGuestInteraction: (action: string) => void;
 }
 
@@ -24,6 +25,7 @@ export default function ReelsView({
   onAddComment,
   savedReelIds,
   onToggleSaveReel,
+  onToggleFollowUser,
   onGuestInteraction,
 }: ReelsViewProps) {
   const [activeReelIndex, setActiveReelIndex] = useState(0);
@@ -34,6 +36,11 @@ export default function ReelsView({
   const [likedAnim, setLikedAnim] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const progressBarRef = useRef<HTMLDivElement>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({});
@@ -117,6 +124,72 @@ export default function ReelsView({
   };
 
   const currentReel = reels[activeReelIndex];
+
+  // Reset time and duration state on active reel change
+  useEffect(() => {
+    setCurrentTime(0);
+    setDuration(0);
+    const video = currentReel ? videoRefs.current[currentReel.id] : null;
+    if (video) {
+      setCurrentTime(video.currentTime || 0);
+      setDuration(video.duration || 0);
+    }
+  }, [activeReelIndex, currentReel?.id]);
+
+  const handleSeekFromEvent = (clientX: number) => {
+    if (!progressBarRef.current || !currentReel || duration <= 0) return;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const clickX = clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, clickX / rect.width));
+    const newTime = percentage * duration;
+    const video = videoRefs.current[currentReel.id];
+    if (video) {
+      video.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  };
+
+  const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    handleSeekFromEvent(e.clientX);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+    setIsScrubbing(true);
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    handleSeekFromEvent(clientX);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isScrubbing) {
+        handleSeekFromEvent(e.clientX);
+      }
+    };
+    const handleMouseUp = () => {
+      if (isScrubbing) {
+        setIsScrubbing(false);
+      }
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isScrubbing && e.touches[0]) {
+        handleSeekFromEvent(e.touches[0].clientX);
+      }
+    };
+
+    if (isScrubbing) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+      window.addEventListener("touchmove", handleTouchMove);
+      window.addEventListener("touchend", handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleMouseUp);
+    };
+  }, [isScrubbing, duration, currentReel]);
 
   const viewedReelsRef = useRef<Set<string>>(new Set());
 
@@ -229,6 +302,17 @@ export default function ReelsView({
                     playsInline
                     onClick={() => handleVideoClick(reel.id)}
                     onDoubleClick={() => handleDoubleTap(reel.id)}
+                    onTimeUpdate={(e) => {
+                      if (isCurrent) {
+                        setCurrentTime(e.currentTarget.currentTime);
+                        setDuration(e.currentTarget.duration || 0);
+                      }
+                    }}
+                    onLoadedMetadata={(e) => {
+                      if (isCurrent) {
+                        setDuration(e.currentTarget.duration || 0);
+                      }
+                    }}
                     className="w-full h-full object-cover cursor-pointer"
                   />
                 )}
@@ -259,30 +343,30 @@ export default function ReelsView({
                 <div className="absolute top-4 right-4 z-20">
                   <button
                     onClick={() => setIsMuted(!isMuted)}
-                    className="p-2.5 rounded-full bg-slate-900/60 backdrop-blur-md text-white border border-white/10 hover:bg-slate-900/80 transition-colors cursor-pointer"
+                    className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
                     id={`mute-btn-${reel.id}`}
                   >
-                    {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                    {isMuted ? <VolumeX className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" /> : <Volume2 className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" />}
                   </button>
                 </div>
 
                 {/* Lateral Interaction Bar (Likes, Comments, Shares, Avatar) */}
                 <div
-                  className="absolute right-3 z-20 flex flex-col items-center space-y-6"
+                  className="absolute right-3 z-20 flex flex-col items-center space-y-2.5"
                   style={{ bottom: "5px" }}
                 >
                   {/* Creator Avatar with follow button */}
                   <div className="flex flex-col items-center">
                     <button
                       onClick={() => onCreatorClick(reel.creatorId)}
-                      className="relative border-2 border-amber-500 rounded-full p-0.5 shadow-md transform hover:scale-110 transition-transform cursor-pointer"
+                      className="relative border-2 border-amber-500 rounded-full p-0.5 shadow-md transform hover:scale-110 transition-transform cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
                       id={`creator-avatar-btn-${reel.id}`}
                     >
                       <img
                         src={reel.creatorAvatar}
                         alt={reel.creatorName}
                         referrerPolicy="no-referrer"
-                        className="w-11 h-11 rounded-full object-cover"
+                        className="w-12 h-12 rounded-full object-cover"
                       />
                       <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-amber-500 text-[9px] font-bold text-slate-950 px-1 rounded-full border border-slate-950">
                         LIVE
@@ -300,16 +384,16 @@ export default function ReelsView({
                           onLikeReel(reel.id);
                         }
                       }}
-                      className={`p-3 rounded-full bg-slate-900/60 backdrop-blur-md border hover:scale-110 active:scale-95 transition-all cursor-pointer ${
+                      className={`p-1.5 rounded-full bg-transparent hover:scale-110 active:scale-95 transition-all cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] ${
                         isLiked
-                          ? "border-rose-500/50 text-rose-500 shadow-md shadow-rose-500/20"
-                          : "border-white/10 text-white hover:text-rose-500"
+                          ? "text-rose-500"
+                          : "text-white hover:text-rose-500"
                       }`}
                       id={`like-btn-${reel.id}`}
                     >
-                      <Heart className={`w-5 h-5 ${isLiked ? "fill-rose-500 text-rose-500" : "fill-white/10 text-white"}`} />
+                      <Heart className={`w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] ${isLiked ? "fill-rose-500 text-rose-500" : "fill-white/10 text-white"}`} />
                     </button>
-                    <span className="text-white text-xs font-semibold mt-1 drop-shadow-md">
+                    <span className="text-white text-xs font-bold mt-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
                       {reel.likes}
                     </span>
                   </div>
@@ -324,12 +408,12 @@ export default function ReelsView({
                           setShowComments(reel.id);
                         }
                       }}
-                      className="p-3 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/10 text-white hover:text-amber-400 hover:scale-110 transition-all cursor-pointer"
+                      className="p-1.5 rounded-full bg-transparent text-white hover:text-amber-400 hover:scale-110 transition-all cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
                       id={`comment-btn-${reel.id}`}
                     >
-                      <MessageCircle className="w-5 h-5" />
+                      <MessageCircle className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" />
                     </button>
-                    <span className="text-white text-xs font-semibold mt-1 drop-shadow-md">
+                    <span className="text-white text-xs font-bold mt-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
                       {reel.comments.length}
                     </span>
                   </div>
@@ -344,12 +428,12 @@ export default function ReelsView({
                           handleShare(reel.id);
                         }
                       }}
-                      className="p-3 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/10 text-white hover:text-cyan-400 hover:scale-110 transition-all cursor-pointer"
+                      className="p-1.5 rounded-full bg-transparent text-white hover:text-cyan-400 hover:scale-110 transition-all cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
                       id={`share-btn-${reel.id}`}
                     >
-                      <Share2 className="w-5 h-5" />
+                      <Share2 className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" />
                     </button>
-                    <span className="text-white text-xs font-semibold mt-1 drop-shadow-md">
+                    <span className="text-white text-xs font-bold mt-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
                       {reel.shares}
                     </span>
                   </div>
@@ -364,12 +448,12 @@ export default function ReelsView({
                           onToggleSaveReel(reel.id);
                         }
                       }}
-                      className={`p-3 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/10 hover:scale-110 active:scale-95 transition-all cursor-pointer ${savedReelIds.includes(reel.id) ? "text-amber-500" : "text-white hover:text-amber-400"}`}
+                      className={`p-1.5 rounded-full bg-transparent hover:scale-110 active:scale-95 transition-all cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] ${savedReelIds.includes(reel.id) ? "text-amber-500" : "text-white hover:text-amber-400"}`}
                       id={`save-btn-${reel.id}`}
                     >
-                      <Bookmark className={`w-5 h-5 ${savedReelIds.includes(reel.id) ? "fill-amber-500" : ""}`} />
+                      <Bookmark className={`w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] ${savedReelIds.includes(reel.id) ? "fill-amber-500" : ""}`} />
                     </button>
-                    <span className="text-white text-[10px] font-bold mt-1 drop-shadow-md uppercase tracking-tight">
+                    <span className="text-white text-[10px] font-bold mt-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] uppercase tracking-tight">
                       {savedReelIds.includes(reel.id) ? "Guardado" : "Guardar"}
                     </span>
                   </div>
@@ -378,18 +462,49 @@ export default function ReelsView({
                 {/* Bottom Info Banner (Creator, Description, Tagged Product) */}
                 <div className="absolute left-4 bottom-4 right-16 z-20 flex flex-col space-y-3">
                   {/* Creator Info and Description */}
-                  <div className="text-white bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 rounded-xl backdrop-blur-[1px]">
-                    <h3
-                      className="font-display font-bold text-sm tracking-wide flex items-center space-x-1.5 cursor-pointer hover:underline"
-                      onClick={() => onCreatorClick(reel.creatorId)}
-                    >
-                      <span>@{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}</span>
-                      <span className="bg-amber-500/20 text-amber-400 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-amber-500/30">
-                        Vendedor
+                  <div className="text-white bg-transparent p-3 rounded-xl drop-shadow-md">
+                    <h3 className="font-display font-bold text-sm tracking-wide flex items-center space-x-2">
+                      <span
+                        className="cursor-pointer hover:underline"
+                        onClick={() => onCreatorClick(reel.creatorId)}
+                      >
+                        @{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}
                       </span>
+                      {(() => {
+                        const isSelf = currentUser.id === reel.creatorId || reel.creatorId === "current_user";
+                        if (isSelf) {
+                          return (
+                            <span className="bg-slate-800/80 text-amber-400 text-[9px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                              Tú
+                            </span>
+                          );
+                        }
+                        const isFollowing = currentUser.followingUserIds?.includes(reel.creatorId) || false;
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (currentUser.username === "invitado" || currentUser.isGuest) {
+                                onGuestInteraction("seguir a creadores");
+                              } else if (onToggleFollowUser) {
+                                onToggleFollowUser(reel.creatorId);
+                              }
+                            }}
+                            id={`follow-creator-btn-${reel.id}`}
+                            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-xs ${
+                              isFollowing
+                                ? "text-amber-400 border-amber-400/60 hover:text-rose-400 hover:border-rose-400/80 hover:bg-rose-500/10"
+                                : "text-amber-400 border-amber-400 hover:bg-amber-400/20 active:scale-95 font-extrabold"
+                            }`}
+                          >
+                            {isFollowing ? "Siguiendo" : "+ Seguir"}
+                          </button>
+                        );
+                      })()}
                     </h3>
                     <p className="text-xs text-slate-200 mt-1 line-clamp-2 leading-relaxed">
-                      {reel.description}
+                      {reel.description ? reel.description.slice(0, 35) : ""}
                     </p>
                   </div>
 
@@ -428,6 +543,29 @@ export default function ReelsView({
         )}
       </div>
 
+      {/* Video Progress Bar on top of the bottom navigation bar */}
+      {currentReel && currentReel.type !== "image" && currentReel.type !== "carousel" && duration > 0 && (
+        <div
+          ref={progressBarRef}
+          className="absolute bottom-0 left-0 right-0 z-30 h-3 flex items-end cursor-pointer group select-none touch-none"
+          onClick={handleProgressBarClick}
+          onMouseDown={handleMouseDown}
+          onTouchStart={handleMouseDown}
+          id="video-progress-bar"
+        >
+          {/* Background Track */}
+          <div className="w-full h-1 group-hover:h-2.5 bg-white/20 backdrop-blur-md transition-all relative overflow-hidden">
+            {/* Filled Progress */}
+            <div
+              className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 rounded-r-full shadow-[0_0_10px_rgba(245,158,11,0.9)] transition-all duration-75 relative"
+              style={{ width: `${Math.min(100, Math.max(0, (currentTime / duration) * 100))}%` }}
+            >
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-2.5 h-2.5 bg-amber-400 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Slide-Up Comments Overlay Drawer */}
       <AnimatePresence>
         {showComments && (
@@ -435,10 +573,10 @@ export default function ReelsView({
             {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.4 }}
+              animate={{ opacity: 0.6 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowComments(null)}
-              className="absolute inset-0 bg-black z-40"
+              className="fixed inset-0 bg-black z-50 backdrop-blur-xs"
             />
 
             {/* Drawer */}
@@ -447,28 +585,28 @@ export default function ReelsView({
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="absolute bottom-0 inset-x-0 bg-slate-900 border-t border-slate-800 rounded-t-2xl h-[450px] z-50 flex flex-col overflow-hidden text-slate-100"
+              className="fixed bottom-0 inset-x-0 bg-white border-t border-white rounded-t-2xl h-[500px] max-h-[85vh] z-50 flex flex-col overflow-hidden text-slate-900 shadow-2xl font-bold"
             >
               {/* Header */}
-              <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-                <span className="font-display font-bold text-sm tracking-wide">
+              <div className="px-4 py-0 border-b border-white flex items-center justify-between bg-white">
+                <span className="font-display font-extrabold text-sm tracking-wide text-slate-900">
                   Comentarios ({reels.find((r) => r.id === showComments)?.comments.length || 0})
                 </span>
                 <button
                   onClick={() => setShowComments(null)}
-                  className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Comments List */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
                 {reels.find((r) => r.id === showComments)?.comments.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-500 text-center">
-                    <MessageCircle className="w-8 h-8 text-slate-700 mb-2" />
-                    <p className="text-sm">No hay comentarios aún</p>
-                    <p className="text-xs text-slate-600 mt-0.5">Sé el primero en compartir tu opinión</p>
+                  <div className="h-full flex flex-col items-center justify-center text-slate-600 text-center font-bold">
+                    <MessageCircle className="w-8 h-8 text-slate-400 mb-2" />
+                    <p className="text-sm font-extrabold text-slate-800">No hay comentarios aún</p>
+                    <p className="text-xs text-slate-500 mt-0.5 font-bold">Sé el primero en compartir tu opinión</p>
                   </div>
                 ) : (
                   reels
@@ -479,16 +617,16 @@ export default function ReelsView({
                           src={comm.avatar}
                           alt={comm.username}
                           referrerPolicy="no-referrer"
-                          className="w-8 h-8 rounded-full object-cover border border-slate-800"
+                          className="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-xs"
                         />
-                        <div className="flex-1 bg-slate-800/50 p-2.5 rounded-2xl border border-slate-800/30">
+                        <div className="flex-1 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-200">@{comm.username}</span>
-                            <span className="text-[9px] text-slate-500 font-mono">
+                            <span className="text-xs font-black text-slate-900">@{comm.username}</span>
+                            <span className="text-[10px] text-slate-500 font-bold font-mono">
                               {new Date(comm.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-300 mt-1 leading-relaxed">{comm.text}</p>
+                          <p className="text-xs text-slate-900 font-bold mt-1 leading-relaxed">{comm.text}</p>
                         </div>
                       </div>
                     ))
@@ -498,18 +636,18 @@ export default function ReelsView({
               {/* Comment Input Form */}
               <form
                 onSubmit={(e) => submitComment(e, showComments)}
-                className="p-4 border-t border-slate-800 bg-slate-900/90 flex items-center space-x-2"
+                className="p-4 pb-5 sm:pb-4 border-t border-white bg-white flex items-center space-x-2"
               >
                 <input
                   type="text"
                   placeholder="Escribe un comentario..."
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
-                  className="flex-1 bg-slate-800 text-xs rounded-xl px-4 py-3 text-white border border-slate-700 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 placeholder-slate-500"
+                  className="flex-1 bg-slate-100 text-xs rounded-full px-4 py-3 text-slate-900 font-bold border border-slate-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 placeholder-slate-400"
                 />
                 <button
                   type="submit"
-                  className="p-3 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-bold rounded-xl transition-all cursor-pointer"
+                  className="p-3 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black rounded-full transition-all cursor-pointer shadow-sm"
                 >
                   <Send className="w-4 h-4" />
                 </button>

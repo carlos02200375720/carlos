@@ -306,29 +306,38 @@ export default function ProfileView({
       </div>
 
       {/* Profile Info Details Overlay row */}
-      <div className="px-8 pb-6 relative border-b border-slate-100 bg-slate-50">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between -mt-16 sm:-mt-20 mb-4 sm:space-x-6 z-10 relative">
-          <img
-            src={profileUser.avatar}
-            alt={profileUser.name}
-            referrerPolicy="no-referrer"
-            className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover border-4 border-white shadow-md bg-white shrink-0"
-          />
-
-          <div className="flex-1 mt-4 sm:mt-0">
-            <h2 className="font-display font-extrabold text-xl text-slate-950 flex items-center space-x-2">
-              <span>{profileUser.name}</span>
-              {!isSelf && (
-                <span className="bg-amber-500/10 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/25">
-                  Verificado
+      <div className="px-6 sm:px-8 pb-6 relative border-b border-slate-200/80 bg-slate-50 rounded-t-3xl -mt-6 z-10">
+        <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between -mt-12 sm:-mt-16 mb-4 gap-4 z-10 relative" style={{ marginTop: '-16px', marginBottom: '0px' }}>
+          <div className="flex items-end space-x-4">
+            <img
+              src={profileUser.avatar}
+              alt={profileUser.name}
+              referrerPolicy="no-referrer"
+              className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-white shadow-md bg-white shrink-0"
+            />
+            <div className="pb-1">
+              <h2 className="font-display font-extrabold text-lg sm:text-xl text-slate-950 flex items-center space-x-2">
+                <span className="inline-block" style={{ paddingLeft: '18px' }}>{profileUser.name}</span>
+                {!isSelf && (
+                  <span className="bg-amber-500/10 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/25">
+                    Verificado
+                  </span>
+                )}
+              </h2>
+              {/* Followers and Following counters */}
+              <div className="flex items-center space-x-3 mt-1">
+                <span className="text-xs font-bold text-slate-900">
+                  seguidores: {profileUser.followers.toLocaleString()}
                 </span>
-              )}
-            </h2>
-            <p className="text-xs text-slate-500 font-semibold mt-0.5">@{profileUser.username}</p>
+                <span className="text-xs font-bold text-slate-900">
+                  seguidos: {profileUser.following.toLocaleString()}
+                </span>
+              </div>
+            </div>
           </div>
 
-          {/* Call-to-actions */}
-          <div className="mt-4 sm:mt-0 flex items-center space-x-2">
+          {/* Call-to-actions / Session indicator */}
+          <div className="sm:pb-1">
             {!isSelf ? (
               <button
                 onClick={() => onOpenDirectChat(profileUser)}
@@ -339,39 +348,22 @@ export default function ProfileView({
                 <span>Enviar Mensaje Privado</span>
               </button>
             ) : (
-              <div className="flex flex-col items-end space-y-1.5">
-                <div className="text-[10px] text-slate-400 font-mono flex items-center space-x-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span>Sesión: @{profileUser.username}</span>
-                </div>
+              <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 font-mono bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-xs" style={{ paddingLeft: '0px', paddingRight: '0px' }}>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Sesión: @{profileUser.username}</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Stats and biography summary */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-5 gap-6">
-          {/* Bio text */}
-          <div className="md:col-span-3">
-            <p className="text-xs text-slate-600 leading-relaxed font-medium">{profileUser.bio}</p>
+        {/* Biography summary (Max 50 chars) */}
+        {profileUser.bio && (
+          <div className="mt-3">
+            <p className="text-xs text-slate-800 leading-relaxed font-medium max-w-sm break-words bg-white/90 border border-slate-200/80 rounded-xl px-3.5 py-2 shadow-xs">
+              {profileUser.bio.length > 50 ? profileUser.bio.slice(0, 50) + "..." : profileUser.bio}
+            </p>
           </div>
-
-          {/* Social Counts */}
-          <div className="md:col-span-2 flex items-center space-x-6 border-l border-slate-200/60 pl-6">
-            <div className="text-center">
-              <span className="text-xl font-extrabold text-slate-900 block font-mono">
-                {profileUser.followers.toLocaleString()}
-              </span>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mt-0.5">Seguidores</span>
-            </div>
-            <div className="text-center">
-              <span className="text-xl font-extrabold text-slate-900 block font-mono">
-                {profileUser.following.toLocaleString()}
-              </span>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mt-0.5">Seguidos</span>
-            </div>
-          </div>
-        </div>
+        )}
 
         {/* Horizontal Menu with Icons Only */}
         {isSelf && (
@@ -600,11 +592,22 @@ export default function ProfileView({
                             className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
                             id={`saved-reel-${reel.id}`}
                           >
-                            <img
-                              src={reel.thumbnailUrl}
-                              alt="Reel thumbnail"
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
+                            {reel.type === "video" && (!reel.thumbnailUrl || reel.thumbnailUrl.includes("photo-1618005182384") || reel.thumbnailUrl === reel.videoUrl || reel.thumbnailUrl.endsWith(".mp4")) ? (
+                              <video
+                                src={reel.videoUrl || reel.thumbnailUrl}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                muted
+                                playsInline
+                                preload="metadata"
+                              />
+                            ) : (
+                              <img
+                                src={reel.thumbnailUrl || reel.images?.[0] || reel.videoUrl}
+                                alt="Portada publicación guardada"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                referrerPolicy="no-referrer"
+                              />
+                            )}
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
                             
                             <div className="absolute top-2 left-2 bg-slate-950/80 backdrop-blur-md px-1.5 py-0.5 rounded text-[8px] font-bold text-white flex items-center space-x-1">

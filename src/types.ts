@@ -7,6 +7,7 @@ export interface User {
   isOnline: boolean;
   followers: number;
   following: number;
+  followingUserIds?: string[];
   savedReelIds?: string[];
   coverPhoto?: string;
   isGuest?: boolean;
