@@ -9,7 +9,9 @@ import {
   Camera,
   Mic,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  UserPlus,
+  UserCheck
 } from "lucide-react";
 import { LiveSession, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
@@ -23,6 +25,7 @@ interface LiveViewProps {
   onEndLive: (sessionId: string) => void;
   onViewerStateChange?: (isViewing: boolean) => void;
   onClose?: () => void;
+  onToggleFollowUser?: (creatorId: string) => void;
 }
 
 export default function LiveView({
@@ -33,6 +36,7 @@ export default function LiveView({
   onEndLive,
   onViewerStateChange,
   onClose,
+  onToggleFollowUser,
 }: LiveViewProps) {
   const activeLives = liveSessions.filter((s) => s.isLive);
   const [currentStreamIndex, setCurrentStreamIndex] = useState(0);
@@ -46,12 +50,22 @@ export default function LiveView({
   // Floating Reactions
   const [reactions, setReactions] = useState<{ id: string; type: string; left: number; rotate: number }[]>([]);
 
+  // Ref for chat auto-scroll
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   // Wheel throttle state
   const isScrollingRef = useRef(false);
   const touchStartYRef = useRef<number | null>(null);
 
   // Current active session
   const activeSession = activeLives[currentStreamIndex] || null;
+
+  // Auto-scroll chat to bottom on new messages
+  useEffect(() => {
+    if (activeSession?.chatMessages?.length) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [activeSession?.chatMessages?.length, activeSession?.id]);
 
   // Sync stream index if count changes
   useEffect(() => {
@@ -83,6 +97,7 @@ export default function LiveView({
             streamId: prevSessionIdRef.current,
           })
         );
+        prevSessionIdRef.current = null;
       }
 
       if (activeSession) {
@@ -97,6 +112,18 @@ export default function LiveView({
         prevSessionIdRef.current = activeSession.id;
       }
     }
+
+    return () => {
+      if (socket && socket.readyState === WebSocket.OPEN && prevSessionIdRef.current) {
+        socket.send(
+          JSON.stringify({
+            type: "live_leave",
+            streamId: prevSessionIdRef.current,
+          })
+        );
+        prevSessionIdRef.current = null;
+      }
+    };
   }, [activeSession?.id, socket, currentUser.name, currentUser.avatar]);
 
   // Handle WebSocket reactions
@@ -264,7 +291,7 @@ export default function LiveView({
         <div className="flex-1 relative flex items-center justify-center bg-slate-950 overflow-hidden">
           {/* Top Bar */}
           <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between gap-2">
-            <div className="bg-slate-950/80 backdrop-blur-md border border-white/15 p-1.5 pr-3 rounded-full flex items-center space-x-2 shadow-lg max-w-[170px] sm:max-w-xs flex-shrink min-w-0">
+            <div className="bg-slate-950/80 backdrop-blur-md border border-white/15 p-1.5 pr-3 rounded-full flex items-center space-x-2 shadow-lg max-w-[220px] sm:max-w-xs flex-shrink min-w-0">
               <img
                 src={activeSession.creatorAvatar}
                 alt={activeSession.creatorName}
@@ -272,9 +299,43 @@ export default function LiveView({
                 className="w-8 h-8 rounded-full object-cover border border-rose-500 shadow-md flex-shrink-0"
               />
               <div className="min-w-0 flex-1">
-                <span className="text-xs font-extrabold text-white block truncate leading-tight">
-                  @{activeSession.creatorName}
-                </span>
+                <div className="flex items-center space-x-1.5 min-w-0">
+                  <span className="text-xs font-extrabold text-white truncate leading-tight">
+                    @{activeSession.creatorName}
+                  </span>
+                  {activeSession.creatorId !== currentUser.id && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onToggleFollowUser) {
+                          onToggleFollowUser(activeSession.creatorId);
+                        }
+                      }}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer flex items-center space-x-1 shrink-0 shadow-sm active:scale-95 ${
+                        currentUser.followingUserIds?.includes(activeSession.creatorId)
+                          ? "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700"
+                          : "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30"
+                      }`}
+                      title={
+                        currentUser.followingUserIds?.includes(activeSession.creatorId)
+                          ? "Siguiendo"
+                          : "Seguir al creador"
+                      }
+                    >
+                      {currentUser.followingUserIds?.includes(activeSession.creatorId) ? (
+                        <>
+                          <UserCheck className="w-3 h-3" />
+                          <span className="hidden xs:inline">Siguiendo</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="w-3 h-3" />
+                          <span>Seguir</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
                 <span className="text-[10px] text-slate-300 font-medium block truncate leading-tight">
                   {activeSession.title}
                 </span>
@@ -343,7 +404,7 @@ export default function LiveView({
         </div>
 
         {/* Live Chat Panel */}
-        <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-slate-800/80 bg-slate-950/90 backdrop-blur-md flex flex-col justify-between h-[280px] md:h-full z-20 relative">
+        <div className="w-full md:w-80 border-0 bg-slate-950/90 backdrop-blur-md flex flex-col justify-between h-[280px] md:h-full z-20 relative">
           {/* Floating Reactions */}
           <div className="absolute inset-x-0 bottom-16 -top-20 pointer-events-none z-30 overflow-visible">
             {reactions.map((react) => {
@@ -371,19 +432,28 @@ export default function LiveView({
             })}
           </div>
 
-          <div className="flex items-center justify-between border-b border-white/10 bg-slate-950/90 p-3 z-20">
-            <div className="flex items-center space-x-2">
-              <MessageSquare className="w-4 h-4 text-rose-500" />
-              <h3 className="font-extrabold text-xs text-white uppercase tracking-wider">Chat en Vivo</h3>
-            </div>
-          </div>
-
           {/* Chat Messages */}
-          <div className="flex-1 p-3 overflow-y-auto space-y-2 bg-transparent">
+          <div
+            className="flex-1 p-3 overflow-y-auto space-y-2 bg-transparent"
+            style={{
+              maskImage: "linear-gradient(to bottom, transparent 0%, black 40px, black 100%)",
+              WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 40px, black 100%)",
+            }}
+          >
             {activeSession.chatMessages.map((msg) => (
-              <div key={msg.id} className="text-xs leading-relaxed p-1 flex items-start space-x-1.5">
-                <span className="font-bold text-amber-400 truncate">@{msg.username}:</span>
-                <span className="text-white font-medium break-words">{msg.text}</span>
+              <div key={msg.id} className="text-xs leading-relaxed p-1 flex items-start space-x-2 w-full break-words min-w-0">
+                <img
+                  src={msg.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80"}
+                  alt={msg.username || "Usuario"}
+                  className="w-6 h-6 rounded-full object-cover shrink-0 border border-white/20 mt-0.5 shadow-sm"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80";
+                  }}
+                />
+                <div className="flex flex-col items-start space-y-0.5 w-full break-words min-w-0 flex-1">
+                  <span className="font-bold text-amber-400 text-[11px]">@{msg.username}</span>
+                  <span className="text-white font-medium text-xs break-words break-all max-w-full leading-snug">{msg.text}</span>
+                </div>
               </div>
             ))}
 
@@ -393,10 +463,11 @@ export default function LiveView({
                 <p className="text-[11px]">¡Escribe el primer mensaje!</p>
               </div>
             )}
+            <div ref={chatEndRef} />
           </div>
 
           {/* Reactions & Form */}
-          <div className="p-3 border-t border-white/10 bg-transparent">
+          <div className="p-3 border-0 bg-transparent">
             <div className="flex items-center justify-around mb-2 px-1">
               <button
                 onClick={() => sendReaction("heart")}
@@ -431,12 +502,12 @@ export default function LiveView({
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 disabled={currentUser.isGuest}
-                className="flex-1 bg-transparent text-xs text-white px-3.5 py-2 rounded-xl border border-white/30 focus:outline-none focus:border-rose-500 placeholder-slate-400"
+                className="flex-1 bg-transparent text-xs text-white px-4 py-2 rounded-full border border-white/30 focus:outline-none focus:border-rose-500 placeholder-slate-400"
               />
               <button
                 type="submit"
                 disabled={currentUser.isGuest || !chatInput.trim()}
-                className="p-2 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl cursor-pointer disabled:opacity-40"
+                className="p-2 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-full cursor-pointer disabled:opacity-40"
               >
                 <Send className="w-3.5 h-3.5" />
               </button>

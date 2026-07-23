@@ -765,6 +765,7 @@ export default function App() {
                 onEndLive={handleEndLive}
                 onViewerStateChange={(isOpen) => setIsLiveViewerOpen(isOpen)}
                 onClose={() => setActiveTab('reels')}
+                onToggleFollowUser={handleToggleFollowUser}
               />
             )}
 

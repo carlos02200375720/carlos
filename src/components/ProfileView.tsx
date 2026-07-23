@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Product, Reel, Order, LiveSession } from "../types";
-import { Eye, Heart, MessageCircle, BarChart3, ShoppingBag, ShieldCheck, Mail, Users, ArrowUpRight, Play, Star, Bookmark, Settings, Camera, Plus, Radio, Video, VideoOff, Mic, MicOff, Send, Sparkles, Flame, Zap, Shield, Crown, VolumeX, UserX, Search, X } from "lucide-react";
+import { Eye, Heart, MessageCircle, BarChart3, ShoppingBag, ShieldCheck, Mail, Users, ArrowUpRight, Play, Star, Bookmark, Settings, Camera, Plus, Radio, Search, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import PublishView from "./PublishView";
 import LoginView from "./LoginView";
+import BroadcasterStudio from "./BroadcasterStudio";
 
 interface ProfileViewProps {
   currentUser: User;
@@ -51,101 +52,8 @@ export default function ProfileView({
   const [loading, setLoading] = useState(true);
   const [activeSubTab, setActiveSubTab] = useState<"publications" | "saved" | "orders" | "performance" | "edit" | "publish" | "broadcast">("publications");
 
-  // Broadcaster studio states
-  const [streamTitle, setStreamTitle] = useState("¡En Vivo Promocionando Novedades! 🚀");
-  const [cameraOn, setCameraOn] = useState(true);
-  const [micOn, setMicOn] = useState(true);
+  // Active live session tracking for badge indicators
   const [activeLiveSession, setActiveLiveSession] = useState<LiveSession | null>(null);
-  const [liveChatMessages, setLiveChatMessages] = useState<{ senderName: string; avatar?: string; text: string; timestamp?: string }[]>([]);
-  const [liveChatInput, setLiveChatInput] = useState("");
-  const [reactions, setReactions] = useState<{ id: string; type: string; left: number; rotate: number }[]>([]);
-  
-  // User management states for broadcaster
-  const [broadcasterUserSearch, setBroadcasterUserSearch] = useState("");
-  const [broadcasterUserRoles, setBroadcasterUserRoles] = useState<Record<string, "moderator" | "vip" | "viewer">>({});
-  const [broadcasterMutedUsers, setBroadcasterMutedUsers] = useState<string[]>([]);
-  const [broadcasterKickedUsers, setBroadcasterKickedUsers] = useState<string[]>([]);
-  const [hasMediaStream, setHasMediaStream] = useState<boolean>(false);
-
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-
-  // Edit profile states
-  const [editName, setEditName] = useState("");
-  const [editUsername, setEditUsername] = useState("");
-  const [editPassword, setEditPassword] = useState("");
-  const [editBio, setEditBio] = useState("");
-  const [editAvatar, setEditAvatar] = useState("");
-  const [editCoverPhoto, setEditCoverPhoto] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-
-  // States for sub-sections inside the Edit Profile tab
-  const [editSection, setEditSection] = useState<"edit_self" | "register_new" | "switch_account">("edit_self");
-  const [regName, setRegName] = useState("");
-  const [regUsername, setRegUsername] = useState("");
-  const [regPassword, setRegPassword] = useState("");
-  const [regBio, setRegBio] = useState("");
-  const [regAvatar, setRegAvatar] = useState("");
-  const [regCoverPhoto, setRegCoverPhoto] = useState("");
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [registerSuccess, setRegisterSuccess] = useState(false);
-  const [registerError, setRegisterError] = useState("");
-
-  // Switch account with password states
-  const [switchingUser, setSwitchingUser] = useState<User | null>(null);
-  const [switchPassword, setSwitchPassword] = useState("");
-  const [switchError, setSwitchError] = useState("");
-
-  // Guest authentication states
-  const [authMode, setAuthMode] = useState<"register" | "login">("register");
-  const [loginUsernameInput, setLoginUsernameInput] = useState("");
-  const [loginError, setLoginError] = useState("");
-
-  useEffect(() => {
-    if (profileUser && isSelf) {
-      setEditName(profileUser.name);
-      setEditUsername(profileUser.username);
-      setEditBio(profileUser.bio);
-      setEditAvatar(profileUser.avatar);
-      setEditCoverPhoto(profileUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80");
-      setEditPassword(profileUser.password || "");
-    }
-  }, [profileUser, isSelf]);
-
-  // Connect camera stream when entering Broadcaster Studio
-  useEffect(() => {
-    if (activeSubTab === "broadcast" && cameraOn) {
-      setHasMediaStream(false);
-      navigator.mediaDevices?.getUserMedia({ video: { aspectRatio: 16 / 9 }, audio: true })
-        .catch(() => {
-          // Fallback if audio or aspect ratio fails
-          return navigator.mediaDevices?.getUserMedia({ video: true });
-        })
-        .then((stream) => {
-          if (stream) {
-            mediaStreamRef.current = stream;
-            setHasMediaStream(true);
-            if (localVideoRef.current) {
-              localVideoRef.current.srcObject = stream;
-            }
-          }
-        })
-        .catch((err) => {
-          console.warn("Broadcaster camera access error:", err);
-          setHasMediaStream(false);
-        });
-    } else {
-      setHasMediaStream(false);
-    }
-
-    return () => {
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
-        mediaStreamRef.current = null;
-      }
-    };
-  }, [activeSubTab, cameraOn]);
 
   // Sync active live session from liveSessions array
   useEffect(() => {
@@ -158,88 +66,6 @@ export default function ProfileView({
       }
     }
   }, [liveSessions, currentUser]);
-
-  // Socket listener for live chat and reactions in Broadcaster Studio
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleSocketMsg = (e: MessageEvent) => {
-      try {
-        const payload = JSON.parse(e.data);
-        if (payload.type === "live_msg" && activeLiveSession && payload.streamId === activeLiveSession.id) {
-          setLiveChatMessages((prev) => [...prev, {
-            senderName: payload.senderName,
-            avatar: payload.avatar,
-            text: payload.text,
-            timestamp: new Date().toISOString()
-          }]);
-        } else if (payload.type === "live_reaction" && activeLiveSession && payload.streamId === activeLiveSession.id) {
-          triggerFloatingReaction(payload.reactionType);
-        }
-      } catch (err) {
-        // ignore
-      }
-    };
-
-    socket.addEventListener("message", handleSocketMsg);
-    return () => {
-      socket.removeEventListener("message", handleSocketMsg);
-    };
-  }, [socket, activeLiveSession]);
-
-  const triggerFloatingReaction = (type: string) => {
-    const id = Math.random().toString(36).substring(2, 9);
-    const left = 20 + Math.random() * 60;
-    const rotate = -30 + Math.random() * 60;
-    setReactions(prev => [...prev, { id, type, left, rotate }]);
-    setTimeout(() => {
-      setReactions(prev => prev.filter(r => r.id !== id));
-    }, 2000);
-  };
-
-  const handleStartLive = () => {
-    if (currentUser.username === "invitado" || currentUser.isGuest) {
-      alert("Por favor inicia sesión o crea una cuenta para realizar transmisiones en vivo.");
-      return;
-    }
-    if (!onGoLive) return;
-
-    onGoLive(streamTitle, (newSession) => {
-      setActiveLiveSession(newSession);
-      setLiveChatMessages([]);
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-          type: "live_join",
-          streamId: newSession.id,
-          username: currentUser.name,
-          avatar: currentUser.avatar
-        }));
-      }
-    });
-  };
-
-  const handleStopLive = () => {
-    if (activeLiveSession && onEndLive) {
-      onEndLive(activeLiveSession.id);
-    }
-    setActiveLiveSession(null);
-  };
-
-  const handleSendBroadcasterChat = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!liveChatInput.trim() || !activeLiveSession) return;
-
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({
-        type: "live_msg",
-        streamId: activeLiveSession.id,
-        senderName: currentUser.name + " (Creador)",
-        avatar: currentUser.avatar,
-        text: liveChatInput
-      }));
-    }
-    setLiveChatInput("");
-  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -670,13 +496,80 @@ export default function ProfileView({
                     </div>
 
                     {/* Studio Body Grid */}
-                    <div className="flex-1 overflow-y-auto p-3 sm:p-6 pt-14 sm:pt-14 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 max-w-7xl w-full mx-auto">
+                    <div className="flex-1 overflow-y-auto p-3 sm:p-6 pt-14 sm:pt-14 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 max-w-[1600px] w-full mx-auto">
                       
-                      {/* Left Side: Stream Video Feed & Title (7 Cols) */}
-                      <div className="lg:col-span-7 space-y-4 flex flex-col">
+                      {/* Column 1 (Left): Chat en Vivo del Emisor (4 Cols on desktop, Order 2 on mobile) */}
+                      <div className="lg:col-span-4 order-2 lg:order-1 flex flex-col space-y-4">
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex-1 flex flex-col min-h-[420px]">
+                          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                            <h4 className="text-xs font-extrabold text-white flex items-center space-x-2">
+                              <MessageCircle className="w-4 h-4 text-amber-500" />
+                              <span>Chat en Vivo del Emisor</span>
+                            </h4>
+                            <span className="text-[10px] bg-slate-800 text-slate-300 font-mono font-bold px-2 py-0.5 rounded-full">
+                              {liveChatMessages.length} mensajes
+                            </span>
+                          </div>
+
+                          <div
+                            className="flex-1 overflow-y-auto space-y-2 py-3 pr-1 max-h-[420px] lg:max-h-[520px]"
+                            style={{
+                              maskImage: "linear-gradient(to bottom, transparent 0%, black 20px, black 100%)",
+                              WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 20px, black 100%)",
+                            }}
+                          >
+                            {liveChatMessages.map((msg, i) => (
+                              <div key={i} className="text-xs bg-slate-950 p-2.5 rounded-xl border border-slate-850 flex items-start space-x-2 w-full break-words min-w-0">
+                                <img
+                                  src={msg.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80"}
+                                  alt={msg.senderName || "Usuario"}
+                                  className="w-6 h-6 rounded-full object-cover shrink-0 border border-white/20 mt-0.5 shadow-sm"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80";
+                                  }}
+                                />
+                                <div className="flex flex-col items-start space-y-0.5 w-full break-words min-w-0 flex-1">
+                                  <span className="font-bold text-amber-400 text-[11px]">@{msg.senderName}</span>
+                                  <span className="text-slate-200 text-xs break-words break-all max-w-full leading-snug">{msg.text}</span>
+                                </div>
+                              </div>
+                            ))}
+
+                            {liveChatMessages.length === 0 && (
+                              <div className="py-12 text-center text-slate-500 flex flex-col items-center justify-center h-full">
+                                <MessageCircle className="w-8 h-8 text-slate-700 mb-2 opacity-50" />
+                                <p className="text-xs font-medium">Los mensajes de tus espectadores aparecerán aquí.</p>
+                              </div>
+                            )}
+                            <div ref={broadcasterChatEndRef} />
+                          </div>
+
+                          {activeLiveSession && (
+                            <form onSubmit={handleSendBroadcasterChat} className="flex space-x-2 pt-3 border-t border-slate-800 mt-auto">
+                              <input
+                                type="text"
+                                placeholder="Enviar mensaje como emisor..."
+                                value={liveChatInput}
+                                onChange={(e) => setLiveChatInput(e.target.value)}
+                                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
+                              />
+                              <button
+                                type="submit"
+                                className="bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl font-extrabold text-xs cursor-pointer flex items-center space-x-1 shrink-0"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                                <span>Responder</span>
+                              </button>
+                            </form>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Column 2 (Center): Stream Video Feed & Title (5 Cols on desktop, Order 1 on mobile) */}
+                      <div className="lg:col-span-5 order-1 lg:order-2 space-y-4 flex flex-col items-center w-full">
                         
                         {/* Title Input */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg w-full">
                           <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
                             Título de la Transmisión
                           </label>
@@ -690,8 +583,8 @@ export default function ProfileView({
                           />
                         </div>
 
-                        {/* Camera Box */}
-                        <div className="relative aspect-video bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center min-h-[250px]">
+                        {/* Camera Box - Vertical 9:16 Reel format with transparent background */}
+                        <div className="relative aspect-[9/16] w-full max-w-[320px] sm:max-w-[340px] bg-transparent rounded-2xl overflow-hidden border-0 shadow-none flex items-center justify-center mx-auto">
                           {cameraOn ? (
                             <>
                               <video
@@ -702,8 +595,7 @@ export default function ProfileView({
                                 className={`w-full h-full object-cover ${!hasMediaStream ? "hidden" : "block"}`}
                               />
                               {!hasMediaStream && (
-                                <div className="relative w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-950 via-rose-950/40 to-slate-950 p-6 text-center overflow-hidden">
-                                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(244,63,94,0.15)_0,transparent_70%)] animate-pulse" />
+                                <div className="relative w-full h-full flex flex-col items-center justify-center bg-transparent p-6 text-center overflow-hidden">
                                   <div className="relative z-10 flex flex-col items-center space-y-2">
                                     <div className="relative">
                                       <img
@@ -720,7 +612,7 @@ export default function ProfileView({
                                       <h4 className="text-sm font-extrabold text-white">{currentUser.name}</h4>
                                       <p className="text-[11px] text-slate-300 font-medium mt-0.5">Señal de Audio y Avatar Activa</p>
                                     </div>
-                                    <div className="bg-slate-900/90 border border-slate-800 text-[10px] text-slate-400 px-3 py-1 rounded-full backdrop-blur-md">
+                                    <div className="bg-transparent border-0 text-[10px] text-slate-400 px-3 py-1 rounded-full">
                                       💡 Sin webcam física detectada (Transmisión lista)
                                     </div>
                                   </div>
@@ -728,33 +620,37 @@ export default function ProfileView({
                               )}
                             </>
                           ) : (
-                            <div className="flex flex-col items-center text-slate-600 p-6 text-center">
+                            <div className="flex flex-col items-center text-slate-600 p-6 text-center bg-transparent">
                               <VideoOff className="w-14 h-14 mb-2 animate-pulse text-slate-700" />
                               <p className="text-xs font-bold text-slate-400">Cámara Desactivada</p>
                             </div>
                           )}
 
                           {/* Camera Overlay Controls */}
-                          <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between z-10 bg-slate-950/85 backdrop-blur-md p-3 rounded-xl border border-white/10 gap-2">
+                          <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between z-10 bg-transparent p-3 rounded-xl border-0 shadow-none gap-2">
                             <div className="flex items-center space-x-2">
                               <button
                                 onClick={() => setCameraOn(!cameraOn)}
-                                className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
-                                  cameraOn ? "bg-slate-800 text-white hover:bg-slate-700" : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                                className={`p-3 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-lg active:scale-90 backdrop-blur-md border ${
+                                  cameraOn
+                                    ? "bg-slate-900/70 hover:bg-slate-800/80 text-slate-100 border-white/20"
+                                    : "bg-rose-500/30 hover:bg-rose-500/40 text-rose-400 border-rose-500/50"
                                 }`}
+                                title={cameraOn ? "Desactivar Cámara" : "Activar Cámara"}
                               >
-                                {cameraOn ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
-                                <span>{cameraOn ? "Cam On" : "Cam Off"}</span>
+                                {cameraOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
                               </button>
 
                               <button
                                 onClick={() => setMicOn(!micOn)}
-                                className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
-                                  micOn ? "bg-slate-800 text-white hover:bg-slate-700" : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                                className={`p-3 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-lg active:scale-90 backdrop-blur-md border ${
+                                  micOn
+                                    ? "bg-slate-900/70 hover:bg-slate-800/80 text-slate-100 border-white/20"
+                                    : "bg-rose-500/30 hover:bg-rose-500/40 text-rose-400 border-rose-500/50"
                                 }`}
+                                title={micOn ? "Silenciar Micrófono" : "Activar Micrófono"}
                               >
-                                {micOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-                                <span>{micOn ? "Mic On" : "Mute"}</span>
+                                {micOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
                               </button>
                             </div>
 
@@ -801,58 +697,11 @@ export default function ProfileView({
                           </div>
                         </div>
 
-                        {/* Broadcaster Chat */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex-1 flex flex-col min-h-[200px]">
-                          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                            <h4 className="text-xs font-extrabold text-white flex items-center space-x-2">
-                              <MessageCircle className="w-4 h-4 text-amber-500" />
-                              <span>Chat en Vivo del Emisor</span>
-                            </h4>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              {liveChatMessages.length} mensajes
-                            </span>
-                          </div>
-
-                          <div className="flex-1 overflow-y-auto space-y-2 py-3 pr-1 max-h-48">
-                            {liveChatMessages.map((msg, i) => (
-                              <div key={i} className="text-xs bg-slate-950 p-2.5 rounded-xl border border-slate-850 flex items-start space-x-2">
-                                <span className="font-bold text-amber-400 shrink-0">@{msg.senderName}:</span>
-                                <span className="text-slate-200">{msg.text}</span>
-                              </div>
-                            ))}
-
-                            {liveChatMessages.length === 0 && (
-                              <div className="py-8 text-center text-slate-500">
-                                <p className="text-xs">Los mensajes de tus espectadores aparecerán aquí.</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {activeLiveSession && (
-                            <form onSubmit={handleSendBroadcasterChat} className="flex space-x-2 pt-3 border-t border-slate-800">
-                              <input
-                                type="text"
-                                placeholder="Enviar mensaje como emisor..."
-                                value={liveChatInput}
-                                onChange={(e) => setLiveChatInput(e.target.value)}
-                                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
-                              />
-                              <button
-                                type="submit"
-                                className="bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl font-extrabold text-xs cursor-pointer flex items-center space-x-1"
-                              >
-                                <Send className="w-3.5 h-3.5" />
-                                <span>Responder</span>
-                              </button>
-                            </form>
-                          )}
-                        </div>
-
                       </div>
 
-                      {/* Right Side: Tarjeta de Gestión de Usuarios del Emisor (5 Cols) */}
-                      <div className="lg:col-span-5 space-y-4 flex flex-col">
-                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex-1 flex flex-col">
+                      {/* Column 3 (Right): Tarjeta de Gestión de Usuarios del Emisor (3 Cols on desktop, Order 3 on mobile) */}
+                      <div className="lg:col-span-3 order-3 lg:order-3 space-y-4 flex flex-col">
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex-1 flex flex-col min-h-[420px]">
                           
                           {/* User Management Card Header */}
                           <div className="pb-3 border-b border-slate-800">

@@ -310,6 +310,9 @@ let orders: Order[] = [];
 
 let liveSessions: LiveSession[] = [];
 
+// Store active viewer sockets per streamId
+const streamViewersMap = new Map<string, Set<WebSocket>>();
+
 // Active WebSocket Client Map: Key is userId
 const activeClients = new Map<string, WebSocket>();
 
@@ -1692,36 +1695,48 @@ async function startServer() {
           }
 
           case "live_join": {
-            const { streamId, username, avatar } = payload;
+            const { streamId, username, isHost } = payload;
+            
+            if (currentStreamId && currentStreamId !== streamId) {
+              handleStreamLeave(ws, currentStreamId);
+            }
             currentStreamId = streamId;
 
             const session = liveSessions.find((s) => s.id === streamId);
             if (session) {
-              session.viewersCount += 1;
-              
-              // Broadcast viewer update to everyone in this stream
-              broadcastToStream(streamId, {
-                type: "live_viewers",
-                streamId,
-                count: session.viewersCount
-              });
+              if (!streamViewersMap.has(streamId)) {
+                streamViewersMap.set(streamId, new Set());
+              }
+              const viewerSet = streamViewersMap.get(streamId)!;
+              const isNewViewer = !viewerSet.has(ws);
 
-              // Create system welcome message
-              const systemMsg = {
-                id: "lc_" + generateId(),
-                username: "System 🤖",
-                avatar: "",
-                text: `${username || "A viewer"} entered the stream. Welcome!`,
-                createdAt: new Date().toISOString()
-              };
+              if (isHost || clientUserId === session.creatorId) {
+                (ws as any).isHostStream = streamId;
+              } else {
+                (ws as any).isHostStream = false;
+              }
 
-              session.chatMessages.push(systemMsg);
-              
-              broadcastToStream(streamId, {
-                type: "live_chat_msg",
-                streamId,
-                msg: systemMsg
-              });
+              viewerSet.add(ws);
+              updateAndBroadcastViewers(streamId);
+
+              // Send system welcome message if new non-host viewer joined
+              if (isNewViewer && !(ws as any).isHostStream) {
+                const systemMsg = {
+                  id: "lc_" + generateId(),
+                  username: "System 🤖",
+                  avatar: "",
+                  text: `👋 ${username || "Un espectador"} se unió a la transmisión.`,
+                  createdAt: new Date().toISOString()
+                };
+
+                session.chatMessages.push(systemMsg);
+                
+                broadcastToStream(streamId, {
+                  type: "live_chat_msg",
+                  streamId,
+                  msg: systemMsg
+                });
+              }
             }
             break;
           }
@@ -1818,16 +1833,49 @@ async function startServer() {
     }
   }
 
-  // Helper: Handle client leaving live stream
-  function handleStreamLeave(socket: WebSocket, streamId: string) {
+  // Helper: Update & broadcast real viewer count
+  function updateAndBroadcastViewers(streamId: string) {
     const session = liveSessions.find((s) => s.id === streamId);
-    if (session) {
-      session.viewersCount = Math.max(0, session.viewersCount - 1);
+    const viewerSet = streamViewersMap.get(streamId);
+    
+    if (!session) return;
+
+    if (!viewerSet) {
+      session.viewersCount = 0;
       broadcastToStream(streamId, {
         type: "live_viewers",
         streamId,
-        count: session.viewersCount
+        count: 0
       });
+      return;
+    }
+
+    // Filter out closed sockets and count audience sockets (non-hosts)
+    let audienceCount = 0;
+    viewerSet.forEach((socket) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        if ((socket as any).isHostStream !== streamId) {
+          audienceCount++;
+        }
+      } else {
+        viewerSet.delete(socket);
+      }
+    });
+
+    session.viewersCount = audienceCount;
+    broadcastToStream(streamId, {
+      type: "live_viewers",
+      streamId,
+      count: session.viewersCount
+    });
+  }
+
+  // Helper: Handle client leaving live stream
+  function handleStreamLeave(socket: WebSocket, streamId: string) {
+    const viewerSet = streamViewersMap.get(streamId);
+    if (viewerSet) {
+      viewerSet.delete(socket);
+      updateAndBroadcastViewers(streamId);
     }
   }
 
