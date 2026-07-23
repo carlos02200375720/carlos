@@ -144,7 +144,7 @@ export default function SocialPanel({
     >
       {/* Header */}
       {!activeChatUser && (
-        <div className="p-4 border-b border-slate-850 flex items-center gap-3 bg-slate-900/60 shrink-0">
+        <div className="p-4 border-b border-black flex items-center gap-3 bg-slate-900/60 shrink-0">
           <div className="relative flex-1">
             <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
               <Users className="w-4 h-4 text-amber-400" />
@@ -330,9 +330,9 @@ export default function SocialPanel({
           </div>
         ) : (
           /* 1-on-1 CHAT WINDOW VIEW */
-          <div className="flex-1 flex flex-col justify-between overflow-hidden max-w-lg mx-auto w-full border-x border-slate-900 bg-slate-950">
+          <div className="flex-1 flex flex-col justify-between overflow-hidden max-w-lg mx-auto w-full border-x border-black bg-slate-950">
             {/* Chat Partner details header */}
-            <div className="px-4 py-3 bg-slate-900 border-b border-slate-850 flex items-center justify-between shrink-0">
+            <div className="px-4 py-3 bg-slate-900 border-b border-black flex items-center justify-between shrink-0">
               <button
                 onClick={() => onSelectChatUser(null)}
                 className="text-xs text-amber-500 hover:underline font-semibold cursor-pointer flex items-center space-x-1"
@@ -350,7 +350,7 @@ export default function SocialPanel({
                 src={activeChatUser.avatar}
                 alt={activeChatUser.username}
                 referrerPolicy="no-referrer"
-                className="w-6 h-6 rounded-full object-cover border border-slate-850"
+                className="w-6 h-6 rounded-full object-cover border border-black"
               />
             </div>
 
@@ -365,10 +365,10 @@ export default function SocialPanel({
               )}
 
               {messages.map((msg) => {
-                const isMe = msg.senderId === currentUser.id;
+                const isMe = msg.senderId === currentUser.id || msg.senderId === "current_user";
                 return (
                   <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[75%] p-3 rounded-2xl text-xs leading-relaxed border ${isMe ? "bg-amber-500 text-slate-950 border-amber-400 rounded-tr-none" : "bg-slate-900 text-slate-200 border-slate-850 rounded-tl-none"}`}>
+                    <div className={`max-w-[75%] p-3 rounded-2xl text-xs leading-relaxed border ${isMe ? "bg-amber-500 text-slate-950 border-amber-400 rounded-tr-none" : "bg-slate-900 text-slate-200 border-black rounded-tl-none"}`}>
                       <p>{msg.text}</p>
                       <span className={`text-[8px] block text-right mt-1 font-mono ${isMe ? "text-slate-950/70" : "text-slate-500"}`}>
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -380,7 +380,7 @@ export default function SocialPanel({
             </div>
 
             {/* Private chat submit input form */}
-            <form onSubmit={handleSubmit} className="p-3 border-t border-slate-850 bg-slate-900/40 flex items-center space-x-2 shrink-0">
+            <form onSubmit={handleSubmit} className="p-3 border-t border-black bg-slate-900/40 flex items-center space-x-2 shrink-0">
               <input
                 type="text"
                 placeholder="Escribe un mensaje privado..."

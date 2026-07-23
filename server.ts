@@ -1506,13 +1506,16 @@ async function startServer() {
       return;
     }
     const partnerId = req.params.partnerId;
-    const currentId = "current_user";
 
-    const messages = chatMessages.filter(
-      (m) =>
-        (m.senderId === currentId && m.receiverId === partnerId) ||
-        (m.senderId === partnerId && m.receiverId === currentId)
-    );
+    const messages = chatMessages.filter((m) => {
+      const isFromMe = m.senderId === "current_user" || m.senderId === activeOriginalUserId;
+      const isToMe = m.receiverId === "current_user" || m.receiverId === activeOriginalUserId;
+
+      const isFromPartner = m.senderId === partnerId;
+      const isToPartner = m.receiverId === partnerId;
+
+      return (isFromMe && isToPartner) || (isFromPartner && isToMe);
+    });
 
     res.json(messages);
   });
@@ -1647,9 +1650,11 @@ async function startServer() {
             const { senderId, receiverId, text } = payload;
             if (!senderId || !receiverId || !text) return;
 
+            const actualSenderId = (senderId === "current_user" && activeOriginalUserId !== "user_guest") ? activeOriginalUserId : senderId;
+
             const newMsg: ChatMessage = {
               id: "m_" + generateId(),
-              senderId,
+              senderId: actualSenderId,
               receiverId,
               text,
               timestamp: new Date().toISOString()
@@ -1657,13 +1662,25 @@ async function startServer() {
 
             chatMessages.push(newMsg);
 
-            // Send to recipient if connected
+            // Send to recipient if connected (check receiverId directly or current_user)
+            let sentToRec = false;
             const recSocket = activeClients.get(receiverId);
             if (recSocket && recSocket.readyState === WebSocket.OPEN) {
               recSocket.send(JSON.stringify({
                 type: "private_msg",
                 message: newMsg
               }));
+              sentToRec = true;
+            }
+
+            if (!sentToRec && receiverId === activeOriginalUserId) {
+              const currentClient = activeClients.get("current_user");
+              if (currentClient && currentClient.readyState === WebSocket.OPEN) {
+                currentClient.send(JSON.stringify({
+                  type: "private_msg",
+                  message: newMsg
+                }));
+              }
             }
 
             // Acknowledge back to sender

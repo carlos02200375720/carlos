@@ -48,6 +48,7 @@ export default function App() {
   const [forceAvatarSaving, setForceAvatarSaving] = useState(false);
   const [forceAvatarError, setForceAvatarError] = useState("");
   const [guestInteractionAlert, setGuestInteractionAlert] = useState<string | null>(null);
+  const [isLiveViewerOpen, setIsLiveViewerOpen] = useState(false);
 
   // WebSocket reference
   const socketRef = useRef<WebSocket | null>(null);
@@ -118,7 +119,13 @@ export default function App() {
     if (activeChatUser) {
       fetch(`/api/chats/${activeChatUser.id}`)
         .then((res) => res.json())
-        .then((data) => setPrivateMessages(data))
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setPrivateMessages(data);
+          } else {
+            setPrivateMessages([]);
+          }
+        })
         .catch((err) => console.error("Error loading chat:", err));
     } else {
       setPrivateMessages([]);
@@ -175,6 +182,13 @@ export default function App() {
           case "private_msg_sent": {
             const msg: ChatMessage = payload.message;
             setPrivateMessages((prev) => [...prev, msg]);
+            break;
+          }
+
+          case "error": {
+            if (payload.message) {
+              setGuestInteractionAlert(payload.message);
+            }
             break;
           }
 
@@ -403,6 +417,10 @@ export default function App() {
 
   // Private Messages handler
   const handleSendPrivateMessage = (text: string) => {
+    if (currentUser.username === "invitado" || currentUser.isGuest) {
+      setGuestInteractionAlert("Para enviar mensajes privados, por favor inicia sesión o crea una cuenta.");
+      return;
+    }
     if (!activeChatUser || !socketRef.current || !socketConnected) return;
 
     socketRef.current.send(JSON.stringify({
@@ -442,6 +460,11 @@ export default function App() {
 
   // Go live action
   const handleGoLive = (title: string, onComplete: (session: LiveSession) => void) => {
+    if (currentUser.username === "invitado" || currentUser.isGuest) {
+      setGuestInteractionAlert("Para iniciar una transmisión en vivo, por favor inicia sesión o crea una cuenta.");
+      return;
+    }
+
     fetch("/api/live", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -452,7 +475,13 @@ export default function App() {
     })
       .then((res) => res.json())
       .then((data) => {
-        if (!data.error) {
+        if (data.error) {
+          setGuestInteractionAlert(data.error);
+        } else {
+          setLiveSessions((prev) => {
+            const filter = prev.filter((s) => s.id !== data.id);
+            return [data, ...filter];
+          });
           onComplete(data);
         }
       })
@@ -553,10 +582,136 @@ export default function App() {
   const isDarkNavActive = activeTab === 'reels' || activeTab === 'messages';
 
   return (
-    <div className="w-full min-h-screen bg-white text-slate-900 font-sans flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950">
+    <div className={`w-full min-h-screen ${isDarkNavActive ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"} font-sans flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950`}>
       
+      {/* Desktop Left Sidebar Navigation (visible only on lg screens) */}
+      <aside className="hidden lg:flex flex-col fixed top-0 left-0 bottom-0 w-64 bg-slate-950 border-r border-slate-800 text-white z-40 p-5 justify-between select-none shadow-2xl">
+        <div>
+          {/* App Brand Header */}
+          <div className="flex items-center space-x-3 px-2 py-3 mb-6 border-b border-slate-800/80">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/20 shrink-0">
+              <Play className="w-5 h-5 fill-slate-950" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="font-display font-extrabold text-lg text-white tracking-tight leading-none">
+                Mall<span className="text-amber-500">Social</span>
+              </h1>
+              <p className="text-[10px] text-slate-400 font-medium mt-1">Reels & Commerce</p>
+            </div>
+          </div>
+
+          {/* Navigation Menu */}
+          <nav className="space-y-1.5">
+            <button
+              onClick={() => setActiveTab('reels')}
+              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
+                activeTab === 'reels'
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "text-slate-400 hover:text-white hover:bg-slate-900"
+              }`}
+              id="desktop-nav-reels"
+            >
+              <Play className={`w-5 h-5 ${activeTab === 'reels' ? "fill-slate-950" : ""}`} />
+              <span>Reels & Videos</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('shop')}
+              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
+                activeTab === 'shop'
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "text-slate-400 hover:text-white hover:bg-slate-900"
+              }`}
+              id="desktop-nav-shop"
+            >
+              <ShoppingBag className={`w-5 h-5 ${activeTab === 'shop' ? "fill-slate-950" : ""}`} />
+              <span>Mercado</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('messages')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
+                activeTab === 'messages'
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "text-slate-400 hover:text-white hover:bg-slate-900"
+              }`}
+              id="desktop-nav-messages"
+            >
+              <div className="flex items-center space-x-3.5">
+                <MessageSquare className={`w-5 h-5 ${activeTab === 'messages' ? "fill-slate-950" : ""}`} />
+                <span>Mensajes</span>
+              </div>
+              {totalUnreads > 0 && (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                  activeTab === 'messages' ? "bg-slate-950 text-amber-400" : "bg-rose-500 text-white"
+                }`}>
+                  {totalUnreads}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('live')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
+                activeTab === 'live'
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "text-slate-400 hover:text-white hover:bg-slate-900"
+              }`}
+              id="desktop-nav-live"
+            >
+              <div className="flex items-center space-x-3.5">
+                <Radio className="w-5 h-5" />
+                <span>Directos</span>
+              </div>
+              {liveSessions.filter(s => s.isLive).length > 0 && (
+                <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[9px] font-bold animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                  <span>EN VIVO</span>
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
+              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
+                activeTab === 'profile' && selectedCreatorProfileId === null
+                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                  : "text-slate-400 hover:text-white hover:bg-slate-900"
+              }`}
+              id="desktop-nav-profile"
+            >
+              <UserIcon className="w-5 h-5" />
+              <span>{currentUser.username === "invitado" ? "Registro / Cuenta" : "Dashboard / Perfil"}</span>
+            </button>
+          </nav>
+        </div>
+
+        {/* Desktop Footer Profile Card */}
+        <div className="pt-4 border-t border-slate-800/80">
+          <div
+            onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
+            className="flex items-center space-x-3 p-2.5 rounded-2xl bg-slate-900/80 hover:bg-slate-900 border border-slate-800/80 transition-all cursor-pointer group"
+          >
+            <img
+              src={currentUser.avatar}
+              alt={currentUser.name}
+              referrerPolicy="no-referrer"
+              className="w-9 h-9 rounded-full object-cover border border-amber-500/40 shrink-0"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-white truncate group-hover:text-amber-400 transition-colors">
+                {currentUser.name}
+              </p>
+              <p className="text-[10px] text-slate-400 truncate font-mono">
+                @{currentUser.username || "invitado"}
+              </p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
       {/* Main Container */}
-      <main className={`flex-1 w-full bg-white ${activeTab === 'messages' && activeChatUser ? "" : "mb-16"}`}>
+      <main className={`flex-1 w-full lg:pl-64 ${isDarkNavActive ? "bg-slate-950" : "bg-white"} ${(activeTab === 'messages' && activeChatUser) || isLiveViewerOpen || activeTab === 'live' ? "mb-0" : "mb-16 lg:mb-0"}`}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -604,9 +759,12 @@ export default function App() {
               <LiveView
                 liveSessions={liveSessions}
                 currentUser={currentUser}
+                users={users}
                 socket={socketRef.current}
                 onGoLive={handleGoLive}
                 onEndLive={handleEndLive}
+                onViewerStateChange={(isOpen) => setIsLiveViewerOpen(isOpen)}
+                onClose={() => setActiveTab('reels')}
               />
             )}
 
@@ -635,6 +793,10 @@ export default function App() {
                     .catch((err) => console.error("Error refreshing users:", err));
                 }}
                 onLogout={handleLogout}
+                socket={socketRef.current}
+                onGoLive={handleGoLive}
+                onEndLive={handleEndLive}
+                liveSessions={liveSessions}
               />
             )}
 
@@ -655,9 +817,9 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Bottom Floating Navigation Bar */}
-      {!(activeTab === 'messages' && activeChatUser) && (
-        <div id="bottom-nav-bar" className="fixed bottom-0 inset-x-0 py-3 px-6 z-30 shadow-md backdrop-blur-lg border-t border-slate-900 bg-black text-white">
+      {/* Bottom Floating Navigation Bar (hidden on desktop lg screens or when in active chat/live stream viewer) */}
+      {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && (
+        <div id="bottom-nav-bar" className="fixed bottom-0 inset-x-0 py-3 px-6 z-30 shadow-md backdrop-blur-lg border-t border-slate-900 bg-black text-white lg:hidden">
           <div className="max-w-md mx-auto flex items-center justify-around">
             
             {/* Tab 1: Reels */}
@@ -743,7 +905,7 @@ export default function App() {
                 {currentUser.username === "invitado" ? "Registro" : "Dashboard"}
               </span>
             </button>
-  
+   
           </div>
         </div>
       )}
