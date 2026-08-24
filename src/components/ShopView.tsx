@@ -1211,7 +1211,10 @@ export default function ShopView({
               </motion.div>
 
               {/* Fixed Bottom Action Bar for Product Details (Replaces main navigation bar) */}
-              <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-0 py-3 px-4 sm:px-6 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+              <div 
+                className="fixed bottom-0 inset-x-0 z-40 bg-white border-0 pt-3 px-4 sm:px-6 shadow-none"
+                style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+              >
                 <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
                   <div>
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest font-extrabold block">Precio unitario</span>
@@ -1501,7 +1504,10 @@ export default function ShopView({
               </div>
 
               {/* Fixed Bottom Payment Bar */}
-              <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-0 px-4 py-2.5 sm:px-6 sm:py-3.5 shadow-[0_-8px_25px_rgba(0,0,0,0.08)]">
+              <div 
+                className="fixed bottom-0 inset-x-0 z-40 bg-white border-0 pt-2.5 px-4 sm:px-6 sm:pt-3.5 shadow-none"
+                style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+              >
                 <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
                   <div className="flex items-center space-x-2 sm:space-x-4">
                     <div className="hidden sm:flex p-2.5 bg-amber-50 rounded-xl text-amber-600 border border-amber-200/60">

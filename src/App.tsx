@@ -80,15 +80,30 @@ export default function App() {
   const socketRef = useRef<WebSocket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
 
-  // Set status bar theme-color to 100% transparent
+  // Synchronize status bar and native bottom navigation bar color dynamically
   useEffect(() => {
+    const isDark = activeTab === 'reels';
+    const currentThemeColor = isDark ? "#000000" : "#ffffff";
+    const statusBarStyle = isDark ? "black-translucent" : "default";
+
+    // Update theme-color meta tags for mobile browsers and Android system UI
     const themeMeta = document.getElementById("theme-color-meta") || document.querySelector('meta[name="theme-color"]');
     if (themeMeta) {
-      themeMeta.setAttribute("content", "transparent");
+      themeMeta.setAttribute("content", currentThemeColor);
     }
     document.querySelectorAll('meta[name="theme-color"]').forEach((tag) => {
-      tag.setAttribute("content", "transparent");
+      tag.setAttribute("content", currentThemeColor);
     });
+
+    // Update Apple mobile status bar style
+    const appleStatusMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+    if (appleStatusMeta) {
+      appleStatusMeta.setAttribute("content", statusBarStyle);
+    }
+
+    // Set document background color to seamlessly blend with native status and nav bars
+    document.documentElement.style.backgroundColor = currentThemeColor;
+    document.body.style.backgroundColor = currentThemeColor;
   }, [activeTab]);
 
   // Refresh functions to ensure feed is live without refreshing browser
@@ -1102,11 +1117,14 @@ export default function App() {
       {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && (
         <div
           id="bottom-nav-bar"
-          className={`fixed bottom-0 inset-x-0 py-1.5 px-4 z-30 shadow-lg backdrop-blur-lg border-0 transition-colors ${
+          className={`fixed bottom-0 inset-x-0 pt-2 px-4 z-30 border-0 shadow-none transition-colors ${
             activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages'
-              ? "bg-white text-slate-800"
-              : "bg-black/95 text-white"
+               ? "bg-white text-slate-800"
+               : "bg-black text-white"
           } md:hidden`}
+          style={{
+            paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))'
+          }}
         >
           <div className="max-w-xl mx-auto flex items-center justify-between px-3">
             

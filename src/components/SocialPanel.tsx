@@ -380,7 +380,11 @@ export default function SocialPanel({
             </div>
 
             {/* Private chat submit input form */}
-            <form onSubmit={handleSubmit} className="p-3 border-0 bg-white flex items-center space-x-2 shrink-0">
+            <form 
+              onSubmit={handleSubmit} 
+              className="p-3 border-0 bg-white flex items-center space-x-2 shrink-0 shadow-none"
+              style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+            >
               <input
                 type="text"
                 placeholder="Escribe un mensaje privado..."
