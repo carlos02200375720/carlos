@@ -7,6 +7,7 @@ import SocialPanel from "./components/SocialPanel";
 import ProfileView from "./components/ProfileView";
 import LoginView from "./components/LoginView";
 import { motion, AnimatePresence } from "motion/react";
+import { getApiUrl, getWebSocketUrl, BACKEND_URL } from "./config";
 
 const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -197,9 +198,7 @@ export default function App() {
 
   // Connect WebSockets
   useEffect(() => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host;
-    const socketUrl = `${protocol}//${host}`;
+    const socketUrl = getWebSocketUrl();
 
     console.log("Attempting WebSocket connection to:", socketUrl);
     const ws = new WebSocket(socketUrl);
