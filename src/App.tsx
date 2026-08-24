@@ -80,15 +80,23 @@ export default function App() {
   const socketRef = useRef<WebSocket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
 
-  // Synchronize mobile status bar to be 100% transparent and seamless without borders
+  // Synchronize mobile status bar theme-color dynamically with active tab to prevent any yellow or mismatched bars
   useEffect(() => {
+    const isDark = activeTab === 'reels';
+    const statusColor = isDark ? "#020617" : "#ffffff";
+    
+    // Update theme-color meta tags
     const themeMeta = document.getElementById("theme-color-meta") || document.querySelector('meta[name="theme-color"]');
     if (themeMeta) {
-      themeMeta.setAttribute("content", "transparent");
+      themeMeta.setAttribute("content", statusColor);
     }
     document.querySelectorAll('meta[name="theme-color"]').forEach((tag) => {
-      tag.setAttribute("content", "transparent");
+      tag.setAttribute("content", statusColor);
     });
+
+    // Ensure document background matches to prevent edge flicker or yellow/gray tint
+    document.documentElement.style.backgroundColor = statusColor;
+    document.body.style.backgroundColor = statusColor;
   }, [activeTab]);
 
   // Refresh functions to ensure feed is live without refreshing browser
@@ -1102,10 +1110,10 @@ export default function App() {
       {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && (
         <div
           id="bottom-nav-bar"
-          className={`fixed bottom-0 inset-x-0 py-1.5 px-4 z-30 shadow-lg backdrop-blur-lg border-0 transition-colors ${
+          className={`fixed bottom-0 inset-x-0 py-1.5 px-4 z-30 shadow-lg backdrop-blur-lg border-t transition-colors ${
             activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages'
-              ? "bg-white text-slate-800"
-              : "bg-black/95 text-white"
+              ? "bg-white border-slate-200 text-slate-800"
+              : "bg-black/95 border-slate-900 text-white"
           } md:hidden`}
         >
           <div className="max-w-xl mx-auto flex items-center justify-between px-3">
