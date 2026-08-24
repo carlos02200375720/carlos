@@ -144,7 +144,7 @@ export default function SocialPanel({
     >
       {/* Header */}
       {!activeChatUser && (
-        <div className="p-4 border-b border-slate-200 flex items-center gap-3 bg-white shrink-0">
+        <div className="p-4 border-0 flex items-center gap-3 bg-white shrink-0">
           <div className="relative flex-1">
             <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
               <Users className="w-4 h-4 text-amber-500" />

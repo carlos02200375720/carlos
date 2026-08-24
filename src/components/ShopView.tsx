@@ -548,8 +548,8 @@ export default function ShopView({
       {/* Shop Navigation Header */}
       <header className={`px-3 sm:px-5 pt-2.5 pb-2 sm:pt-3 sm:pb-2.5 flex items-center justify-between gap-3 z-30 transition-all duration-300 ease-in-out ${
         activeStep === 'detail'
-          ? "absolute top-0 inset-x-0 bg-transparent border-none pointer-events-none"
-          : "sticky top-0 bg-white border-b border-slate-100"
+          ? "absolute top-0 inset-x-0 bg-transparent border-0 pointer-events-none"
+          : "sticky top-0 bg-white border-0"
       } ${showHeader ? "translate-y-0" : "-translate-y-full"}`}>
         <div className="flex items-center space-x-2 shrink-0">
           {activeStep !== 'catalog' && (
