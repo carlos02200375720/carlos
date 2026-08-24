@@ -233,9 +233,9 @@ export default function SocialPanel({
                     </div>
                   ) : (
                     <div className="space-y-2.5">
-                      {chatConversationsUsers.map((user) => (
+                      {chatConversationsUsers.map((user, index) => (
                         <div
-                          key={user.id}
+                          key={`${user.id}-${index}`}
                           onClick={() => handleSelectUser(user)}
                           className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition-all group shadow-2xs"
                           id={`social-user-active-${user.id}`}
@@ -286,9 +286,9 @@ export default function SocialPanel({
                     </div>
                   ) : (
                     <div className="space-y-2.5">
-                      {otherRegisteredUsers.map((user) => (
+                      {otherRegisteredUsers.map((user, index) => (
                         <div
-                          key={user.id}
+                          key={`${user.id}-${index}`}
                           onClick={() => handleSelectUser(user)}
                           className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition-all group shadow-2xs"
                           id={`social-user-all-${user.id}`}
@@ -364,10 +364,10 @@ export default function SocialPanel({
                 </div>
               )}
 
-              {messages.map((msg) => {
+              {messages.map((msg, index) => {
                 const isMe = msg.senderId === currentUser.id || msg.senderId === "current_user";
                 return (
-                  <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                  <div key={`${msg.id}-${index}`} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[75%] p-3 rounded-2xl text-xs leading-relaxed border shadow-sm ${isMe ? "bg-amber-500 text-slate-950 border-amber-400 rounded-tr-none" : "bg-white text-slate-800 border-slate-200 rounded-tl-none"}`}>
                       <p>{msg.text}</p>
                       <span className={`text-[8px] block text-right mt-1 font-mono ${isMe ? "text-slate-950/70" : "text-slate-400"}`}>

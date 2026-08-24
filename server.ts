@@ -462,7 +462,13 @@ async function connectToMongoDB() {
     } else {
       console.log("📦 Loading products from MongoDB...");
       const dbProducts = await MongoProduct.find();
-      products = dbProducts.map(p => ({
+      const seenProdIds = new Set<string>();
+      const uniqueDbProducts = dbProducts.filter((p) => {
+        if (!p.id || seenProdIds.has(p.id)) return false;
+        seenProdIds.add(p.id);
+        return true;
+      });
+      products = uniqueDbProducts.map(p => ({
         id: p.id,
         name: p.name,
         description: p.description || "",
@@ -477,7 +483,7 @@ async function connectToMongoDB() {
         variants: p.variants || [],
         category: p.category || ""
       }));
-      console.log(`📦 Loaded ${products.length} products successfully from MongoDB Atlas!`);
+      console.log(`📦 Loaded ${products.length} unique products successfully from MongoDB Atlas!`);
     }
  
     // Seed or Load Reels from MongoDB Atlas
@@ -493,7 +499,13 @@ async function connectToMongoDB() {
       dbUsers.forEach((u: any) => {
         userMap.set(u.id, u);
       });
-      reels = dbReels.map(r => {
+      const seenReelIds = new Set<string>();
+      const uniqueDbReels = dbReels.filter((r) => {
+        if (!r.id || seenReelIds.has(r.id)) return false;
+        seenReelIds.add(r.id);
+        return true;
+      });
+      reels = uniqueDbReels.map(r => {
         const creatorUser = userMap.get(r.creatorId);
         return {
           id: r.id,
@@ -515,7 +527,7 @@ async function connectToMongoDB() {
           images: r.images || []
         };
       });
-      console.log(`📦 Loaded ${reels.length} reels successfully from MongoDB Atlas!`);
+      console.log(`📦 Loaded ${reels.length} unique reels successfully from MongoDB Atlas!`);
     }
   } catch (error) {
     console.error("❌ Failed to connect to MongoDB Atlas:", error);
@@ -744,10 +756,33 @@ async function startServer() {
        return;
     }
 
-    const userProducts = products.filter((p) => p.sellerId === user.id || (user.id === "current_user" && p.sellerId === activeOriginalUserId));
-    const userReels = reels.filter((r) => r.creatorId === user.id || (user.id === "current_user" && r.creatorId === activeOriginalUserId));
+    const seenProd = new Set<string>();
+    const userProducts = products
+      .filter((p) => p.sellerId === user.id || (user.id === "current_user" && p.sellerId === activeOriginalUserId))
+      .filter((p) => {
+        if (!p.id || seenProd.has(p.id)) return false;
+        seenProd.add(p.id);
+        return true;
+      });
+
+    const seenReel = new Set<string>();
+    const userReels = reels
+      .filter((r) => r.creatorId === user.id || (user.id === "current_user" && r.creatorId === activeOriginalUserId))
+      .filter((r) => {
+        if (!r.id || seenReel.has(r.id)) return false;
+        seenReel.add(r.id);
+        return true;
+      });
+
     const userOrders = user.id === "current_user" ? orders : [];
-    const userSavedReels = reels.filter((r) => (user.savedReelIds || []).includes(r.id));
+    const seenSaved = new Set<string>();
+    const userSavedReels = reels
+      .filter((r) => (user.savedReelIds || []).includes(r.id))
+      .filter((r) => {
+        if (!r.id || seenSaved.has(r.id)) return false;
+        seenSaved.add(r.id);
+        return true;
+      });
 
     res.json({
       user,
@@ -1189,7 +1224,13 @@ async function startServer() {
         });
 
         const dbReels = await MongoReel.find();
-        reels = dbReels.map(r => {
+        const seenReelIds = new Set<string>();
+        const uniqueDbReels = dbReels.filter((r) => {
+          if (!r.id || seenReelIds.has(r.id)) return false;
+          seenReelIds.add(r.id);
+          return true;
+        });
+        reels = uniqueDbReels.map(r => {
           const creatorUser = userMap.get(r.creatorId);
           return {
             id: r.id,
@@ -1215,7 +1256,13 @@ async function startServer() {
         console.error("❌ Failed to load live reels from MongoDB Atlas during GET:", err);
       }
     }
-    res.json(reels);
+    const seen = new Set<string>();
+    const uniqueReels = reels.filter((r) => {
+      if (!r.id || seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    });
+    res.json(uniqueReels);
   });
 
   // Like a reel (1 like per user - toggle behavior with user isolation)
@@ -1871,7 +1918,13 @@ async function startServer() {
     if (mongoose.connection.readyState === 1) {
       try {
         const dbProducts = await MongoProduct.find();
-        products = dbProducts.map(p => ({
+        const seenProdIds = new Set<string>();
+        const uniqueDbProducts = dbProducts.filter((p) => {
+          if (!p.id || seenProdIds.has(p.id)) return false;
+          seenProdIds.add(p.id);
+          return true;
+        });
+        products = uniqueDbProducts.map(p => ({
           id: p.id,
           name: p.name,
           description: p.description || "",
@@ -1893,7 +1946,13 @@ async function startServer() {
         console.error("❌ Failed to load live products from MongoDB Atlas during GET:", err);
       }
     }
-    res.json(products);
+    const seen = new Set<string>();
+    const uniqueProducts = products.filter((p) => {
+      if (!p.id || seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+    res.json(uniqueProducts);
   });
 
   // Get product by ID

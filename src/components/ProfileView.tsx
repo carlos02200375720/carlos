@@ -5,6 +5,15 @@ import { motion, AnimatePresence } from "motion/react";
 import PublishView from "./PublishView";
 import LoginView from "./LoginView";
 
+const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (!item.id || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+};
+
 interface ProfileViewProps {
   currentUser: User;
   selectedCreatorId: string | null; // Null means we view our own private admin profile
@@ -208,10 +217,10 @@ export default function ProfileView({
       .then((data) => {
         if (!data.error) {
           setProfileUser(data.user);
-          setUserProducts(data.products || []);
-          setUserReels(data.reels || []);
-          setUserOrders(data.orders || []);
-          setSavedReels(data.savedReels || []);
+          setUserProducts(deduplicateById(data.products || []));
+          setUserReels(deduplicateById(data.reels || []));
+          setUserOrders(deduplicateById(data.orders || []));
+          setSavedReels(deduplicateById(data.savedReels || []));
         }
         setLoading(false);
       })
@@ -494,9 +503,9 @@ export default function ProfileView({
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {userReels.map((reel) => (
+                        {userReels.map((reel, index) => (
                           <div
-                            key={reel.id}
+                            key={`${reel.id}-${index}`}
                             onClick={() => onSelectReel(reel.id)}
                             className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
                             id={`admin-my-reel-${reel.id}`}
@@ -610,9 +619,9 @@ export default function ProfileView({
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {savedReels.map((reel) => (
+                        {savedReels.map((reel, index) => (
                           <div
-                            key={reel.id}
+                            key={`${reel.id}-${index}`}
                             onClick={() => onSelectReel(reel.id)}
                             className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
                             id={`saved-reel-${reel.id}`}
@@ -678,9 +687,9 @@ export default function ProfileView({
                           <p className="text-[10px] text-slate-400 mt-0.5">Tus pedidos de e-commerce se mostrarán aquí en tiempo real.</p>
                         </div>
                       ) : (
-                        userOrders.map((order) => (
+                        userOrders.map((order, index) => (
                           <div
-                            key={order.id}
+                            key={`${order.id}-${index}`}
                             className="border border-slate-150 rounded-xl p-4 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                             id={`order-item-${order.id}`}
                           >
@@ -1215,11 +1224,11 @@ export default function ProfileView({
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           {users
                             .filter((u) => u.id !== "current_user" && u.username !== "invitado")
-                            .map((u) => {
+                            .map((u, index) => {
                               const isTargetSelected = switchingUser?.id === u.id;
                               return (
                                 <div
-                                  key={u.id}
+                                  key={`${u.id}-${index}`}
                                   className="flex flex-col p-4 bg-white border border-slate-200 rounded-xl hover:border-amber-500/50 hover:shadow-sm transition-all"
                                 >
                                   <div className="flex items-center justify-between w-full">
@@ -1324,9 +1333,9 @@ export default function ProfileView({
                   </h3>
 
                   <div className="grid grid-cols-2 gap-3">
-                    {userReels.map((reel) => (
+                    {userReels.map((reel, index) => (
                       <div
-                        key={reel.id}
+                        key={`${reel.id}-${index}`}
                         onClick={() => onSelectReel(reel.id)}
                         className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900"
                         id={`profile-reel-${reel.id}`}
@@ -1389,9 +1398,9 @@ export default function ProfileView({
                   </h3>
 
                   <div className="space-y-3">
-                    {userProducts.map((prod) => (
+                    {userProducts.map((prod, index) => (
                       <div
-                        key={prod.id}
+                        key={`${prod.id}-${index}`}
                         onClick={() => onSelectProduct(prod)}
                         className="flex items-center space-x-3 p-2.5 rounded-xl border border-slate-150 hover:border-amber-500/30 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-all"
                         id={`profile-prod-${prod.id}`}

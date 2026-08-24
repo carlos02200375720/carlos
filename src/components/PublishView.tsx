@@ -957,8 +957,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                 className="w-full text-xs font-sans p-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-slate-400 font-medium"
               >
                 <option value="">-- No etiquetar producto --</option>
-                {userProducts.map((p) => (
-                  <option key={p.id} value={p.id}>
+                {userProducts.map((p, index) => (
+                  <option key={`${p.id}-${index}`} value={p.id}>
                     {p.name} - ${p.price}
                   </option>
                 ))}

@@ -84,7 +84,7 @@ export default function App() {
     fetch("/api/reels")
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) setReels(data);
+        if (Array.isArray(data)) setReels(deduplicateById(data));
       })
       .catch((err) => console.error("Error fetching reels:", err));
   };
@@ -93,7 +93,7 @@ export default function App() {
     fetch("/api/products")
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) setProducts(data);
+        if (Array.isArray(data)) setProducts(deduplicateById(data));
       })
       .catch((err) => console.error("Error fetching products:", err));
   };
@@ -104,7 +104,7 @@ export default function App() {
     fetch("/api/users")
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) setUsers(data);
+        if (Array.isArray(data)) setUsers(deduplicateById(data));
       })
       .catch((err) => console.error("Error fetching users:", err));
   };
@@ -117,25 +117,33 @@ export default function App() {
     // 1. Fetch Users
     fetch("/api/users")
       .then((res) => res.json())
-      .then((data) => setUsers(data))
+      .then((data) => {
+        if (Array.isArray(data)) setUsers(deduplicateById(data));
+      })
       .catch((err) => console.error("Error fetching users:", err));
 
     // 2. Fetch Reels
     fetch("/api/reels")
       .then((res) => res.json())
-      .then((data) => setReels(data))
+      .then((data) => {
+        if (Array.isArray(data)) setReels(deduplicateById(data));
+      })
       .catch((err) => console.error("Error fetching reels:", err));
 
     // 3. Fetch Products
     fetch("/api/products")
       .then((res) => res.json())
-      .then((data) => setProducts(data))
+      .then((data) => {
+        if (Array.isArray(data)) setProducts(deduplicateById(data));
+      })
       .catch((err) => console.error("Error fetching products:", err));
 
     // 4. Fetch Live sessions
     fetch("/api/live")
       .then((res) => res.json())
-      .then((data) => setLiveSessions(data))
+      .then((data) => {
+        if (Array.isArray(data)) setLiveSessions(deduplicateById(data));
+      })
       .catch((err) => console.error("Error fetching live sessions:", err));
 
     // 5. Restore session from localStorage if logged in
@@ -215,7 +223,9 @@ export default function App() {
 
         switch (payload.type) {
           case "presence_list": {
-            setUsers(payload.users);
+            if (Array.isArray(payload.users)) {
+              setUsers(deduplicateById(payload.users));
+            }
             break;
           }
 
