@@ -80,6 +80,25 @@ export default function App() {
   const socketRef = useRef<WebSocket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
 
+  // Synchronize mobile status bar theme-color dynamically with active tab to prevent any yellow or mismatched bars
+  useEffect(() => {
+    const isDark = activeTab === 'reels';
+    const statusColor = isDark ? "#020617" : "#ffffff";
+    
+    // Update theme-color meta tags
+    const themeMeta = document.getElementById("theme-color-meta") || document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) {
+      themeMeta.setAttribute("content", statusColor);
+    }
+    document.querySelectorAll('meta[name="theme-color"]').forEach((tag) => {
+      tag.setAttribute("content", statusColor);
+    });
+
+    // Ensure document background matches to prevent edge flicker or yellow tint
+    document.documentElement.style.backgroundColor = statusColor;
+    document.body.style.backgroundColor = statusColor;
+  }, [activeTab]);
+
   // Refresh functions to ensure feed is live without refreshing browser
   const refreshReels = () => {
     apiFetch("/api/reels")
