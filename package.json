@@ -23,7 +23,6 @@
     "multer": "^2.2.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "vite": "^6.2.3",
     "ws": "^8.21.1"
   },
   "devDependencies": {
