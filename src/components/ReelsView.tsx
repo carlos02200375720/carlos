@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, VolumeX, Send, X, Play, Bookmark, Trash2 } from "lucide-react";
 import { Reel, Product, Comment, User, CartItem } from "../types";
 import { motion, AnimatePresence } from "motion/react";
+import { apiFetch } from "../config";
 
 interface ReelsViewProps {
   reels: Reel[];
@@ -117,7 +118,7 @@ export default function ReelsView({
     setShowShareModal(reelId);
     setCopiedLink(false);
 
-    fetch(`/api/reels/${reelId}/share`, { method: "POST" })
+    apiFetch(`/api/reels/${reelId}/share`, { method: "POST" })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.shares !== undefined) {
@@ -210,7 +211,7 @@ export default function ReelsView({
   useEffect(() => {
     if (currentReel?.id && !viewedReelsRef.current.has(currentReel.id)) {
       viewedReelsRef.current.add(currentReel.id);
-      fetch(`/api/reels/${currentReel.id}/view`, { method: "POST" })
+      apiFetch(`/api/reels/${currentReel.id}/view`, { method: "POST" })
         .then((res) => res.json())
         .then((data) => {
           if (data.success && data.views !== undefined) {
@@ -230,7 +231,7 @@ export default function ReelsView({
     ) as string[];
 
     productIds.forEach((pid) => {
-      fetch(`/api/products/${pid}`)
+      apiFetch(`/api/products/${pid}`)
         .then((res) => res.json())
         .then((data) => {
           if (!data.error) {

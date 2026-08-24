@@ -7,7 +7,7 @@ import SocialPanel from "./components/SocialPanel";
 import ProfileView from "./components/ProfileView";
 import LoginView from "./components/LoginView";
 import { motion, AnimatePresence } from "motion/react";
-import { getApiUrl, getWebSocketUrl, BACKEND_URL } from "./config";
+import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 
 const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -82,7 +82,7 @@ export default function App() {
 
   // Refresh functions to ensure feed is live without refreshing browser
   const refreshReels = () => {
-    fetch("/api/reels")
+    apiFetch("/api/reels")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setReels(deduplicateById(data));
@@ -91,7 +91,7 @@ export default function App() {
   };
 
   const refreshProducts = () => {
-    fetch("/api/products")
+    apiFetch("/api/products")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setProducts(deduplicateById(data));
@@ -102,7 +102,7 @@ export default function App() {
   const refreshAllData = () => {
     refreshReels();
     refreshProducts();
-    fetch("/api/users")
+    apiFetch("/api/users")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setUsers(deduplicateById(data));
@@ -116,7 +116,7 @@ export default function App() {
     setActiveTab('reels');
 
     // 1. Fetch Users
-    fetch("/api/users")
+    apiFetch("/api/users")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setUsers(deduplicateById(data));
@@ -124,7 +124,7 @@ export default function App() {
       .catch((err) => console.error("Error fetching users:", err));
 
     // 2. Fetch Reels
-    fetch("/api/reels")
+    apiFetch("/api/reels")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setReels(deduplicateById(data));
@@ -132,7 +132,7 @@ export default function App() {
       .catch((err) => console.error("Error fetching reels:", err));
 
     // 3. Fetch Products
-    fetch("/api/products")
+    apiFetch("/api/products")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setProducts(deduplicateById(data));
@@ -140,7 +140,7 @@ export default function App() {
       .catch((err) => console.error("Error fetching products:", err));
 
     // 4. Fetch Live sessions
-    fetch("/api/live")
+    apiFetch("/api/live")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setLiveSessions(deduplicateById(data));
@@ -151,7 +151,7 @@ export default function App() {
     const savedUsername = localStorage.getItem("loggedInUsername");
     const savedPassword = localStorage.getItem("loggedInPassword") || "";
     if (savedUsername) {
-      fetch("/api/users/current/switch", {
+      apiFetch("/api/users/current/switch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUsername: savedUsername, password: savedPassword }),
@@ -166,7 +166,7 @@ export default function App() {
         .catch((err) => console.error("Error switching session user on boot:", err));
     } else {
       // Fetch default server current_user details
-      fetch("/api/users/current_user")
+      apiFetch("/api/users/current_user")
         .then((res) => res.json())
         .then((data) => {
           if (data && data.user) {
@@ -181,7 +181,7 @@ export default function App() {
   // Fetch Private Chats on Active User change
   useEffect(() => {
     if (activeChatUser) {
-      fetch(`/api/chats/${activeChatUser.id}`)
+      apiFetch(`/api/chats/${activeChatUser.id}`)
         .then((res) => res.json())
         .then((data) => {
           if (Array.isArray(data)) {
@@ -360,7 +360,7 @@ export default function App() {
   // --- API HANDLERS ---
 
   const handleLikeReel = (reelId: string) => {
-    fetch(`/api/reels/${reelId}/like`, {
+    apiFetch(`/api/reels/${reelId}/like`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -384,7 +384,7 @@ export default function App() {
   };
 
   const handleAddComment = (reelId: string, text: string) => {
-    fetch(`/api/reels/${reelId}/comment`, {
+    apiFetch(`/api/reels/${reelId}/comment`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -443,7 +443,7 @@ export default function App() {
       })
     );
 
-    fetch("/api/users/current/save", {
+    apiFetch("/api/users/current/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reelId })
@@ -494,7 +494,7 @@ export default function App() {
     });
 
     const currentUserId = currentUser.originalId || currentUser.id;
-    fetch(`/api/users/${targetUserId}/follow`, {
+    apiFetch(`/api/users/${targetUserId}/follow`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ currentUserId })
@@ -566,7 +566,7 @@ export default function App() {
     }
 
     // Persist to MongoDB Atlas backend
-    fetch(`/api/cart/${encodeURIComponent(userId)}`, {
+    apiFetch(`/api/cart/${encodeURIComponent(userId)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: updatedCart }),
@@ -585,7 +585,7 @@ export default function App() {
     const userId = getCartUserId(currentUser);
     if (!userId) return;
 
-    fetch(`/api/cart/${encodeURIComponent(userId)}`)
+    apiFetch(`/api/cart/${encodeURIComponent(userId)}`)
       .then((res) => res.json())
       .then((data) => {
         if (data && Array.isArray(data.items)) {
@@ -664,7 +664,7 @@ export default function App() {
 
   const handleCheckoutCart = (address: string, shippingCost: number = 0, onComplete: (newOrder: Order) => void) => {
     const userId = getCartUserId(currentUser);
-    fetch("/api/orders", {
+    apiFetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -737,7 +737,7 @@ export default function App() {
       return;
     }
 
-    fetch("/api/live", {
+    apiFetch("/api/live", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -761,7 +761,7 @@ export default function App() {
   };
 
   const handleEndLive = (sessionId: string) => {
-    fetch(`/api/live/${sessionId}/end`, { method: "POST" })
+    apiFetch(`/api/live/${sessionId}/end`, { method: "POST" })
       .then((res) => res.json())
       .then(() => {
         setLiveSessions((prev) => prev.filter(s => s.id !== sessionId));
@@ -782,13 +782,13 @@ export default function App() {
     setIsLoggedIn(false);
     
     // First notify server to clear session
-    fetch("/api/users/current/logout", {
+    apiFetch("/api/users/current/logout", {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     })
       .then(() => {
         // Fetch default guest user now that server has reset session
-        return fetch("/api/users/current_user");
+        return apiFetch("/api/users/current_user");
       })
       .then((res) => res.json())
       .then((data) => {
@@ -826,7 +826,7 @@ export default function App() {
     setForceAvatarSaving(true);
     setForceAvatarError("");
     try {
-      const response = await fetch("/api/users/current/update", {
+      const response = await apiFetch("/api/users/current/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ avatar: selectedForceAvatar }),
@@ -837,7 +837,7 @@ export default function App() {
       } else {
         setCurrentUser(data.user);
         // Refresh global users list to sync
-        fetch("/api/users")
+        apiFetch("/api/users")
           .then((res) => res.json())
           .then((usersData) => setUsers(usersData))
           .catch((err) => console.error("Error refreshing users:", err));
@@ -1059,7 +1059,7 @@ export default function App() {
                   }
                 }}
                 onRefreshUsers={() => {
-                  fetch("/api/users")
+                  apiFetch("/api/users")
                     .then((res) => res.json())
                     .then((data) => setUsers(data))
                     .catch((err) => console.error("Error refreshing users:", err));

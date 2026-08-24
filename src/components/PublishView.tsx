@@ -21,6 +21,7 @@ import {
   PackageCheck,
   RefreshCw
 } from "lucide-react";
+import { apiFetch } from "../config";
 
 interface PublishViewProps {
   currentUser: User;
@@ -170,7 +171,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     formData.append("description", "Uploaded via publishing portal");
     formData.append("creatorId", currentUser.id);
 
-    const response = await fetch("/api/upload", {
+    const response = await apiFetch("/api/upload", {
       method: "POST",
       body: formData,
     });
@@ -219,7 +220,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     setSuccessMessage(null);
 
     try {
-      const res = await fetch(`/api/cj/import-product?pid=${encodeURIComponent(cjInputId.trim())}`);
+      const res = await apiFetch(`/api/cj/import-product?pid=${encodeURIComponent(cjInputId.trim())}`);
       const data = await res.json();
 
       if (!res.ok || !data.success || !data.product) {
@@ -312,7 +313,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         }
 
         // 2. Register Reel
-        const response = await fetch("/api/reels", {
+        const response = await apiFetch("/api/reels", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -346,7 +347,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         const imageUrl = await uploadFileToGCS(singleImageFile);
 
         // 2. Register Reel/Publication of type 'image'
-        const response = await fetch("/api/reels", {
+        const response = await apiFetch("/api/reels", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -385,7 +386,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         const imageUrls = await Promise.all(carouselImageFiles.map(file => uploadFileToGCS(file)));
 
         // 2. Register publication of type 'carousel'
-        const response = await fetch("/api/reels", {
+        const response = await apiFetch("/api/reels", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -440,7 +441,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         }
 
         // 3. Register Product
-        const response = await fetch("/api/products", {
+        const response = await apiFetch("/api/products", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

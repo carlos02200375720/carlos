@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { User as UserIcon, ShieldCheck, UserPlus, ArrowRight, Sparkles, Check, Play, ShoppingBag, MessageSquare, Radio } from "lucide-react";
 import { User } from "../types";
+import { apiFetch } from "../config";
 
 interface LoginViewProps {
   onLoginSuccess: (user: User) => void;
@@ -64,7 +65,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
     setIsLoggingIn(true);
 
     try {
-      const response = await fetch("/api/users/current/switch", {
+      const response = await apiFetch("/api/users/current/switch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUsername: cleanUsername, password: passwordToUse }),
@@ -116,7 +117,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
     setIsRegistering(true);
 
     try {
-      const response = await fetch("/api/users/register", {
+      const response = await apiFetch("/api/users/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

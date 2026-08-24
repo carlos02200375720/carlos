@@ -4,6 +4,7 @@ import { Eye, Heart, MessageCircle, BarChart3, ShoppingBag, ShieldCheck, Mail, U
 import { motion, AnimatePresence } from "motion/react";
 import PublishView from "./PublishView";
 import LoginView from "./LoginView";
+import { apiFetch } from "../config";
 
 const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -87,7 +88,7 @@ export default function ProfileView({
     setIsSaving(true);
     setSaveSuccess(false);
     try {
-      const response = await fetch("/api/users/current/update", {
+      const response = await apiFetch("/api/users/current/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -123,7 +124,7 @@ export default function ProfileView({
     setRegisterSuccess(false);
 
     try {
-      const response = await fetch("/api/users/register", {
+      const response = await apiFetch("/api/users/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -170,7 +171,7 @@ export default function ProfileView({
   const handleSwitchUser = async (targetUsername: string, password?: string) => {
     try {
       setSwitchError("");
-      const response = await fetch("/api/users/current/switch", {
+      const response = await apiFetch("/api/users/current/switch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUsername, password }),
@@ -212,7 +213,7 @@ export default function ProfileView({
     if (!activeUserId) return;
     setLoading(true);
     
-    fetch(`/api/users/${activeUserId}`)
+    apiFetch(`/api/users/${activeUserId}`)
       .then((res) => res.json())
       .then((data) => {
         if (!data.error) {
@@ -240,7 +241,7 @@ export default function ProfileView({
       return;
     }
     try {
-      const res = await fetch(`/api/reels/${reelId}`, {
+      const res = await apiFetch(`/api/reels/${reelId}`, {
         method: "DELETE",
       });
       const data = await res.json();
