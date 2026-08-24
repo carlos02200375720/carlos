@@ -377,7 +377,7 @@ export default function ReelsView({
                     <div className="absolute left-4 z-20" style={{ top: "calc(env(safe-area-inset-top, 0px) + 1rem)" }}>
                       <button
                         onClick={() => setShowCartDrawer(true)}
-                        className="relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] flex items-center justify-center"
+                        className="relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)] flex items-center justify-center"
                         id={`cart-btn-${reel.id}`}
                         title="Ver carrito de compras"
                       >
@@ -394,10 +394,10 @@ export default function ReelsView({
                     <div className="absolute right-4 z-20" style={{ top: "calc(env(safe-area-inset-top, 0px) + 1rem)" }}>
                       <button
                         onClick={() => setIsMuted(!isMuted)}
-                        className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                        className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
                         id={`mute-btn-${reel.id}`}
                       >
-                        {isMuted ? <VolumeX className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" /> : <Volume2 className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" />}
+                        {isMuted ? <VolumeX className="w-7 h-7 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]" /> : <Volume2 className="w-7 h-7 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]" />}
                       </button>
                     </div>
 
@@ -557,14 +557,14 @@ export default function ReelsView({
                     <div className="flex flex-col items-center">
                       <button
                         onClick={() => onCreatorClick(reel.creatorId)}
-                        className="relative rounded-full transform hover:scale-110 transition-transform cursor-pointer drop-shadow-[0_4px_12px_rgba(0,0,0,0.75)]"
+                        className="relative rounded-full transform hover:scale-110 transition-transform cursor-pointer drop-shadow-sm"
                         id={`creator-avatar-btn-${reel.id}`}
                       >
                         <img
                           src={reel.creatorAvatar}
                           alt={reel.creatorName}
                           referrerPolicy="no-referrer"
-                          className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover shadow-md border-2 border-white/80 hover:border-amber-400 transition-colors"
+                          className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover border border-white/80 hover:border-amber-400 transition-colors"
                         />
                       </button>
                     </div>
@@ -590,12 +590,12 @@ export default function ReelsView({
                           strokeWidth={1.5}
                           className={`w-7 h-7 sm:w-8 sm:h-8 ${
                             isLiked
-                              ? "fill-rose-500 text-rose-500 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
-                              : "fill-white text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                              ? "fill-rose-500 text-rose-500 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                              : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
                           }`}
                         />
                       </button>
-                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_3px_rgba(0,0,0,1)] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
                         {reel.likes}
                       </span>
                     </div>
@@ -615,10 +615,10 @@ export default function ReelsView({
                       >
                         <MessageCircle
                           strokeWidth={1.5}
-                          className="w-7 h-7 sm:w-8 sm:h-8 fill-white text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                          className="w-7 h-7 sm:w-8 sm:h-8 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
                         />
                       </button>
-                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_3px_rgba(0,0,0,1)] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
                         {reel.comments.length}
                       </span>
                     </div>
@@ -644,12 +644,12 @@ export default function ReelsView({
                           strokeWidth={1.5}
                           className={`w-7 h-7 sm:w-8 sm:h-8 ${
                             savedReelIds.includes(reel.id)
-                              ? "fill-amber-400 text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
-                              : "fill-white text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                              ? "fill-amber-400 text-amber-400 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                              : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
                           }`}
                         />
                       </button>
-                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_3px_rgba(0,0,0,1)] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
                         {reel.saves ?? 0}
                       </span>
                     </div>
@@ -669,10 +669,10 @@ export default function ReelsView({
                       >
                         <Share2
                           strokeWidth={1.5}
-                          className="w-7 h-7 sm:w-8 sm:h-8 fill-white text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                          className="w-7 h-7 sm:w-8 sm:h-8 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
                         />
                       </button>
-                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_3px_rgba(0,0,0,1)] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
                         {reel.shares}
                       </span>
                     </div>
