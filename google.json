@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "mall-495202",
+  "private_key_id": "df60666653020dab41aa89963bf90169080c9677",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDFMpNSR4pU3qGJ\n+6SbzJ7o8hiLjdTgG4zgWt7TZxQBq+pqnkhsYX6l57ErSg/vBNtodf1N64S+r7lB\nAfzW6IMFae72djD3O+4b0zjjWdbDoCJeh8Q+SzZj7tda81kflgP7ULrzQN5kTB4H\n5Xc3GhHOx+cR14OtIFIBpCZppTJg7p+IvYlZ62y4OcCCUejKTEmR/Q/FS+RiNJhq\naA1iKb8FOpg4yACQxja3LXH4LDrd7w1GqStmTPVKzfY6W/FJG2SKO6lGzM/dAl6o\nM4uRtX/t86dg2Uvx3M2LLmGCfh481/gyuBKsgv4adzjDwBWO/yHav99TRi0cBWbH\nn+LBQhIrAgMBAAECggEAAJwn4uAVzqxSq++oJuziir0ITBjMYw1D/uR/tnI/iKgB\nV9N8j+0UHAcdXoWKsk6AqaTP+aM4kv2BPW0Vw2WWyawxD5QMI48G9fGBHunuTi8p\naJvRZTsSmx8VYhGjtlYN2/XgkZzEohw8sGfPYd8wyaZMQCzwiJwtnWCEAuMvsvBJ\nHvjWfXslO8yHYvtpHKh9f+JGWBA0teKh68i51fBIbhTuQa5NjlkIRSlte9AaJWz1\nkdtC3oAhDcL0dmbVAKVi1L21j8oU50SBRaI//4k5THM0aMM2jD5qu5nVabsU7/S8\nQ6pUiurn+mBr22mfBtOGEOwdixG4/HhIdDJkfgX+4QKBgQD1IfaWcNBsr2BgdrHn\nzWOOt9CMx8e7qMrsgyb4pHnEcvEc27mEX846RX7ua9etWqnWBNJGdz6P5k2stJGp\n0mNQmDKja0WyOtMWI5w9diUf/0eWvrFOPDqp5c6ll25mkgG8Xirs4637JpXVB/73\n5H/ZM05LmHcFWr/VKcMJvhl2sQKBgQDN8JdydZTrkdLYoS8CeYke8CPoqAn40Rbr\nqfBpSXThVyjc4FyipwvMmdACG5vYnV1e1MWFyTaNg1dra60mzd37OmvC3NBHvUai\nUBQ+Y4kalDjIihORrWvKVVXAAQzuVAnswhoREoSxXjCrsKPT1rghI1uoTcFtc7TP\nvjWn+dHFmwKBgC60vO4nKp86vytCEl2vVaPQxCy+uAC6hYeQ6bEAba8Pk39DIlLl\nij6yFSBKbfq6xpdfrcz9VW9Hm08nzIVF7+RgS221t77g1G1odZGEXEh/dF11kgTt\nFuReRARrGP70HN6ONrGSJAkxbeT8NAl5gR6aVvWyZCMiCmEMJvxJO0LRAoGBAKSz\n7IuwGkAkyhpTHsO967qAmFd0PTVwFAK6UPoDs6SdDqNIFQ5IxxkFUuS8q/GcOZak\nWKzc9fJLvti8ryi/sO9CE/kunK0jZaBepzIWbQqCzL8mHux9ZB3YDdKXhH3/XEis\nHCjXRKSODiLiDMRZj72BB8cdGLuutEcJeuQy2mBNAoGBAKYDvjntkrHzxEN74Zs8\nLwJjqqXt407l9zScCI/s/s5L53mMQ6+EGMvUUuu8lvhQj6Xh/cYrva2xE3cSRPCI\nWR9U1GeY0JHp2Inoelb9fb0hhUPitcMEuveC1lbVpZmbKix2HBnzgD6e0b7DTdm7\nAc7RC9ljEirSyCBckATAooMJ\n-----END PRIVATE KEY-----\n",
+  "client_email": "servidor-mall-storage@mall-495202.iam.gserviceaccount.com",
+  "client_id": "105981383421526296780",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/servidor-mall-storage%40mall-495202.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

@@ -1,5 +1,6 @@
 export interface User {
   id: string;
+  originalId?: string;
   username: string;
   name: string;
   avatar: string;
@@ -36,10 +37,22 @@ export interface Reel {
   likedBy?: string[];
   comments: Comment[];
   shares: number;
+  saves?: number;
   views: number;
   productId?: string; // Tagged product
   type?: 'video' | 'image' | 'carousel';
   images?: string[]; // For carrousels or single images
+}
+
+export interface ProductVariantItem {
+  id?: string;
+  vid?: string;
+  name: string;
+  color?: string;
+  size?: string;
+  price?: number;
+  imageUrl?: string;
+  sku?: string;
 }
 
 export interface Product {
@@ -52,18 +65,25 @@ export interface Product {
   sellerId: string;
   rating: number;
   shippingCost?: number;
+  selectedCarrier?: string;
+  cjVid?: string;
+  cjPid?: string;
   images?: string[]; // Multiple photos of products
   videos?: string[]; // Video of products
   variants?: {
     name: string; // e.g., "Talla" or "Color"
     options: string[]; // e.g., ["S", "M"], ["Negro", "Rojo"]
   }[];
+  variantList?: ProductVariantItem[];
   category?: string;
 }
 
 export interface CartItem {
   product: Product;
   quantity: number;
+  selectedCarrier?: string;
+  selectedShippingCost?: number;
+  selectedCountry?: string;
 }
 
 export interface Order {

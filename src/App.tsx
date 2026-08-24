@@ -1,23 +1,47 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Play, ShoppingBag, Radio, User as UserIcon, MessageSquare, Bell, Heart, ShieldCheck, Camera, Upload, LogOut, AlertTriangle } from "lucide-react";
+import { Play, ShoppingBag, User as UserIcon, MessageSquare, Bell, Heart, ShieldCheck, Camera, Upload, LogOut, AlertTriangle } from "lucide-react";
 import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession } from "./types";
 import ReelsView from "./components/ReelsView";
 import ShopView from "./components/ShopView";
-import LiveView from "./components/LiveView";
 import SocialPanel from "./components/SocialPanel";
 import ProfileView from "./components/ProfileView";
 import LoginView from "./components/LoginView";
 import { motion, AnimatePresence } from "motion/react";
 
+const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+};
+
 export default function App() {
-  // Navigation states: 'reels' | 'shop' | 'messages' | 'live' | 'profile'
-  const [activeTab, setActiveTab] = useState<'reels' | 'shop' | 'messages' | 'live' | 'profile'>('reels');
+  // Navigation states: 'reels' | 'shop' | 'messages' | 'profile'
+  const [activeTab, setActiveTab] = useState<'reels' | 'shop' | 'messages' | 'profile'>('reels');
 
   // Core Data State
   const [users, setUsers] = useState<User[]>([]);
   const [reels, setReels] = useState<Reel[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const savedUsername = localStorage.getItem("loggedInUsername");
+      const guestId = localStorage.getItem("cartClientId");
+      const key = savedUsername && savedUsername !== "invitado" && savedUsername !== "guest"
+        ? `saved_cart_${savedUsername}`
+        : (guestId ? `saved_cart_${guestId}` : "saved_cart_guest");
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error("Error reading initial cart from localStorage:", e);
+    }
+    return [];
+  });
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
 
   // Current User (Session source of truth)
@@ -36,6 +60,7 @@ export default function App() {
   // Selected details (for cross-tab linkage)
   const [directSelectedProduct, setDirectSelectedProduct] = useState<Product | null>(null);
   const [selectedCreatorProfileId, setSelectedCreatorProfileId] = useState<string | null>(null);
+  const [isProductDetailOpen, setIsProductDetailOpen] = useState(false);
 
   // Private 1-on-1 Chat States
   const [activeChatUser, setActiveChatUser] = useState<User | null>(null);
@@ -53,6 +78,36 @@ export default function App() {
   // WebSocket reference
   const socketRef = useRef<WebSocket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
+
+  // Refresh functions to ensure feed is live without refreshing browser
+  const refreshReels = () => {
+    fetch("/api/reels")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setReels(data);
+      })
+      .catch((err) => console.error("Error fetching reels:", err));
+  };
+
+  const refreshProducts = () => {
+    fetch("/api/products")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setProducts(data);
+      })
+      .catch((err) => console.error("Error fetching products:", err));
+  };
+
+  const refreshAllData = () => {
+    refreshReels();
+    refreshProducts();
+    fetch("/api/users")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setUsers(data);
+      })
+      .catch((err) => console.error("Error fetching users:", err));
+  };
 
   // Load initial catalog & files
   useEffect(() => {
@@ -233,6 +288,26 @@ export default function App() {
             break;
           }
 
+          case "reel_created": {
+            if (payload.reel) {
+              setReels((prev) => {
+                const exists = prev.some((r) => r.id === payload.reel.id);
+                return exists ? prev : [payload.reel, ...prev];
+              });
+            }
+            break;
+          }
+
+          case "product_created": {
+            if (payload.product) {
+              setProducts((prev) => {
+                const exists = prev.some((p) => p.id === payload.product.id);
+                return exists ? prev : [payload.product, ...prev];
+              });
+            }
+            break;
+          }
+
           case "reel_updated": {
             setReels((prev) =>
               prev.map((r) => {
@@ -247,6 +322,7 @@ export default function App() {
                   return {
                     ...r,
                     likes: payload.likes !== undefined ? payload.likes : r.likes,
+                    saves: payload.saves !== undefined ? payload.saves : r.saves,
                     likedBy: payload.likedBy || r.likedBy,
                     comments: updatedComments
                   };
@@ -278,7 +354,10 @@ export default function App() {
     fetch(`/api/reels/${reelId}/like`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: currentUser.id }),
+      body: JSON.stringify({
+        userId: currentUser.originalId || currentUser.id,
+        username: currentUser.username
+      }),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -324,6 +403,37 @@ export default function App() {
   };
 
   const handleToggleSaveReel = (reelId: string) => {
+    if (currentUser.username === "invitado" || currentUser.isGuest) {
+      setGuestInteractionAlert("Para guardar publicaciones, por favor inicia sesión o crea una cuenta.");
+      return;
+    }
+
+    const isSaved = savedReelIds.includes(reelId);
+    const newSavedIds = isSaved
+      ? savedReelIds.filter((id) => id !== reelId)
+      : [...savedReelIds, reelId];
+
+    // Optimistic update for UI state
+    setSavedReelIds(newSavedIds);
+    setCurrentUser((prev) => ({
+      ...prev,
+      savedReelIds: newSavedIds
+    }));
+
+    // Optimistic update for reel saves count
+    setReels((prev) =>
+      prev.map((r) => {
+        if (r.id === reelId) {
+          const currentSaves = r.saves ?? 0;
+          return {
+            ...r,
+            saves: isSaved ? Math.max(0, currentSaves - 1) : currentSaves + 1
+          };
+        }
+        return r;
+      })
+    );
+
     fetch("/api/users/current/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -332,81 +442,234 @@ export default function App() {
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
-          setSavedReelIds(data.savedReelIds || []);
-          setCurrentUser(prev => ({
-            ...prev,
-            savedReelIds: data.savedReelIds || []
-          }));
+          if (data.savedReelIds) {
+            setSavedReelIds(data.savedReelIds);
+            setCurrentUser((prev) => ({
+              ...prev,
+              savedReelIds: data.savedReelIds
+            }));
+          }
+          if (typeof data.saves === "number") {
+            setReels((prev) =>
+              prev.map((r) => (r.id === reelId ? { ...r, saves: data.saves } : r))
+            );
+          }
         }
       })
       .catch((err) => console.error("Error toggling saved reel:", err));
   };
 
   const handleToggleFollowUser = (targetUserId: string) => {
+    if (!targetUserId) return;
     if (currentUser.username === "invitado" || currentUser.isGuest) {
       setGuestInteractionAlert("Para seguir a creadores, por favor inicia sesión o crea una cuenta.");
       return;
     }
+
+    // Optimistic local state update for instant UI feedback on single click
+    setCurrentUser((prev) => {
+      const prevIds = prev.followingUserIds || [];
+      const lowerTarget = targetUserId.toLowerCase();
+      const isAlreadyFollowing = prevIds.some(
+        (id) => id === targetUserId || id.toLowerCase() === lowerTarget
+      );
+      const nextIds = isAlreadyFollowing
+        ? prevIds.filter((id) => id !== targetUserId && id.toLowerCase() !== lowerTarget)
+        : [...prevIds, targetUserId];
+
+      return {
+        ...prev,
+        followingUserIds: nextIds,
+        following: isAlreadyFollowing ? Math.max(0, (prev.following || 1) - 1) : (prev.following || 0) + 1
+      };
+    });
+
+    const currentUserId = currentUser.originalId || currentUser.id;
     fetch(`/api/users/${targetUserId}/follow`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentUserId })
     })
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
-          setCurrentUser((prev) => ({
-            ...prev,
-            followingUserIds: data.followingUserIds || [],
-            following: data.currentUserFollowing !== undefined ? data.currentUserFollowing : prev.following
-          }));
+          setCurrentUser((prev) => {
+            const serverIds: string[] = data.followingUserIds || [];
+            const targetsToRemove = new Set([
+              targetUserId.toLowerCase(),
+              (data.targetUserId || "").toLowerCase()
+            ]);
+
+            let updatedIds: string[];
+            if (data.isFollowing) {
+              updatedIds = Array.from(new Set([...serverIds, targetUserId, data.targetUserId].filter(Boolean)));
+            } else {
+              updatedIds = serverIds.filter((id) => !targetsToRemove.has(id.toLowerCase()));
+            }
+
+            return {
+              ...prev,
+              followingUserIds: updatedIds,
+              following: data.currentUserFollowing !== undefined ? data.currentUserFollowing : prev.following
+            };
+          });
           setUsers((prev) =>
             prev.map((u) =>
-              u.id === data.targetUserId
+              u.id === data.targetUserId || u.id === targetUserId || (u.username && u.username.toLowerCase() === targetUserId.toLowerCase())
                 ? { ...u, followers: data.targetFollowers }
                 : u
             )
           );
+        } else if (data.error) {
+          console.warn("Follow notification:", data.error);
         }
       })
       .catch((err) => console.error("Error toggling follow:", err));
   };
 
+  // Get persistent Cart User ID for MongoDB storage
+  const getCartUserId = (userObj?: User) => {
+    const target = userObj || currentUser;
+    const savedUsername = localStorage.getItem("loggedInUsername");
+    if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
+      return savedUsername;
+    }
+    if (target && target.username && target.username !== "invitado" && !target.isGuest && target.id !== "current_user") {
+      return target.originalId || target.id || target.username;
+    }
+    let guestId = localStorage.getItem("cartClientId");
+    if (!guestId) {
+      guestId = "guest_cart_" + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem("cartClientId", guestId);
+    }
+    return guestId;
+  };
+
+  const saveCartToMongo = (updatedCart: CartItem[], userObj: User = currentUser) => {
+    const userId = getCartUserId(userObj);
+    if (!userId) return;
+
+    // Save locally immediately
+    try {
+      localStorage.setItem(`saved_cart_${userId}`, JSON.stringify(updatedCart));
+    } catch (e) {
+      console.error("Error writing cart to localStorage:", e);
+    }
+
+    // Persist to MongoDB Atlas backend
+    fetch(`/api/cart/${encodeURIComponent(userId)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: updatedCart }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.success) {
+          console.log(`💾 Cart persisted to MongoDB Atlas for user ${userId} (${updatedCart.length} items)`);
+        }
+      })
+      .catch((err) => console.error("Error saving cart to MongoDB:", err));
+  };
+
+  // Sync persistent shopping cart from MongoDB when user changes or app boots
+  useEffect(() => {
+    const userId = getCartUserId(currentUser);
+    if (!userId) return;
+
+    fetch(`/api/cart/${encodeURIComponent(userId)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.items)) {
+          if (data.items.length > 0) {
+            setCart(data.items);
+            try {
+              localStorage.setItem(`saved_cart_${userId}`, JSON.stringify(data.items));
+            } catch (e) {}
+          } else {
+            // If MongoDB returned 0 items, check if we have local items to sync UP to MongoDB
+            const localKey = `saved_cart_${userId}`;
+            const rawLocal = localStorage.getItem(localKey);
+            if (rawLocal) {
+              try {
+                const parsedLocal = JSON.parse(rawLocal);
+                if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+                  setCart(parsedLocal);
+                  saveCartToMongo(parsedLocal, currentUser);
+                }
+              } catch (e) {}
+            }
+          }
+        }
+      })
+      .catch((err) => console.error("Error loading cart from MongoDB:", err));
+  }, [currentUser.id, currentUser.username, currentUser.originalId]);
+
   // Cart operations
   const handleAddToCart = (product: Product) => {
     setCart((prev) => {
-      const existing = prev.find((item) => item.product.id === product.id);
-      if (existing) {
-        return prev.map((item) =>
-          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+      const existingIndex = prev.findIndex(
+        (item) =>
+          item.product.id === product.id &&
+          item.product.name === product.name &&
+          item.product.imageUrl === product.imageUrl
+      );
+      let updated: CartItem[];
+      if (existingIndex !== -1) {
+        updated = prev.map((item, idx) =>
+          idx === existingIndex ? { ...item, quantity: item.quantity + 1 } : item
         );
+      } else {
+        updated = [...prev, { product, quantity: 1 }];
       }
-      return [...prev, { product, quantity: 1 }];
+      setTimeout(() => saveCartToMongo(updated), 0);
+      return updated;
     });
   };
 
-  const handleRemoveFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  const handleRemoveFromCart = (productId: string, cartItemIndex?: number) => {
+    setCart((prev) => {
+      const updated = prev.filter((item, idx) => {
+        if (cartItemIndex !== undefined) return idx !== cartItemIndex;
+        return item.product.id !== productId && item.product.name !== productId;
+      });
+      setTimeout(() => saveCartToMongo(updated), 0);
+      return updated;
+    });
   };
 
-  const handleUpdateCartQuantity = (productId: string, quantity: number) => {
-    setCart((prev) =>
-      prev.map((item) => (item.product.id === productId ? { ...item, quantity } : item))
-    );
+  const handleUpdateCartQuantity = (productId: string, quantity: number, cartItemIndex?: number) => {
+    setCart((prev) => {
+      const updated = prev.map((item, idx) => {
+        if (cartItemIndex !== undefined) {
+          return idx === cartItemIndex ? { ...item, quantity } : item;
+        }
+        if (item.product.id === productId || item.product.name === productId) {
+          return { ...item, quantity };
+        }
+        return item;
+      });
+      setTimeout(() => saveCartToMongo(updated), 0);
+      return updated;
+    });
   };
 
-  const handleCheckoutCart = (address: string, onComplete: (newOrder: Order) => void) => {
+  const handleCheckoutCart = (address: string, shippingCost: number = 0, onComplete: (newOrder: Order) => void) => {
+    const userId = getCartUserId(currentUser);
     fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        userId,
         items: cart,
         shippingAddress: address,
+        shippingCost: shippingCost,
       }),
     })
       .then((res) => res.json())
       .then((data) => {
         if (!data.error) {
-          setCart([]); // Clear cart
+          setCart([]); // Clear cart locally
+          saveCartToMongo([]); // Clear cart in MongoDB
           onComplete(data);
         } else {
           alert(data.error);
@@ -579,35 +842,50 @@ export default function App() {
   };
 
   const totalUnreads: number = Object.values(unreadCounts).reduce<number>((acc, val) => acc + (val as number), 0);
-  const isDarkNavActive = activeTab === 'reels' || activeTab === 'messages';
+  const isDarkNavActive = activeTab === 'reels';
 
   return (
     <div className={`w-full min-h-screen ${isDarkNavActive ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"} font-sans flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950`}>
       
-      {/* Desktop Left Sidebar Navigation (visible only on lg screens) */}
-      <aside className="hidden lg:flex flex-col fixed top-0 left-0 bottom-0 w-64 bg-slate-950 border-r border-slate-800 text-white z-40 p-5 justify-between select-none shadow-2xl">
+      {/* Desktop Left Sidebar Navigation (visible on md/lg desktop screens) */}
+      <aside
+        id="desktop-sidebar-nav"
+        className={`hidden md:flex flex-col fixed top-0 left-0 bottom-0 md:w-60 lg:w-64 ${
+          isDarkNavActive
+            ? "bg-slate-950 border-r border-slate-800 text-white"
+            : "bg-white border-r border-slate-200 text-slate-900"
+        } z-40 p-5 justify-between select-none shadow-2xl transition-colors`}
+      >
         <div>
           {/* App Brand Header */}
-          <div className="flex items-center space-x-3 px-2 py-3 mb-6 border-b border-slate-800/80">
+          <div className={`flex items-center space-x-3 px-2 py-3 mb-6 border-b ${
+            isDarkNavActive ? "border-slate-800/80" : "border-slate-200"
+          }`}>
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/20 shrink-0">
               <Play className="w-5 h-5 fill-slate-950" />
             </div>
             <div className="min-w-0">
-              <h1 className="font-display font-extrabold text-lg text-white tracking-tight leading-none">
+              <h1 className={`font-display font-extrabold text-lg tracking-tight leading-none ${
+                isDarkNavActive ? "text-white" : "text-slate-900"
+              }`}>
                 Mall<span className="text-amber-500">Social</span>
               </h1>
-              <p className="text-[10px] text-slate-400 font-medium mt-1">Reels & Commerce</p>
+              <p className={`text-[10px] font-medium mt-1 ${
+                isDarkNavActive ? "text-slate-400" : "text-slate-500"
+              }`}>Reels & Commerce</p>
             </div>
           </div>
 
           {/* Navigation Menu */}
           <nav className="space-y-1.5">
             <button
-              onClick={() => setActiveTab('reels')}
+              onClick={() => { refreshReels(); setActiveTab('reels'); }}
               className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
                 activeTab === 'reels'
                   ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900"
+                  : isDarkNavActive
+                  ? "text-slate-400 hover:text-white hover:bg-slate-900"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
               id="desktop-nav-reels"
             >
@@ -616,11 +894,13 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setActiveTab('shop')}
+              onClick={() => { refreshProducts(); setActiveTab('shop'); }}
               className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
                 activeTab === 'shop'
                   ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900"
+                  : isDarkNavActive
+                  ? "text-slate-400 hover:text-white hover:bg-slate-900"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
               id="desktop-nav-shop"
             >
@@ -633,7 +913,9 @@ export default function App() {
               className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
                 activeTab === 'messages'
                   ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900"
+                  : isDarkNavActive
+                  ? "text-slate-400 hover:text-white hover:bg-slate-900"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
               id="desktop-nav-messages"
             >
@@ -651,32 +933,13 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setActiveTab('live')}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
-                activeTab === 'live'
-                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900"
-              }`}
-              id="desktop-nav-live"
-            >
-              <div className="flex items-center space-x-3.5">
-                <Radio className="w-5 h-5" />
-                <span>Directos</span>
-              </div>
-              {liveSessions.filter(s => s.isLive).length > 0 && (
-                <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[9px] font-bold animate-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                  <span>EN VIVO</span>
-                </span>
-              )}
-            </button>
-
-            <button
               onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
               className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
                 activeTab === 'profile' && selectedCreatorProfileId === null
                   ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900"
+                  : isDarkNavActive
+                  ? "text-slate-400 hover:text-white hover:bg-slate-900"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
               id="desktop-nav-profile"
             >
@@ -687,10 +950,14 @@ export default function App() {
         </div>
 
         {/* Desktop Footer Profile Card */}
-        <div className="pt-4 border-t border-slate-800/80">
+        <div className={`pt-4 border-t ${isDarkNavActive ? "border-slate-800/80" : "border-slate-200"}`}>
           <div
             onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
-            className="flex items-center space-x-3 p-2.5 rounded-2xl bg-slate-900/80 hover:bg-slate-900 border border-slate-800/80 transition-all cursor-pointer group"
+            className={`flex items-center space-x-3 p-2.5 rounded-2xl border transition-all cursor-pointer group ${
+              isDarkNavActive
+                ? "bg-slate-900/80 hover:bg-slate-900 border-slate-800/80"
+                : "bg-slate-50 hover:bg-slate-100 border-slate-200"
+            }`}
           >
             <img
               src={currentUser.avatar}
@@ -699,10 +966,14 @@ export default function App() {
               className="w-9 h-9 rounded-full object-cover border border-amber-500/40 shrink-0"
             />
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-white truncate group-hover:text-amber-400 transition-colors">
+              <p className={`text-xs font-bold truncate group-hover:text-amber-500 transition-colors ${
+                isDarkNavActive ? "text-white" : "text-slate-900"
+              }`}>
                 {currentUser.name}
               </p>
-              <p className="text-[10px] text-slate-400 truncate font-mono">
+              <p className={`text-[10px] truncate font-mono ${
+                isDarkNavActive ? "text-slate-400" : "text-slate-500"
+              }`}>
                 @{currentUser.username || "invitado"}
               </p>
             </div>
@@ -711,7 +982,7 @@ export default function App() {
       </aside>
 
       {/* Main Container */}
-      <main className={`flex-1 w-full lg:pl-64 ${isDarkNavActive ? "bg-slate-950" : "bg-white"} ${(activeTab === 'messages' && activeChatUser) || isLiveViewerOpen || activeTab === 'live' ? "mb-0" : "mb-16 lg:mb-0"}`}>
+      <main className={`flex-1 w-full md:pl-60 lg:pl-64 ${isDarkNavActive ? "bg-slate-950" : "bg-white"} ${(activeTab === 'messages' && activeChatUser) || isLiveViewerOpen ? "mb-0" : "mb-12 md:mb-0"}`}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -725,6 +996,10 @@ export default function App() {
               <ReelsView
                 reels={reels}
                 currentUser={currentUser}
+                cart={cart}
+                onRemoveFromCart={handleRemoveFromCart}
+                onUpdateCartQuantity={handleUpdateCartQuantity}
+                onNavigateToShop={() => setActiveTab('shop')}
                 onProductClick={handleProductDetailsLink}
                 onCreatorClick={handleCreatorProfileLink}
                 onLikeReel={handleLikeReel}
@@ -752,20 +1027,7 @@ export default function App() {
                 selectedProductDirectly={directSelectedProduct}
                 clearDirectProduct={() => setDirectSelectedProduct(null)}
                 onNavigateToHistory={() => { setSelectedCreatorProfileId(currentUser.id); setActiveTab('profile'); }}
-              />
-            )}
-
-            {activeTab === 'live' && (
-              <LiveView
-                liveSessions={liveSessions}
-                currentUser={currentUser}
-                users={users}
-                socket={socketRef.current}
-                onGoLive={handleGoLive}
-                onEndLive={handleEndLive}
-                onViewerStateChange={(isOpen) => setIsLiveViewerOpen(isOpen)}
-                onClose={() => setActiveTab('reels')}
-                onToggleFollowUser={handleToggleFollowUser}
+                onToggleDetailView={setIsProductDetailOpen}
               />
             )}
 
@@ -793,11 +1055,9 @@ export default function App() {
                     .then((data) => setUsers(data))
                     .catch((err) => console.error("Error refreshing users:", err));
                 }}
+                onPublishSuccess={refreshAllData}
                 onLogout={handleLogout}
                 socket={socketRef.current}
-                onGoLive={handleGoLive}
-                onEndLive={handleEndLive}
-                liveSessions={liveSessions}
               />
             )}
 
@@ -818,53 +1078,66 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Bottom Floating Navigation Bar (hidden on desktop lg screens or when in active chat/live stream viewer) */}
-      {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && (
-        <div id="bottom-nav-bar" className="fixed bottom-0 inset-x-0 py-3 px-6 z-30 shadow-md backdrop-blur-lg border-t border-slate-900 bg-black text-white lg:hidden">
-          <div className="max-w-md mx-auto flex items-center justify-around">
+      {/* Bottom Floating Navigation Bar (hidden on desktop md/lg screens or when in active chat/live stream viewer/product detail view) */}
+      {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && (
+        <div
+          id="bottom-nav-bar"
+          className={`fixed bottom-0 inset-x-0 py-1.5 px-4 z-30 shadow-lg backdrop-blur-lg border-t transition-colors ${
+            activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages'
+              ? "bg-white border-slate-200 text-slate-800"
+              : "bg-black/95 border-slate-900 text-white"
+          } md:hidden`}
+        >
+          <div className="max-w-xl mx-auto flex items-center justify-between px-3">
             
             {/* Tab 1: Reels */}
             <button
-              onClick={() => { setActiveTab('reels'); }}
-              className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all ${
+              onClick={() => { refreshReels(); setActiveTab('reels'); }}
+              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-3 rounded-xl cursor-pointer transition-all ${
                 activeTab === 'reels'
-                  ? "text-amber-500 scale-105"
+                  ? "text-amber-500 scale-105 font-extrabold"
+                  : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
+                  ? "text-slate-500 hover:text-slate-900"
                   : "text-slate-400 hover:text-white"
               }`}
               id="tab-reels-btn"
             >
-              <Play className={`w-5 h-5 ${activeTab === 'reels' ? "fill-amber-500/10" : ""}`} />
+              <Play className={`w-4.5 h-4.5 ${activeTab === 'reels' ? "fill-amber-500/10" : ""}`} />
               <span className="text-[10px] font-bold tracking-tight">Reels</span>
             </button>
    
             {/* Tab 2: Shop */}
             <button
-              onClick={() => { setActiveTab('shop'); }}
-              className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all ${
+              onClick={() => { refreshProducts(); setActiveTab('shop'); }}
+              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-3 rounded-xl cursor-pointer transition-all ${
                 activeTab === 'shop'
-                  ? "text-amber-500 scale-105"
+                  ? "text-amber-600 scale-105 font-extrabold"
+                  : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
+                  ? "text-slate-500 hover:text-slate-900"
                   : "text-slate-400 hover:text-white"
               }`}
               id="tab-shop-btn"
             >
-              <ShoppingBag className={`w-5 h-5 ${activeTab === 'shop' ? "fill-amber-500/10" : ""}`} />
+              <ShoppingBag className={`w-4.5 h-4.5 ${activeTab === 'shop' ? "fill-amber-500/10" : ""}`} />
               <span className="text-[10px] font-bold tracking-tight">Market</span>
             </button>
    
             {/* Tab: Messages (between Market and Directos) */}
             <button
               onClick={() => setActiveTab('messages')}
-              className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all relative ${
+              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-3 rounded-xl cursor-pointer transition-all relative ${
                 activeTab === 'messages'
-                  ? "text-amber-500 scale-105"
+                  ? "text-amber-600 scale-105 font-extrabold"
+                  : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
+                  ? "text-slate-500 hover:text-slate-900"
                   : "text-slate-400 hover:text-white"
               }`}
               id="tab-messages-btn"
             >
               <div className="relative">
-                <MessageSquare className={`w-5 h-5 ${activeTab === 'messages' ? "fill-amber-500/10" : ""}`} />
+                <MessageSquare className={`w-4.5 h-4.5 ${activeTab === 'messages' ? "fill-amber-500/10" : ""}`} />
                 {totalUnreads > 0 && (
-                  <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[8px] font-bold font-mono w-4 h-4 rounded-full flex items-center justify-center border border-white">
+                  <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[8px] font-bold font-mono w-3.5 h-3.5 rounded-full flex items-center justify-center border border-white">
                     {totalUnreads}
                   </span>
                 )}
@@ -872,36 +1145,19 @@ export default function App() {
               <span className="text-[10px] font-bold tracking-tight">Mensajes</span>
             </button>
    
-            {/* Tab 3: Live */}
-            <button
-              onClick={() => setActiveTab('live')}
-              className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all ${
-                activeTab === 'live'
-                  ? "text-amber-500 scale-105"
-                  : "text-slate-400 hover:text-white"
-              }`}
-              id="tab-live-btn"
-            >
-              <div className="relative">
-                <Radio className="w-5 h-5" />
-                {liveSessions.filter(s => s.isLive).length > 0 && (
-                  <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
-                )}
-              </div>
-              <span className="text-[10px] font-bold tracking-tight">Directos</span>
-            </button>
-   
-            {/* Tab 4: Profile / Dashboard */}
+            {/* Tab: Profile / Dashboard */}
             <button
               onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
-              className={`flex flex-col items-center justify-center space-y-1 py-1 px-4 rounded-xl cursor-pointer transition-all ${
+              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-3 rounded-xl cursor-pointer transition-all ${
                 activeTab === 'profile' && selectedCreatorProfileId === null
-                  ? "text-amber-500 scale-105"
+                  ? "text-amber-600 scale-105 font-extrabold"
+                  : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
+                  ? "text-slate-500 hover:text-slate-900"
                   : "text-slate-400 hover:text-white"
               }`}
               id="tab-profile-btn"
             >
-              <UserIcon className="w-5 h-5" />
+              <UserIcon className="w-4.5 h-4.5" />
               <span className="text-[10px] font-bold tracking-tight">
                 {currentUser.username === "invitado" ? "Registro" : "Dashboard"}
               </span>

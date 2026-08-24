@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Heart, MessageCircle, Share2, ShoppingBag, Volume2, VolumeX, Send, X, Play, Bookmark } from "lucide-react";
-import { Reel, Product, Comment, User } from "../types";
+import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, VolumeX, Send, X, Play, Bookmark, Trash2 } from "lucide-react";
+import { Reel, Product, Comment, User, CartItem } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 
 interface ReelsViewProps {
   reels: Reel[];
   currentUser: User;
+  cart?: CartItem[];
+  onRemoveFromCart?: (productId: string) => void;
+  onUpdateCartQuantity?: (productId: string, qty: number) => void;
+  onNavigateToShop?: () => void;
   onProductClick: (product: Product) => void;
   onCreatorClick: (creatorId: string) => void;
   onLikeReel: (reelId: string) => void;
@@ -19,6 +23,10 @@ interface ReelsViewProps {
 export default function ReelsView({
   reels,
   currentUser,
+  cart = [],
+  onRemoveFromCart,
+  onUpdateCartQuantity,
+  onNavigateToShop,
   onProductClick,
   onCreatorClick,
   onLikeReel,
@@ -36,6 +44,11 @@ export default function ReelsView({
   const [likedAnim, setLikedAnim] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [showCartDrawer, setShowCartDrawer] = useState(false);
+  const [carouselIndices, setCarouselIndices] = useState<{ [reelId: string]: number }>({});
+
+  const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const totalCartPrice = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -208,21 +221,25 @@ export default function ReelsView({
     }
   }, [currentReel?.id]);
 
-  // Look up tagged product details
-  const [taggedProduct, setTaggedProduct] = useState<Product | null>(null);
+  // Pre-fetch tagged products for all reels to prevent product content swapping on focus
+  const [taggedProductsMap, setTaggedProductsMap] = useState<Record<string, Product>>({});
 
   useEffect(() => {
-    if (currentReel?.productId) {
-      fetch(`/api/products/${currentReel.productId}`)
+    const productIds = Array.from(
+      new Set(reels.map((r) => r.productId).filter(Boolean))
+    ) as string[];
+
+    productIds.forEach((pid) => {
+      fetch(`/api/products/${pid}`)
         .then((res) => res.json())
         .then((data) => {
-          if (!data.error) setTaggedProduct(data);
+          if (!data.error) {
+            setTaggedProductsMap((prev) => ({ ...prev, [pid]: data }));
+          }
         })
-        .catch(() => setTaggedProduct(null));
-    } else {
-      setTaggedProduct(null);
-    }
-  }, [currentReel]);
+        .catch(() => {});
+    });
+  }, [reels]);
 
   const [navBarHeight, setNavBarHeight] = useState(64);
 
@@ -249,7 +266,7 @@ export default function ReelsView({
 
   return (
     <div
-      className="relative w-full bg-slate-950 overflow-hidden flex flex-col"
+      className="relative w-full h-full bg-slate-950 overflow-hidden flex flex-col"
       id="reels-panel"
       style={{ height: `calc(100dvh - ${navBarHeight}px)` }}
     >
@@ -269,302 +286,402 @@ export default function ReelsView({
         ) : (
           reels.map((reel, index) => {
             const isCurrent = index === activeReelIndex;
-            const isLiked = currentUser?.id ? (reel.likedBy || []).includes(currentUser.id) : false;
+            const reelProduct = reel.productId ? taggedProductsMap[reel.productId] : null;
+            const isLiked = Boolean(
+              currentUser && (
+                (currentUser.originalId && (reel.likedBy || []).includes(currentUser.originalId)) ||
+                (currentUser.id && currentUser.id !== "current_user" && (reel.likedBy || []).includes(currentUser.id)) ||
+                (currentUser.username && currentUser.username !== "invitado" && (reel.likedBy || []).includes(currentUser.username))
+              )
+            );
             return (
               <div
                 key={reel.id}
-                className="h-full w-full snap-start relative flex items-center justify-center bg-black overflow-hidden"
+                className="h-full w-full snap-start relative flex items-center justify-center bg-slate-950 overflow-hidden py-0 px-0"
                 style={{ height: "100%" }}
               >
-                {/* Type-Responsive Media Element */}
-                {reel.type === "image" ? (
-                  <img
-                    src={reel.images?.[0] || reel.thumbnailUrl}
-                    alt={reel.description}
-                    onClick={() => setIsPlaying(!isPlaying)}
-                    onDoubleClick={() => handleDoubleTap(reel.id)}
-                    className="w-full h-full object-cover cursor-pointer"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : reel.type === "carousel" ? (
-                  <ReelCarousel 
-                    images={reel.images || [reel.thumbnailUrl]} 
-                    onDoubleClick={() => handleDoubleTap(reel.id)}
-                  />
-                ) : (
-                  <video
-                    ref={(el) => {
-                      videoRefs.current[reel.id] = el;
-                    }}
-                    src={reel.videoUrl}
-                    loop
-                    muted={isMuted}
-                    playsInline
-                    onClick={() => handleVideoClick(reel.id)}
-                    onDoubleClick={() => handleDoubleTap(reel.id)}
-                    onTimeUpdate={(e) => {
-                      if (isCurrent) {
-                        setCurrentTime(e.currentTarget.currentTime);
-                        setDuration(e.currentTarget.duration || 0);
-                      }
-                    }}
-                    onLoadedMetadata={(e) => {
-                      if (isCurrent) {
-                        setDuration(e.currentTarget.duration || 0);
-                      }
-                    }}
-                    className="w-full h-full object-cover cursor-pointer"
-                  />
-                )}
-
-                {/* Floating Large Double Tap Heart Animation */}
-                <AnimatePresence>
-                  {likedAnim === reel.id && (
-                    <motion.div
-                      initial={{ scale: 0, opacity: 0 }}
-                      animate={{ scale: [1, 1.3, 1], opacity: [0, 1, 0] }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.6 }}
-                      className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-30"
-                    >
-                      <Heart className="w-24 h-24 text-rose-500 fill-rose-500 drop-shadow-lg" />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Video Play Overlay Indicator */}
-                {!isPlaying && isCurrent && (
-                  <div className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-10 bg-black/20 rounded-full w-16 h-16 bg-opacity-40">
-                    <Play className="w-8 h-8 text-white fill-white translate-x-0.5" />
-                  </div>
-                )}
-
-                {/* Header Controls (Mute / Sound) */}
-                <div className="absolute top-4 right-4 z-20">
-                  <button
-                    onClick={() => setIsMuted(!isMuted)}
-                    className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
-                    id={`mute-btn-${reel.id}`}
+                {/* Full-Width Publication Container */}
+                <div className="relative w-full h-full flex items-center justify-center">
+                  {/* Publication Frame: 100% width and full viewport height */}
+                  <div
+                    className="relative w-full h-full rounded-none overflow-hidden flex items-center justify-center bg-black"
                   >
-                    {isMuted ? <VolumeX className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" /> : <Volume2 className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" />}
-                  </button>
-                </div>
-
-                {/* Lateral Interaction Bar (Likes, Comments, Shares, Avatar) */}
-                <div
-                  className="absolute right-3 z-20 flex flex-col items-center space-y-2.5"
-                  style={{ bottom: "5px" }}
-                >
-                  {/* Creator Avatar with follow button */}
-                  <div className="flex flex-col items-center">
-                    <button
-                      onClick={() => onCreatorClick(reel.creatorId)}
-                      className="relative border-2 border-amber-500 rounded-full p-0.5 shadow-md transform hover:scale-110 transition-transform cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
-                      id={`creator-avatar-btn-${reel.id}`}
-                    >
+                    {/* Media Element: 100% width and height */}
+                    {reel.type === "image" ? (
                       <img
-                        src={reel.creatorAvatar}
-                        alt={reel.creatorName}
+                        src={reel.images?.[0] || reel.thumbnailUrl}
+                        alt={reel.description}
+                        onClick={() => setIsPlaying(!isPlaying)}
+                        onDoubleClick={() => handleDoubleTap(reel.id)}
+                        className="w-full h-full object-cover cursor-pointer select-none block"
                         referrerPolicy="no-referrer"
-                        className="w-12 h-12 rounded-full object-cover"
                       />
-                      <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-amber-500 text-[9px] font-bold text-slate-950 px-1 rounded-full border border-slate-950">
-                        LIVE
-                      </span>
-                    </button>
-                  </div>
+                    ) : reel.type === "carousel" ? (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <ReelCarousel 
+                          images={reel.images || [reel.thumbnailUrl]} 
+                          onDoubleClick={() => handleDoubleTap(reel.id)}
+                          onIndexChange={(idx) => setCarouselIndices((prev) => ({ ...prev, [reel.id]: idx }))}
+                        />
+                      </div>
+                    ) : (
+                      <video
+                        ref={(el) => {
+                          videoRefs.current[reel.id] = el;
+                        }}
+                        src={reel.videoUrl}
+                        loop
+                        muted={isMuted}
+                        playsInline
+                        onClick={() => handleVideoClick(reel.id)}
+                        onDoubleClick={() => handleDoubleTap(reel.id)}
+                        onTimeUpdate={(e) => {
+                          if (isCurrent) {
+                            setCurrentTime(e.currentTarget.currentTime);
+                            setDuration(e.currentTarget.duration || 0);
+                          }
+                        }}
+                        onLoadedMetadata={(e) => {
+                          if (isCurrent) {
+                            setDuration(e.currentTarget.duration || 0);
+                          }
+                        }}
+                        className="w-full h-full object-cover cursor-pointer block"
+                      />
+                    )}
 
-                  {/* Likes Button */}
-                  <div className="flex flex-col items-center">
-                    <button
-                      onClick={() => {
-                        if (currentUser?.username === "invitado") {
-                          onGuestInteraction("dar me gusta");
-                        } else {
-                          onLikeReel(reel.id);
-                        }
-                      }}
-                      className={`p-1.5 rounded-full bg-transparent hover:scale-110 active:scale-95 transition-all cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] ${
-                        isLiked
-                          ? "text-rose-500"
-                          : "text-white hover:text-rose-500"
-                      }`}
-                      id={`like-btn-${reel.id}`}
-                    >
-                      <Heart className={`w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] ${isLiked ? "fill-rose-500 text-rose-500" : "fill-white/10 text-white"}`} />
-                    </button>
-                    <span className="text-white text-xs font-bold mt-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
-                      {reel.likes}
-                    </span>
-                  </div>
+                    {/* Floating Large Double Tap Heart Animation */}
+                    <AnimatePresence>
+                      {likedAnim === reel.id && (
+                        <motion.div
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: [1, 1.3, 1], opacity: [0, 1, 0] }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.6 }}
+                          className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-30"
+                        >
+                          <Heart className="w-24 h-24 text-rose-500 fill-rose-500 drop-shadow-lg" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
-                  {/* Comments Button */}
-                  <div className="flex flex-col items-center">
-                    <button
-                      onClick={() => {
-                        if (currentUser?.username === "invitado") {
-                          onGuestInteraction("comentar");
-                        } else {
-                          setShowComments(reel.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-full bg-transparent text-white hover:text-amber-400 hover:scale-110 transition-all cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
-                      id={`comment-btn-${reel.id}`}
-                    >
-                      <MessageCircle className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" />
-                    </button>
-                    <span className="text-white text-xs font-bold mt-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
-                      {reel.comments.length}
-                    </span>
-                  </div>
+                    {/* Video Play Overlay Indicator */}
+                    {!isPlaying && isCurrent && (
+                      <div className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-10 bg-black/20 rounded-full w-16 h-16 bg-opacity-40">
+                        <Play className="w-8 h-8 text-white fill-white translate-x-0.5" />
+                      </div>
+                    )}
 
-                  {/* Share Button */}
-                  <div className="flex flex-col items-center">
-                    <button
-                      onClick={() => {
-                        if (currentUser?.username === "invitado") {
-                          onGuestInteraction("compartir");
-                        } else {
-                          handleShare(reel.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-full bg-transparent text-white hover:text-cyan-400 hover:scale-110 transition-all cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
-                      id={`share-btn-${reel.id}`}
-                    >
-                      <Share2 className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" />
-                    </button>
-                    <span className="text-white text-xs font-bold mt-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
-                      {reel.shares}
-                    </span>
-                  </div>
-
-                  {/* Save (Bookmark) Button */}
-                  <div className="flex flex-col items-center">
-                    <button
-                      onClick={() => {
-                        if (currentUser?.username === "invitado") {
-                          onGuestInteraction("guardar publicaciones");
-                        } else {
-                          onToggleSaveReel(reel.id);
-                        }
-                      }}
-                      className={`p-1.5 rounded-full bg-transparent hover:scale-110 active:scale-95 transition-all cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] ${savedReelIds.includes(reel.id) ? "text-amber-500" : "text-white hover:text-amber-400"}`}
-                      id={`save-btn-${reel.id}`}
-                    >
-                      <Bookmark className={`w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] ${savedReelIds.includes(reel.id) ? "fill-amber-500" : ""}`} />
-                    </button>
-                    <span className="text-white text-[10px] font-bold mt-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] uppercase tracking-tight">
-                      {savedReelIds.includes(reel.id) ? "Guardado" : "Guardar"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Bottom Info Banner (Creator, Description, Tagged Product) */}
-                <div className="absolute left-4 bottom-4 right-16 z-20 flex flex-col space-y-3">
-                  {/* Creator Info and Description */}
-                  <div className="text-white bg-transparent p-3 rounded-xl drop-shadow-md">
-                    <h3 className="font-display font-bold text-sm tracking-wide flex items-center space-x-2">
-                      <span
-                        className="cursor-pointer hover:underline"
-                        onClick={() => onCreatorClick(reel.creatorId)}
+                    {/* Header Controls (Cart button on top-left, Mute on top-right) */}
+                    <div className="absolute top-4 left-4 z-20">
+                      <button
+                        onClick={() => setShowCartDrawer(true)}
+                        className="relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] flex items-center justify-center"
+                        id={`cart-btn-${reel.id}`}
+                        title="Ver carrito de compras"
                       >
-                        @{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}
-                      </span>
-                      {(() => {
-                        const isSelf = currentUser.id === reel.creatorId || reel.creatorId === "current_user";
-                        if (isSelf) {
-                          return (
-                            <span className="bg-slate-800/80 text-amber-400 text-[9px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
-                              Tú
-                            </span>
-                          );
-                        }
-                        const isFollowing = currentUser.followingUserIds?.includes(reel.creatorId) || false;
-                        return (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (currentUser.username === "invitado" || currentUser.isGuest) {
-                                onGuestInteraction("seguir a creadores");
-                              } else if (onToggleFollowUser) {
-                                onToggleFollowUser(reel.creatorId);
-                              }
-                            }}
-                            id={`follow-creator-btn-${reel.id}`}
-                            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-xs ${
-                              isFollowing
-                                ? "text-amber-400 border-amber-400/60 hover:text-rose-400 hover:border-rose-400/80 hover:bg-rose-500/10"
-                                : "text-amber-400 border-amber-400 hover:bg-amber-400/20 active:scale-95 font-extrabold"
-                            }`}
-                          >
-                            {isFollowing ? "Siguiendo" : "+ Seguir"}
-                          </button>
-                        );
-                      })()}
-                    </h3>
-                    <p className="text-xs text-slate-200 mt-1 line-clamp-2 leading-relaxed">
-                      {reel.description ? reel.description.slice(0, 35) : ""}
-                    </p>
-                  </div>
+                        <ShoppingBag className="w-6 h-6 text-amber-400" />
+                        {totalCartCount > 0 && (
+                          <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-mono text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border border-slate-950 shadow-md animate-pulse">
+                            {totalCartCount}
+                          </span>
+                        )}
+                      </button>
+                    </div>
 
-                  {/* Tagged Product Box */}
-                  {taggedProduct && (
-                    <motion.div
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.2 }}
-                      onClick={() => onProductClick(taggedProduct)}
-                      className="glass-panel text-white p-2.5 rounded-xl flex items-center space-x-3 cursor-pointer hover:bg-white/10 hover:border-amber-500/30 active:scale-[0.98] transition-all"
-                      id={`tagged-product-${reel.id}`}
-                    >
-                      <img
-                        src={taggedProduct.imageUrl}
-                        alt={taggedProduct.name}
-                        referrerPolicy="no-referrer"
-                        className="w-10 h-10 object-cover rounded-lg border border-white/10"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <span className="text-[10px] uppercase tracking-wider font-bold text-amber-400 flex items-center space-x-1">
-                          <ShoppingBag className="w-2.5 h-2.5 mr-0.5" /> Producto Destacado
-                        </span>
-                        <h4 className="text-xs font-bold truncate text-slate-100 mt-0.5">{taggedProduct.name}</h4>
-                        <div className="flex items-center justify-between mt-0.5">
-                          <span className="text-xs font-semibold text-emerald-400 font-mono">${taggedProduct.price.toFixed(2)}</span>
-                          <span className="text-[9px] text-amber-500 font-medium">Ver detalles →</span>
+                    {/* Header Controls (Mute / Sound) */}
+                    <div className="absolute top-4 right-4 z-20">
+                      <button
+                        onClick={() => setIsMuted(!isMuted)}
+                        className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                        id={`mute-btn-${reel.id}`}
+                      >
+                        {isMuted ? <VolumeX className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" /> : <Volume2 className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]" />}
+                      </button>
+                    </div>
+
+                    {/* Bottom Info Banner (Creator, Description, Tagged Product) */}
+                    <div className="absolute left-4 sm:left-6 bottom-4 sm:bottom-6 right-20 sm:right-24 z-20 flex flex-col space-y-3 max-w-xl">
+                      {/* Creator Info and Description */}
+                      <div
+                        className="text-white bg-transparent p-3 rounded-xl drop-shadow-md"
+                        style={{ marginLeft: "-15px", marginBottom: "-10px" }}
+                      >
+                        {/* Image Counter (Always 5px above creator username) */}
+                        {((reel.type === "carousel" && (reel.images?.length || 0) > 1) || (reel.images && reel.images.length > 1)) && (
+                          <div
+                            className="inline-flex items-center space-x-1.5 bg-transparent border-none text-white text-xs font-extrabold px-0 py-0.5 mb-[5px] z-30 drop-shadow"
+                            id={`carousel-counter-${reel.id}`}
+                          >
+                            <span className="text-amber-400 font-mono font-black">{(carouselIndices[reel.id] || 0) + 1}</span>
+                            <span className="text-white/70">/</span>
+                            <span className="text-white font-mono">{reel.images?.length || 1}</span>
+                          </div>
+                        )}
+
+                        <h3 className="font-display font-bold text-base sm:text-lg tracking-wide flex items-center space-x-2.5">
+                          <span
+                            className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm"
+                            onClick={() => onCreatorClick(reel.creatorId)}
+                          >
+                            @{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}
+                          </span>
+                          {(() => {
+                            const isSelf =
+                              currentUser.id === reel.creatorId ||
+                              reel.creatorId === "current_user" ||
+                              (currentUser.originalId && currentUser.originalId === reel.creatorId) ||
+                              (currentUser.username && reel.creatorUsername && currentUser.username.toLowerCase() === reel.creatorUsername.toLowerCase());
+                            if (isSelf) {
+                              return null;
+                            }
+                            const targetId = reel.creatorId || reel.creatorUsername;
+                            const isFollowing = Boolean(
+                              currentUser.followingUserIds?.some((id) =>
+                                id === reel.creatorId ||
+                                id === reel.creatorUsername ||
+                                (reel.creatorUsername && id.toLowerCase() === reel.creatorUsername.toLowerCase()) ||
+                                (reel.creatorId && id.toLowerCase() === reel.creatorId.toLowerCase())
+                              )
+                            );
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  if (currentUser.username === "invitado" || currentUser.isGuest) {
+                                    onGuestInteraction("seguir a creadores");
+                                  } else if (onToggleFollowUser) {
+                                    onToggleFollowUser(targetId);
+                                  }
+                                }}
+                                id={`follow-creator-btn-${reel.id}`}
+                                className={`text-xs font-bold px-3 py-1 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-sm ${
+                                  isFollowing
+                                    ? "text-white/80 border-white/60 hover:text-rose-300 hover:border-rose-400 hover:bg-rose-500/10"
+                                    : "text-white border-white hover:bg-white/15 active:scale-95 font-extrabold"
+                                }`}
+                              >
+                                {isFollowing ? "Siguiendo" : "+ Seguir"}
+                              </button>
+                            );
+                          })()}
+                        </h3>
+                        <p className="text-sm sm:text-base text-white/95 font-medium mt-1.5 line-clamp-3 leading-relaxed drop-shadow-sm">
+                          {reel.description || ""}
+                        </p>
+                      </div>
+
+                      {/* Tagged Product Box */}
+                      {reelProduct && (
+                        <motion.div
+                          initial={{ y: 20, opacity: 0 }}
+                          animate={{ y: 0, opacity: 1 }}
+                          transition={{ delay: 0.2 }}
+                          onClick={() => onProductClick(reelProduct)}
+                          className="bg-black/25 backdrop-blur-md border border-white/20 text-white p-2.5 rounded-xl flex items-center space-x-3 cursor-pointer hover:bg-black/40 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg"
+                          id={`tagged-product-${reel.id}`}
+                          style={{
+                            marginLeft: "-4px",
+                            paddingRight: "10px",
+                            paddingLeft: "7px",
+                            paddingTop: "9px",
+                            paddingBottom: "9px",
+                            width: "285.606px",
+                            height: "68.3438px"
+                          }}
+                        >
+                          <img
+                            src={reelProduct.imageUrl}
+                            alt={reelProduct.name}
+                            referrerPolicy="no-referrer"
+                            className="object-cover rounded-lg border border-white/10"
+                            style={{
+                              width: "70.9937px",
+                              height: "70.9937px",
+                              marginRight: "12px",
+                              marginBottom: "-18px",
+                              marginLeft: "-10px",
+                              marginTop: "-18px",
+                              paddingLeft: "0px",
+                              paddingTop: "-2px",
+                              paddingBottom: "0px",
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[10px] uppercase tracking-wider font-bold text-amber-400 flex items-center space-x-1">
+                              <ShoppingBag className="w-2.5 h-2.5 mr-0.5" /> Producto Destacado
+                            </span>
+                            <h4 className="text-xs font-bold truncate text-slate-100 mt-0.5">{reelProduct.name}</h4>
+                            <div className="flex items-center justify-between mt-0.5">
+                              <span className="text-xs font-semibold text-emerald-400 font-mono">${reelProduct.price.toFixed(2)}</span>
+                              <span className="text-[9px] text-amber-500 font-medium">Ver detalles →</span>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
+
+                    {/* Video Progress Bar */}
+                    {isCurrent && reel.type !== "image" && reel.type !== "carousel" && duration > 0 && (
+                      <div
+                        ref={progressBarRef}
+                        className="absolute bottom-0 left-0 right-0 z-30 h-3 flex items-end cursor-pointer group select-none touch-none"
+                        onClick={handleProgressBarClick}
+                        onMouseDown={handleMouseDown}
+                        onTouchStart={handleMouseDown}
+                        id="video-progress-bar"
+                      >
+                        {/* Background Track */}
+                        <div className="w-full h-1 group-hover:h-2 bg-white/20 backdrop-blur-md transition-all relative overflow-hidden">
+                          {/* Filled Progress */}
+                          <div
+                            className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 rounded-r-full shadow-[0_0_10px_rgba(245,158,11,0.9)] transition-all duration-75 relative"
+                            style={{ width: `${Math.min(100, Math.max(0, (currentTime / duration) * 100))}%` }}
+                          >
+                            <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-2.5 h-2.5 bg-amber-400 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
                         </div>
                       </div>
-                    </motion.div>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+                    )}
+                  </div>
 
-      {/* Video Progress Bar on top of the bottom navigation bar */}
-      {currentReel && currentReel.type !== "image" && currentReel.type !== "carousel" && duration > 0 && (
-        <div
-          ref={progressBarRef}
-          className="absolute bottom-0 left-0 right-0 z-30 h-3 flex items-end cursor-pointer group select-none touch-none"
-          onClick={handleProgressBarClick}
-          onMouseDown={handleMouseDown}
-          onTouchStart={handleMouseDown}
-          id="video-progress-bar"
-        >
-          {/* Background Track */}
-          <div className="w-full h-1 group-hover:h-2.5 bg-white/20 backdrop-blur-md transition-all relative overflow-hidden">
-            {/* Filled Progress */}
-            <div
-              className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 rounded-r-full shadow-[0_0_10px_rgba(245,158,11,0.9)] transition-all duration-75 relative"
-              style={{ width: `${Math.min(100, Math.max(0, (currentTime / duration) * 100))}%` }}
-            >
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-2.5 h-2.5 bg-amber-400 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity" />
+                  {/* Lateral Interaction Bar (Likes, Comments, Saves, Shares, Avatar) */}
+                  <div
+                    className="absolute right-3.5 sm:right-6 bottom-6 sm:bottom-8 z-20 flex flex-col items-center space-y-3.5 select-none"
+                    id={`interaction-bar-${reel.id}`}
+                  >
+                    {/* Creator Avatar with follow button */}
+                    <div className="flex flex-col items-center">
+                      <button
+                        onClick={() => onCreatorClick(reel.creatorId)}
+                        className="relative rounded-full transform hover:scale-110 transition-transform cursor-pointer drop-shadow-[0_4px_12px_rgba(0,0,0,0.75)]"
+                        id={`creator-avatar-btn-${reel.id}`}
+                      >
+                        <img
+                          src={reel.creatorAvatar}
+                          alt={reel.creatorName}
+                          referrerPolicy="no-referrer"
+                          className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover shadow-md border-2 border-white/80 hover:border-amber-400 transition-colors"
+                        />
+                      </button>
+                    </div>
+
+                    {/* Likes Button */}
+                    <div className="flex flex-col items-center">
+                      <button
+                        onClick={() => {
+                          if (currentUser?.username === "invitado") {
+                            onGuestInteraction("dar me gusta");
+                          } else {
+                            onLikeReel(reel.id);
+                          }
+                        }}
+                        className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${
+                          isLiked
+                            ? "text-rose-500"
+                            : "text-white hover:text-rose-400"
+                        }`}
+                        id={`like-btn-${reel.id}`}
+                      >
+                        <Heart
+                          strokeWidth={1.5}
+                          className={`w-7 h-7 sm:w-8 sm:h-8 ${
+                            isLiked
+                              ? "fill-rose-500 text-rose-500 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                              : "fill-white text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                          }`}
+                        />
+                      </button>
+                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_3px_rgba(0,0,0,1)] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+                        {reel.likes}
+                      </span>
+                    </div>
+
+                    {/* Comments Button */}
+                    <div className="flex flex-col items-center">
+                      <button
+                        onClick={() => {
+                          if (currentUser?.username === "invitado") {
+                            onGuestInteraction("comentar");
+                          } else {
+                            setShowComments(reel.id);
+                          }
+                        }}
+                        className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center text-white hover:text-amber-400 hover:scale-115 active:scale-95 transition-all cursor-pointer"
+                        id={`comment-btn-${reel.id}`}
+                      >
+                        <MessageCircle
+                          strokeWidth={1.5}
+                          className="w-7 h-7 sm:w-8 sm:h-8 fill-white text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                        />
+                      </button>
+                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_3px_rgba(0,0,0,1)] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+                        {reel.comments.length}
+                      </span>
+                    </div>
+
+                    {/* Save (Bookmark) Button */}
+                    <div className="flex flex-col items-center">
+                      <button
+                        onClick={() => {
+                          if (currentUser?.username === "invitado") {
+                            onGuestInteraction("guardar publicaciones");
+                          } else {
+                            onToggleSaveReel(reel.id);
+                          }
+                        }}
+                        className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${
+                          savedReelIds.includes(reel.id)
+                            ? "text-amber-400"
+                            : "text-white hover:text-amber-300"
+                        }`}
+                        id={`save-btn-${reel.id}`}
+                      >
+                        <Bookmark
+                          strokeWidth={1.5}
+                          className={`w-7 h-7 sm:w-8 sm:h-8 ${
+                            savedReelIds.includes(reel.id)
+                              ? "fill-amber-400 text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                              : "fill-white text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                          }`}
+                        />
+                      </button>
+                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_3px_rgba(0,0,0,1)] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+                        {reel.saves ?? 0}
+                      </span>
+                    </div>
+
+                    {/* Share Button */}
+                    <div className="flex flex-col items-center">
+                      <button
+                        onClick={() => {
+                          if (currentUser?.username === "invitado") {
+                            onGuestInteraction("compartir");
+                          } else {
+                            handleShare(reel.id);
+                          }
+                        }}
+                        className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center text-white hover:text-cyan-400 hover:scale-115 active:scale-95 transition-all cursor-pointer"
+                        id={`share-btn-${reel.id}`}
+                      >
+                        <Share2
+                          strokeWidth={1.5}
+                          className="w-7 h-7 sm:w-8 sm:h-8 fill-white text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                        />
+                      </button>
+                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_3px_rgba(0,0,0,1)] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+                        {reel.shares}
+                      </span>
+                    </div>
+                  </div>
+                </div>
             </div>
-          </div>
-        </div>
+          );
+        })
       )}
+    </div>
 
       {/* Slide-Up Comments Overlay Drawer */}
       <AnimatePresence>
@@ -714,60 +831,249 @@ export default function ReelsView({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Cart Drawer Modal */}
+      <AnimatePresence>
+        {showCartDrawer && (
+          <div className="fixed inset-0 z-50 flex justify-start bg-black/60 backdrop-blur-sm" id="cart-drawer-overlay">
+            <motion.div
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 220 }}
+              className="w-full max-w-xs sm:max-w-sm h-full bg-white border-r border-slate-200 flex flex-col shadow-2xl text-slate-900"
+              id="cart-drawer-panel"
+            >
+              {/* Drawer Header */}
+              <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/90">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 bg-amber-500/15 rounded-xl text-amber-600">
+                    <ShoppingBag className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-base text-slate-900">Carrito de Compras</h3>
+                    <p className="text-[11px] text-slate-500 font-bold font-mono">{totalCartCount} {totalCartCount === 1 ? 'producto' : 'productos'}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowCartDrawer(false)}
+                  className="p-1.5 rounded-full hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
+                  id="close-cart-drawer-btn"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Cart Items List */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
+                {cart.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-12 space-y-3">
+                    <div className="p-4 bg-slate-100 rounded-full border border-slate-200">
+                      <ShoppingBag className="w-10 h-10 stroke-1 text-slate-400" />
+                    </div>
+                    <p className="text-sm font-extrabold text-slate-800">Tu carrito está vacío</p>
+                    <p className="text-xs text-slate-500 max-w-[200px]">
+                      Haz clic en los productos etiquetados en los reels para añadirlos a tu carrito.
+                    </p>
+                    {onNavigateToShop && (
+                      <button
+                        onClick={() => {
+                          setShowCartDrawer(false);
+                          onNavigateToShop();
+                        }}
+                        className="mt-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-all cursor-pointer shadow-md shadow-amber-500/20"
+                        id="empty-cart-go-shop-btn"
+                      >
+                        Ir al Mercado
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  cart.map((item) => (
+                    <div
+                      key={item.product.id}
+                      className="flex items-center space-x-3 p-3 bg-slate-50 rounded-2xl border border-slate-200 hover:border-slate-300 transition-all shadow-sm"
+                    >
+                      <img
+                        src={item.product.imageUrl}
+                        alt={item.product.name}
+                        referrerPolicy="no-referrer"
+                        className="w-14 h-14 object-cover rounded-xl border border-slate-200 shrink-0 cursor-pointer"
+                        onClick={() => {
+                          setShowCartDrawer(false);
+                          onProductClick(item.product);
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h4
+                          className="text-xs font-extrabold text-slate-900 truncate cursor-pointer hover:text-amber-600 transition-colors"
+                          onClick={() => {
+                            setShowCartDrawer(false);
+                            onProductClick(item.product);
+                          }}
+                        >
+                          {item.product.name}
+                        </h4>
+                        <p className="text-xs font-mono font-extrabold text-amber-600 mt-0.5">
+                          ${item.product.price.toFixed(2)}
+                        </p>
+
+                        {/* Quantity Controls */}
+                        <div className="flex items-center space-x-2 mt-2">
+                          <button
+                            onClick={() => {
+                              if (item.quantity > 1) {
+                                onUpdateCartQuantity?.(item.product.id, item.quantity - 1);
+                              } else {
+                                onRemoveFromCart?.(item.product.id);
+                              }
+                            }}
+                            className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
+                          >
+                            -
+                          </button>
+                          <span className="text-xs font-mono font-extrabold text-slate-900 px-1">
+                            {item.quantity}
+                          </span>
+                          <button
+                            onClick={() => onUpdateCartQuantity?.(item.product.id, item.quantity + 1)}
+                            className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => onRemoveFromCart?.(item.product.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                        title="Eliminar producto"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Drawer Footer */}
+              {cart.length > 0 && (
+                <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-600 font-bold">Subtotal:</span>
+                    <span className="font-mono font-extrabold text-amber-600 text-base">${totalCartPrice.toFixed(2)}</span>
+                  </div>
+                  {onNavigateToShop && (
+                    <button
+                      onClick={() => {
+                        setShowCartDrawer(false);
+                        onNavigateToShop();
+                      }}
+                      className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/20 text-center flex items-center justify-center space-x-2"
+                      id="cart-checkout-btn"
+                    >
+                      <ShoppingCart className="w-4 h-4" />
+                      <span>Ir al Mercado a Pagar</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function ReelCarousel({ images, onDoubleClick }: { images: string[]; onDoubleClick: () => void }) {
+function ReelCarousel({
+  images,
+  onDoubleClick,
+  onIndexChange,
+}: {
+  images: string[];
+  onDoubleClick: () => void;
+  onIndexChange?: (index: number) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const nextImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCurrentIndex((prev) => (prev + 1) % images.length);
+  const isDragging = useRef(false);
+  const startX = useRef(0);
+  const scrollLeft = useRef(0);
+  const hasMoved = useRef(false);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!containerRef.current) return;
+    isDragging.current = true;
+    hasMoved.current = false;
+    startX.current = e.pageX - containerRef.current.offsetLeft;
+    scrollLeft.current = containerRef.current.scrollLeft;
   };
 
-  const prevImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCurrentIndex((prev) => (prev - 1 + images.length) % images.length);
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging.current || !containerRef.current) return;
+    const x = e.pageX - containerRef.current.offsetLeft;
+    const walk = x - startX.current;
+    if (Math.abs(walk) > 5) {
+      hasMoved.current = true;
+    }
+    containerRef.current.scrollLeft = scrollLeft.current - walk;
+  };
+
+  const handleMouseUpOrLeave = () => {
+    if (!isDragging.current || !containerRef.current) return;
+    isDragging.current = false;
+    if (containerRef.current) {
+      const container = containerRef.current;
+      const idx = Math.round(container.scrollLeft / container.clientWidth);
+      container.scrollTo({
+        left: idx * container.clientWidth,
+        behavior: "smooth",
+      });
+    }
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    if (container.clientWidth > 0) {
+      const idx = Math.round(container.scrollLeft / container.clientWidth);
+      if (idx !== currentIndex && idx >= 0 && idx < images.length) {
+        setCurrentIndex(idx);
+        if (onIndexChange) onIndexChange(idx);
+      }
+    }
   };
 
   return (
-    <div className="w-full h-full relative flex items-center justify-center bg-black select-none" onDoubleClick={onDoubleClick}>
-      <img
-        src={images[currentIndex]}
-        alt={`Carousel ${currentIndex + 1}`}
-        className="w-full h-full object-cover"
-        referrerPolicy="no-referrer"
-      />
-      {images.length > 1 && (
-        <>
-          {/* Navigation Arrows */}
-          <button
-            onClick={prevImage}
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/60 transition-colors cursor-pointer z-10"
-          >
-            ←
-          </button>
-          <button
-            onClick={nextImage}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/60 transition-colors cursor-pointer z-10"
-          >
-            →
-          </button>
-
-          {/* Dots Indicator */}
-          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 flex space-x-1.5 z-10">
-            {images.map((_, idx) => (
-              <span
-                key={idx}
-                className={`w-1.5 h-1.5 rounded-full transition-all ${
-                  idx === currentIndex ? "bg-amber-500 scale-125" : "bg-white/50"
-                }`}
-              />
-            ))}
-          </div>
-        </>
-      )}
+    <div
+      ref={containerRef}
+      onScroll={handleScroll}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUpOrLeave}
+      onMouseLeave={handleMouseUpOrLeave}
+      onDoubleClick={() => {
+        if (!hasMoved.current) {
+          onDoubleClick();
+        }
+      }}
+      className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-none select-none touch-pan-x bg-black cursor-grab active:cursor-grabbing"
+      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+    >
+      {images.map((img, idx) => (
+        <div
+          key={idx}
+          className="w-full h-full shrink-0 snap-center flex items-center justify-center relative overflow-hidden"
+        >
+          <img
+            src={img}
+            alt={`Carousel ${idx + 1}`}
+            className="w-full h-full object-cover pointer-events-none select-none block"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      ))}
     </div>
   );
 }

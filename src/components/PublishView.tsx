@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { User, Product, Reel } from "../types";
+import { User, Product, Reel, ProductVariantItem } from "../types";
 import { 
   ArrowLeft, 
   Video, 
@@ -14,7 +14,12 @@ import {
   Sparkles, 
   AlertCircle,
   CheckCircle2,
-  Tag
+  Tag,
+  Download,
+  Truck,
+  Globe,
+  PackageCheck,
+  RefreshCw
 } from "lucide-react";
 
 interface PublishViewProps {
@@ -48,8 +53,44 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     { name: "Talla", options: ["S", "M", "L"] },
     { name: "Color", options: ["Negro", "Blanco"] }
   ]);
+  const [prodVariantList, setProdVariantList] = useState<ProductVariantItem[]>([]);
   const [newVarName, setNewVarName] = useState("");
   const [newVarValue, setNewVarValue] = useState("");
+
+  // CJ Dropshipping Import states
+  const [cjInputId, setCjInputId] = useState("");
+  const [isImportingCj, setIsImportingCj] = useState(false);
+  const [importedPhotoUrls, setImportedPhotoUrls] = useState<string[]>([]);
+  const [importedCjVid, setImportedCjVid] = useState<string | undefined>(undefined);
+  const [importedCjPid, setImportedCjPid] = useState<string | undefined>(undefined);
+  const [cjLogistics, setCjLogistics] = useState<{
+    variantId?: string;
+    shippingOptions: {
+      carrier: string;
+      aging: string;
+      shippingCost: number;
+    }[];
+  } | null>(null);
+
+  const CJ_DEST_COUNTRIES = [
+    { code: "US", name: "Estados Unidos 🇺🇸" },
+    { code: "ES", name: "España 🇪🇸" },
+    { code: "MX", name: "México 🇲🇽" },
+    { code: "CO", name: "Colombia 🇨🇴" },
+    { code: "CL", name: "Chile 🇨🇱" },
+    { code: "AR", name: "Argentina 🇦🇷" },
+    { code: "FR", name: "Francia 🇫🇷" },
+    { code: "DE", name: "Alemania 🇩🇪" },
+    { code: "GB", name: "Reino Unido 🇬🇧" },
+    { code: "CA", name: "Canadá 🇨🇦" },
+    { code: "BR", name: "Brasil 🇧🇷" },
+    { code: "PE", name: "Perú 🇵🇪" },
+    { code: "EC", name: "Ecuador 🇪🇨" },
+    { code: "DO", name: "República Dominicana 🇩🇴" },
+    { code: "IT", name: "Italia 🇮🇹" },
+    { code: "PT", name: "Portugal 🇵🇹" },
+    { code: "AU", name: "Australia 🇦🇺" },
+  ];
 
   // Media files states
   const [singleVideoFile, setSingleVideoFile] = useState<File | null>(null);
@@ -164,6 +205,59 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
   // Remove variant
   const handleRemoveVariant = (index: number) => {
     setProdVariants(prodVariants.filter((_, i) => i !== index));
+  };
+
+  // Import CJ Product handler
+  const handleImportCjProduct = async () => {
+    if (!cjInputId.trim()) {
+      setErrorMessage("Por favor ingresa un ID o SKU del producto de CJ Dropshipping.");
+      return;
+    }
+
+    setIsImportingCj(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const res = await fetch(`/api/cj/import-product?pid=${encodeURIComponent(cjInputId.trim())}`);
+      const data = await res.json();
+
+      if (!res.ok || !data.success || !data.product) {
+        throw new Error(data.error || "No se pudo importar el producto desde CJ Dropshipping");
+      }
+
+      const p = data.product;
+
+      // Populate form fields for this session (NOT publishing automatically)
+      setProdName(p.name || "");
+      setProdDescription((p.description || "").slice(0, 35));
+      setProdPrice(p.price ? String(p.price) : "");
+      setProdQuantity(p.stock ? String(p.stock) : "50");
+      setProdCategory(p.category || "Electrónica");
+
+      setImportedCjVid(p.cjVariantId || p.logistics?.variantId || cjInputId.trim());
+      setImportedCjPid(p.cjProductId || cjInputId.trim());
+
+      if (p.images && p.images.length > 0) {
+        setImportedPhotoUrls(p.images);
+      }
+
+      if (p.variants && p.variants.length > 0) {
+        setProdVariants(p.variants);
+      }
+
+      if (p.variantList && p.variantList.length > 0) {
+        setProdVariantList(p.variantList);
+      }
+
+      setSuccessMessage("¡Producto importado de CJ con éxito para esta sesión! Los datos se han cargado. Los clientes podrán seleccionar cualquier país de envío al comprar.");
+
+    } catch (err: any) {
+      console.error("Error importando de CJ:", err);
+      setErrorMessage(err.message || "Error al conectar con la API de CJ Dropshipping");
+    } finally {
+      setIsImportingCj(false);
+    }
   };
 
   // Form submit handler
@@ -318,11 +412,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         if (!prodName.trim() || !prodDescription.trim() || !prodPrice.trim() || !prodQuantity.trim()) {
           throw new Error("Por favor, completa los campos requeridos del producto.");
         }
-        if (productPhotoFiles.length === 0) {
-          throw new Error("Por favor, selecciona al menos una foto para tu producto.");
-        }
 
-        // Validate product image extensions
+        // Validate product image extensions for uploaded files
         for (const file of productPhotoFiles) {
           if (!validateFileExtension(file, ["png", "jpeg", "jpg", "webp"])) {
             throw new Error(`La foto ${file.name} no tiene una extensión válida (.png, .jpeg, .jpg, .webp)`);
@@ -334,8 +425,13 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
           throw new Error("El video del producto debe tener una extensión válida (.mp4)");
         }
 
-        // 1. Upload product photos
-        const photoUrls = await Promise.all(productPhotoFiles.map(file => uploadFileToGCS(file)));
+        // 1. Upload new product photos and combine with imported CJ photos
+        const uploadedPhotoUrls = await Promise.all(productPhotoFiles.map(file => uploadFileToGCS(file)));
+        const photoUrls = [...importedPhotoUrls, ...uploadedPhotoUrls];
+
+        if (photoUrls.length === 0) {
+          throw new Error("Por favor, selecciona o importa al menos una foto para tu producto.");
+        }
 
         // 2. Upload product video if present
         let videoUrl = "";
@@ -358,7 +454,10 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
             images: photoUrls,
             videos: videoUrl ? [videoUrl] : [],
             variants: prodVariants,
-            category: prodCategory
+            variantList: prodVariantList,
+            category: prodCategory,
+            cjVid: importedCjVid,
+            cjPid: importedCjPid
           }),
         });
 
@@ -723,6 +822,23 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                 />
                 
                 <div className="flex flex-wrap gap-2 mb-3 min-h-[40px] justify-center items-center">
+                  {/* Imported CJ Photos */}
+                  {importedPhotoUrls.map((url, idx) => (
+                    <div key={`imp-${idx}`} className="w-12 h-12 rounded overflow-hidden border-2 border-amber-500/60 relative group shadow-sm">
+                      <img src={url} alt={`Imported ${idx}`} className="w-full h-full object-cover" />
+                      <span className="absolute bottom-0 left-0 right-0 bg-amber-500 text-[8px] font-bold text-slate-950 text-center leading-tight">CJ</span>
+                      <button
+                        type="button"
+                        onClick={() => setImportedPhotoUrls(importedPhotoUrls.filter((_, i) => i !== idx))}
+                        className="absolute top-0 right-0 p-0.5 bg-slate-900/90 text-white rounded cursor-pointer opacity-80 group-hover:opacity-100"
+                        title="Eliminar foto importada"
+                      >
+                        <X className="w-2.5 h-2.5 text-rose-400" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Uploaded Local Files */}
                   {productPhotoFiles.map((file, idx) => (
                     <div key={idx} className="w-12 h-12 rounded overflow-hidden border border-slate-150 relative">
                       <img src={URL.createObjectURL(file)} className="w-full h-full object-cover" />
@@ -735,8 +851,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                       </button>
                     </div>
                   ))}
-                  {productPhotoFiles.length === 0 && (
-                    <span className="text-[10px] text-slate-400 italic">No hay fotos seleccionadas</span>
+                  {importedPhotoUrls.length === 0 && productPhotoFiles.length === 0 && (
+                    <span className="text-[10px] text-slate-400 italic">No hay fotos seleccionadas o importadas</span>
                   )}
                 </div>
 
@@ -746,7 +862,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                   className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-[10px] font-bold text-slate-700 transition-colors flex items-center justify-center space-x-1 cursor-pointer"
                 >
                   <Plus className="w-3 h-3" />
-                  <span>Añadir Fotos</span>
+                  <span>Añadir Fotos Locales</span>
                 </button>
               </div>
 
@@ -852,6 +968,87 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         ) : (
           /* PRODUCT SALE MODE */
           <div className="space-y-4">
+            {/* CJ Dropshipping Importer Card */}
+            <div className="p-4 bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 rounded-2xl border border-amber-500/40 text-white shadow-md space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 bg-amber-500/20 rounded-xl text-amber-400 border border-amber-500/30">
+                    <Download className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white flex items-center space-x-2">
+                      <span>Importar Producto de CJ Dropshipping</span>
+                      <span className="text-[9px] bg-amber-500/20 text-amber-300 font-mono px-1.5 py-0.5 rounded border border-amber-500/30">API Directa CJ</span>
+                    </h3>
+                    <p className="text-[10px] text-slate-400">Ingresa el ID o SKU de CJ para extraer la información. Los clientes seleccionarán su país en el checkout y verán todos los transportistas de CJ en tiempo real.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    placeholder="Ingresa ID o SKU de CJ (ej: CJ3709637 o 2512100754141607700)..."
+                    value={cjInputId}
+                    onChange={(e) => setCjInputId(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleImportCjProduct();
+                      }
+                    }}
+                    className="w-full text-xs font-mono p-2.5 pr-8 rounded-xl border border-slate-700 bg-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  />
+                  {cjInputId && (
+                    <button
+                      type="button"
+                      onClick={() => setCjInputId("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleImportCjProduct}
+                  disabled={isImportingCj}
+                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-2 shrink-0 shadow-sm disabled:opacity-50"
+                >
+                  {isImportingCj ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                      <span>Importando de CJ...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 text-slate-950" />
+                      <span>Importar a esta sesión</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* CJ Global Dynamic Shipping Status Banner */}
+            {importedCjVid && (
+              <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start space-x-3 text-amber-200">
+                <Globe className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1 text-xs">
+                  <div className="font-bold text-white flex items-center space-x-2">
+                    <span>Logística Global Dinámica Activa</span>
+                    <span className="text-[9px] bg-amber-500/20 text-amber-300 font-mono px-1.5 py-0.5 rounded border border-amber-500/30">ID CJ: {importedCjPid}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    No necesitas seleccionar un país fijo. Cuando un cliente compre este producto, ingresará su dirección en cualquier país del mundo (EE.UU., España, México, Colombia, Chile, etc.) y la plataforma consultará la API de CJ en tiempo real para mostrarle todas las opciones de envío disponibles para que elija la que prefiera.
+                  </p>
+                </div>
+              </div>
+            )}
+
+
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Nombre del Producto *</label>
@@ -988,6 +1185,55 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                   ))}
                 </div>
               )}
+
+              {/* Extracted Variant Images Preview (Grouped by unique color/image) */}
+              {prodVariantList.length > 0 && (() => {
+                const uniquePreviewMap = new Map<string, ProductVariantItem>();
+                prodVariantList.forEach((item) => {
+                  const key = (item.color || item.name || item.imageUrl || "").trim().toLowerCase();
+                  if (key && !uniquePreviewMap.has(key)) {
+                    uniquePreviewMap.set(key, item);
+                  }
+                });
+                const uniquePreviewList = Array.from(uniquePreviewMap.values());
+
+                return (
+                  <div className="pt-3 border-t border-slate-200/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-800 flex items-center space-x-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Imágenes de Colores y Variantes Extraídas ({uniquePreviewList.length})</span>
+                      </span>
+                      <span className="text-[9px] bg-amber-500/20 text-amber-700 font-mono font-bold px-1.5 py-0.5 rounded border border-amber-500/30">CJ API</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-y-auto p-1 bg-white/70 rounded-xl border border-slate-200/80">
+                      {uniquePreviewList.map((vItem, idx) => (
+                        <div key={idx} className="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200 shadow-2xs hover:border-amber-400 transition-colors">
+                          {vItem.imageUrl ? (
+                            <img
+                              src={vItem.imageUrl}
+                              alt={vItem.name}
+                              className="w-10 h-10 rounded-md object-cover border border-slate-100 shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-md bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center text-[8px] text-slate-400 font-mono">
+                              Sin Foto
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1 text-left">
+                            <p className="text-[10px] font-extrabold text-slate-900 truncate leading-tight" title={vItem.name}>{vItem.color || vItem.name}</p>
+                            <div className="flex items-center justify-between mt-0.5">
+                              <span className="text-[9px] text-slate-500 font-mono font-bold">${vItem.price?.toFixed(2)}</span>
+                              {vItem.color && <span className="text-[8px] bg-amber-50 text-amber-700 font-semibold px-1 py-0.2 rounded border border-amber-200">{vItem.color}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* New variant form */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">

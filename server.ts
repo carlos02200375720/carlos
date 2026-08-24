@@ -65,7 +65,18 @@ const ProductSchema = new mongoose.Schema({
     name: { type: String },
     options: { type: [String] }
   }],
-  category: { type: String }
+  variantList: [{
+    vid: { type: String },
+    name: { type: String },
+    color: { type: String },
+    size: { type: String },
+    price: { type: Number },
+    imageUrl: { type: String },
+    sku: { type: String }
+  }],
+  category: { type: String },
+  cjVid: { type: String },
+  cjPid: { type: String }
 });
 
 const MongoProduct = (mongoose.models.Product || mongoose.model("Product", ProductSchema)) as any;
@@ -90,6 +101,7 @@ const ReelSchema = new mongoose.Schema({
     createdAt: { type: String }
   }],
   shares: { type: Number, default: 0 },
+  saves: { type: Number, default: 0 },
   views: { type: Number, default: 0 },
   productId: { type: String },
   type: { type: String, default: "video" },
@@ -98,10 +110,40 @@ const ReelSchema = new mongoose.Schema({
 
 const MongoReel = (mongoose.models.Reel || mongoose.model("Reel", ReelSchema)) as any;
 
+// Mongoose Cart Schema for persistent shopping cart per user/client
+const CartSchema = new mongoose.Schema({
+  userId: { type: String, required: true, unique: true },
+  items: [{
+    product: { type: mongoose.Schema.Types.Mixed, required: true },
+    quantity: { type: Number, required: true, default: 1 }
+  }],
+  updatedAt: { type: Date, default: Date.now }
+}, { strict: false });
+
+const MongoCart = (mongoose.models.Cart || mongoose.model("Cart", CartSchema)) as any;
+const cartMemoryStore = new Map<string, any[]>();
+
 // Google Cloud Storage setup
 let storage: Storage;
 const googleJsonPath = path.join(process.cwd(), "google.json");
 const mallJsonPath = path.join(process.cwd(), "mall-1bucket.json");
+
+// Helper to ensure bucketName is a clean GCS bucket name and not JSON credentials
+function getValidBucketName(): string {
+  const raw = (process.env.BUCKET_NAME || "").trim();
+  if (raw && !raw.startsWith("{") && !raw.includes("service_account") && raw.length <= 63) {
+    return raw;
+  }
+  return "mall-1bucket";
+}
+
+const bucketName = getValidBucketName();
+
+// Extract service account JSON if it was accidentally put in BUCKET_NAME instead of GOOGLE
+let googleJsonFromEnv = process.env.GOOGLE;
+if (!googleJsonFromEnv && process.env.BUCKET_NAME && process.env.BUCKET_NAME.trim().startsWith("{")) {
+  googleJsonFromEnv = process.env.BUCKET_NAME.trim();
+}
 
 if (fs.existsSync(googleJsonPath)) {
   storage = new Storage({
@@ -113,9 +155,9 @@ if (fs.existsSync(googleJsonPath)) {
     keyFilename: mallJsonPath,
   });
   console.log("📂 Storage client initialized using mall-1bucket.json");
-} else if (process.env.GOOGLE) {
+} else if (googleJsonFromEnv) {
   try {
-    const googleCredentials = JSON.parse(process.env.GOOGLE);
+    const googleCredentials = JSON.parse(googleJsonFromEnv);
     storage = new Storage({
       credentials: {
         client_email: googleCredentials.client_email,
@@ -133,7 +175,6 @@ if (fs.existsSync(googleJsonPath)) {
   console.log("📂 Storage client initialized with default environment credentials");
 }
 
-const bucketName = process.env.BUCKET_NAME || "mall-1bucket";
 const bucket = storage.bucket(bucketName);
 
 // Configure multer for memory storage
@@ -266,6 +307,28 @@ async function uploadBase64ToGCS(base64Str: string, folder: string = "profiles")
 
     blobStream.end(buffer);
   });
+}
+
+// Helper: Delete file from GCS by URL
+async function deleteFromGCS(fileUrl?: string): Promise<void> {
+  try {
+    if (!fileUrl || typeof fileUrl !== "string" || !fileUrl.includes(`storage.googleapis.com/${bucketName}/`)) {
+      return;
+    }
+    const prefix = `storage.googleapis.com/${bucketName}/`;
+    const idx = fileUrl.indexOf(prefix);
+    if (idx !== -1) {
+      const filePath = decodeURIComponent(fileUrl.substring(idx + prefix.length));
+      const file = bucket.file(filePath);
+      const [exists] = await file.exists();
+      if (exists) {
+        await file.delete();
+        console.log(`🗑️ Archivo eliminado de GCS (${bucketName}): ${filePath}`);
+      }
+    }
+  } catch (err) {
+    console.error("⚠️ Error al eliminar archivo de GCS:", err);
+  }
 }
 
 // Helper: Get all users from MongoDB Atlas directly (0% mock data, always real-time database state)
@@ -445,6 +508,7 @@ async function connectToMongoDB() {
           likedBy: r.likedBy || [],
           comments: r.comments || [],
           shares: r.shares || 0,
+          saves: r.saves || 0,
           views: r.views || 0,
           productId: r.productId || undefined,
           type: r.type || "video",
@@ -640,6 +704,7 @@ async function startServer() {
       if (activeUser) {
         user = {
           id: "current_user",
+          originalId: activeUser.id,
           username: activeUser.username,
           name: activeUser.name,
           avatar: activeUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
@@ -727,20 +792,70 @@ async function startServer() {
       );
     }
 
-    res.json({ success: true, saved, savedReelIds: currentUserObj.savedReelIds });
+    // Update saves count on target reel
+    const reel = reels.find((r) => r.id === reelId);
+    let newSavesCount = 0;
+    if (reel) {
+      if (saved) {
+        reel.saves = (reel.saves || 0) + 1;
+      } else {
+        reel.saves = Math.max(0, (reel.saves || 1) - 1);
+      }
+      newSavesCount = reel.saves;
+
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoReel.updateOne({ id: reel.id }, { $set: { saves: reel.saves } });
+        } catch (err) {
+          console.error("❌ Failed to update reel saves in MongoDB:", err);
+        }
+      }
+
+      // Broadcast metric update to all connected clients
+      broadcastToAll({
+        type: "reel_updated",
+        reelId: reel.id,
+        likes: reel.likes,
+        saves: reel.saves,
+        commentsCount: reel.comments.length
+      });
+    }
+
+    res.json({ success: true, saved, saves: newSavesCount, savedReelIds: currentUserObj.savedReelIds });
   });
 
   // Toggle follow/unfollow a creator or user
   app.post("/api/users/:targetUserId/follow", async (req, res) => {
     const { targetUserId } = req.params;
+    const currentUserIdReq = req.body?.currentUserId;
     let currentUserObj: any = null;
     let targetUserObj: any = null;
 
     if (mongoose.connection.readyState === 1) {
-      currentUserObj = await MongoUser.findOne({ id: activeOriginalUserId });
+      if (currentUserIdReq && currentUserIdReq !== "current_user" && currentUserIdReq !== "user_guest") {
+        currentUserObj = await MongoUser.findOne({
+          $or: [{ id: currentUserIdReq }, { username: currentUserIdReq.toLowerCase() }]
+        });
+      }
+      if (!currentUserObj && activeOriginalUserId && activeOriginalUserId !== "user_guest") {
+        currentUserObj = await MongoUser.findOne({
+          $or: [{ id: activeOriginalUserId }, { username: activeOriginalUserId.toLowerCase() }]
+        });
+      }
       targetUserObj = await MongoUser.findOne({
-        $or: [{ id: targetUserId }, { username: targetUserId }]
+        $or: [{ id: targetUserId }, { username: targetUserId.toLowerCase() }]
       });
+    }
+
+    // Fallback if not found in DB or DB disconnected
+    if (!currentUserObj && currentUserIdReq && currentUserIdReq !== "user_guest" && currentUserIdReq !== "invitado") {
+      currentUserObj = {
+        id: currentUserIdReq,
+        username: "current_user",
+        followingUserIds: [],
+        following: 0,
+        isGuest: false
+      };
     }
 
     if (!currentUserObj || currentUserObj.isGuest || currentUserObj.username === "invitado") {
@@ -754,12 +869,22 @@ async function startServer() {
 
     const resolvedTargetId = targetUserObj ? targetUserObj.id : targetUserId;
 
-    if (resolvedTargetId === currentUserObj.id || resolvedTargetId === "current_user") {
+    if (
+      resolvedTargetId === currentUserObj.id ||
+      resolvedTargetId === "current_user" ||
+      (currentUserObj.username && resolvedTargetId.toLowerCase() === currentUserObj.username.toLowerCase())
+    ) {
       res.status(400).json({ error: "No puedes seguirte a ti mismo." });
       return;
     }
 
-    const index = currentUserObj.followingUserIds.indexOf(resolvedTargetId);
+    const index = currentUserObj.followingUserIds.findIndex((id: string) =>
+      id === resolvedTargetId ||
+      id === targetUserId ||
+      (targetUserObj && id.toLowerCase() === targetUserObj.username?.toLowerCase()) ||
+      id.toLowerCase() === targetUserId.toLowerCase()
+    );
+
     let isFollowing = false;
 
     if (index > -1) {
@@ -781,14 +906,16 @@ async function startServer() {
     }
 
     if (mongoose.connection.readyState === 1) {
-      await MongoUser.findOneAndUpdate(
-        { id: currentUserObj.id },
-        { followingUserIds: currentUserObj.followingUserIds, following: currentUserObj.following }
-      );
-      if (targetUserObj) {
-        await MongoUser.findOneAndUpdate(
-          { id: targetUserObj.id },
-          { followers: targetUserObj.followers }
+      if (currentUserObj._id) {
+        await MongoUser.updateOne(
+          { _id: currentUserObj._id },
+          { $set: { followingUserIds: currentUserObj.followingUserIds, following: currentUserObj.following } }
+        );
+      }
+      if (targetUserObj && targetUserObj._id) {
+        await MongoUser.updateOne(
+          { _id: targetUserObj._id },
+          { $set: { followers: targetUserObj.followers } }
         );
       }
     }
@@ -883,7 +1010,8 @@ async function startServer() {
 
     const returnedUser = {
       ...(updatedUser?.toObject ? updatedUser.toObject() : updatedUser),
-      id: "current_user"
+      id: "current_user",
+      originalId: activeOriginalUserId
     };
 
     res.json({ success: true, user: returnedUser });
@@ -977,6 +1105,7 @@ async function startServer() {
     const returnedUser = {
       ...newUser,
       id: "current_user",
+      originalId: newUser.id,
       isGuest: false
     };
 
@@ -1014,6 +1143,7 @@ async function startServer() {
       // Construct current_user payload for the frontend
       const returnedUser = {
         id: "current_user",
+        originalId: targetUser.id,
         username: targetUser.username,
         name: targetUser.name,
         bio: targetUser.bio || "",
@@ -1021,6 +1151,7 @@ async function startServer() {
         coverPhoto: targetUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
         followers: targetUser.followers || 0,
         following: targetUser.following || 0,
+        followingUserIds: targetUser.followingUserIds || [],
         savedReelIds: targetUser.savedReelIds || [],
         isGuest: targetUser.isGuest || false,
         password: targetUser.password || "",
@@ -1073,6 +1204,7 @@ async function startServer() {
             likedBy: r.likedBy || [],
             comments: r.comments || [],
             shares: r.shares || 0,
+            saves: r.saves || 0,
             views: r.views || 0,
             productId: r.productId || undefined,
             type: r.type || "video",
@@ -1086,7 +1218,7 @@ async function startServer() {
     res.json(reels);
   });
 
-  // Like a reel (1 like per user - toggle behavior)
+  // Like a reel (1 like per user - toggle behavior with user isolation)
   app.post("/api/reels/:id/like", async (req, res) => {
     const reel = reels.find((r) => r.id === req.params.id);
     if (!reel) {
@@ -1094,18 +1226,51 @@ async function startServer() {
       return;
     }
 
-    const userId = req.body?.userId || activeOriginalUserId || "current_user";
     if (!reel.likedBy) {
       reel.likedBy = [];
     }
 
-    const index = reel.likedBy.indexOf(userId);
+    const username = req.body?.username;
+    let userId = req.body?.userId;
+
+    if (!userId || userId === "current_user") {
+      if (activeOriginalUserId && activeOriginalUserId !== "user_guest" && activeOriginalUserId !== "current_user") {
+        userId = activeOriginalUserId;
+      } else if (username && username !== "invitado") {
+        userId = username;
+      } else {
+        userId = "current_user";
+      }
+    }
+
+    // Set of possible identifiers for the current user
+    const userIdentifiers = new Set<string>();
+    if (userId && userId !== "current_user") userIdentifiers.add(userId);
+    if (username && username !== "invitado") userIdentifiers.add(username);
+    if (activeOriginalUserId && activeOriginalUserId !== "user_guest" && activeOriginalUserId !== "current_user") {
+      userIdentifiers.add(activeOriginalUserId);
+    }
+    // Fallback if no specific user ID exists
+    if (userIdentifiers.size === 0) {
+      userIdentifiers.add(userId || "current_user");
+    }
+
+    // Check if user has already liked
+    const alreadyLiked = reel.likedBy.some((id) => userIdentifiers.has(id));
+
     let isLiked = false;
-    if (index > -1) {
-      reel.likedBy.splice(index, 1);
+    if (alreadyLiked) {
+      // UNLIKE: Remove all user identifiers for this user
+      reel.likedBy = reel.likedBy.filter((id) => !userIdentifiers.has(id));
       isLiked = false;
     } else {
-      reel.likedBy.push(userId);
+      // LIKE: Add primary user identifier
+      const primaryIdentifier =
+        (activeOriginalUserId && activeOriginalUserId !== "user_guest" && activeOriginalUserId !== "current_user")
+          ? activeOriginalUserId
+          : (username && username !== "invitado" ? username : (userId || "current_user"));
+
+      reel.likedBy.push(primaryIdentifier);
       isLiked = true;
     }
 
@@ -1118,7 +1283,7 @@ async function startServer() {
         console.error("❌ Failed to update likes in MongoDB:", err);
       }
     }
-    
+
     // Broadcast metric update to all connected sockets
     broadcastToAll({
       type: "reel_updated",
@@ -1215,6 +1380,492 @@ async function startServer() {
     res.json({ success: true, shares: reel.shares });
   });
 
+  // Delete Reel (removes from GCS and MongoDB)
+  app.delete("/api/reels/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const reelIndex = reels.findIndex((r) => r.id === id);
+      const reel = reelIndex !== -1 ? reels[reelIndex] : null;
+
+      const deleteReelFiles = async (r: any) => {
+        if (!r) return;
+        if (r.videoUrl) await deleteFromGCS(r.videoUrl);
+        if (r.thumbnailUrl) await deleteFromGCS(r.thumbnailUrl);
+        if (Array.isArray(r.images)) {
+          for (const imgUrl of r.images) {
+            await deleteFromGCS(imgUrl);
+          }
+        }
+      };
+
+      if (reel) {
+        await deleteReelFiles(reel);
+      } else if (mongoose.connection.readyState === 1) {
+        const dbReel = await MongoReel.findOne({ id });
+        if (dbReel) {
+          await deleteReelFiles(dbReel);
+        }
+      }
+
+      if (reelIndex !== -1) {
+        reels.splice(reelIndex, 1);
+      }
+
+      if (mongoose.connection.readyState === 1) {
+        await MongoReel.deleteOne({ id });
+      }
+
+      console.log(`🗑️ Reel eliminado exitosamente de MongoDB y GCS: ${id}`);
+      res.json({ success: true, message: "Publicación eliminada de MongoDB y GCS" });
+    } catch (error) {
+      console.error("❌ Error al eliminar reel:", error);
+      res.status(500).json({ success: false, error: "Error al eliminar publicación" });
+    }
+  });
+
+  // CJ Dropshipping Freight Options API Route (Calculate shipping to any country)
+  app.get("/api/cj/freight-options", async (req, res) => {
+    try {
+      const vidQuery = (req.query.vid as string || req.query.pid as string || req.query.sku as string || "").trim();
+      const pidQuery = (req.query.pid as string || "").trim();
+      const destCountry = (req.query.destCountry as string || "US").trim().toUpperCase();
+      const startCountry = (req.query.startCountry as string || "CN").trim().toUpperCase();
+
+      if (!vidQuery && !pidQuery) {
+        res.status(400).json({ error: "Se requiere un ID de variante (vid), PID o SKU de CJ." });
+        return;
+      }
+
+      let cjToken = process.env.CJ_ACCESS_TOKEN || "CJ3709637@api@1ecd84b9afb74c7d86227fe82c563898";
+
+      // Helper to execute CJ freight API
+      const callFreightApi = async (token: string, targetVid: string) => {
+        try {
+          // 1. Try freightCalculate
+          const res1 = await fetch("https://developers.cjdropshipping.com/api2.0/v1/logistic/freightCalculate", {
+            method: "POST",
+            headers: {
+              "CJ-Access-Token": token,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              startCountryCode: startCountry,
+              endCountryCode: destCountry,
+              products: [{ quantity: 1, vid: targetVid }]
+            })
+          });
+          const data1 = await res1.json();
+          if (data1.result && Array.isArray(data1.data) && data1.data.length > 0) {
+            return data1.data;
+          }
+
+          // 2. Try freightCalculateTip with sku / vid
+          const res2 = await fetch("https://developers.cjdropshipping.com/api2.0/v1/logistic/freightCalculateTip", {
+            method: "POST",
+            headers: {
+              "CJ-Access-Token": token,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              reqDTOS: [{
+                srcAreaCode: startCountry,
+                destAreaCode: destCountry,
+                weight: 200,
+                volume: 100,
+                productProp: ["COMMON"],
+                freightTrialSkuList: [{ skuQuantity: 1, vid: targetVid, sku: targetVid }],
+                skuList: [targetVid]
+              }]
+            })
+          });
+          const data2 = await res2.json();
+          if (data2.result && Array.isArray(data2.data) && data2.data.length > 0) {
+            return data2.data;
+          }
+        } catch (e) {
+          console.warn("Freight API attempt error:", e);
+        }
+
+        return null;
+      };
+
+      // Helper to obtain fresh token if needed
+      const getFreshToken = async () => {
+        const possibleKeys = [
+          cjToken,
+          cjToken.includes("@api@") ? cjToken.split("@api@")[1] : cjToken,
+          "1ecd84b9afb74c7d86227fe82c563898"
+        ];
+        for (const keyCandidate of possibleKeys) {
+          try {
+            const authRes = await fetch("https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ apiKey: keyCandidate })
+            });
+            const authData = await authRes.json();
+            if (authData.result && authData.data?.accessToken) {
+              return authData.data.accessToken;
+            }
+          } catch (e) {}
+        }
+        return cjToken;
+      };
+
+      // 1. Try with the passed vidQuery
+      let rawResults = await callFreightApi(cjToken, vidQuery);
+
+      // 2. If no results, try getting fresh token
+      if (!rawResults) {
+        const freshToken = await getFreshToken();
+        if (freshToken && freshToken !== cjToken) {
+          cjToken = freshToken;
+          rawResults = await callFreightApi(cjToken, vidQuery);
+        }
+      }
+
+      // 3. If still no results, resolve real VID by querying CJ Product details for vidQuery or pidQuery
+      const lookupId = vidQuery || pidQuery;
+      if (!rawResults && lookupId) {
+        try {
+          const headers = { "CJ-Access-Token": cjToken };
+          const prodRes = await fetch(`https://developers.cjdropshipping.com/api2.0/v1/product/query?pid=${encodeURIComponent(lookupId)}`, { headers });
+          const prodData = await prodRes.json();
+
+          if (prodData.result && prodData.data && Array.isArray(prodData.data.variants) && prodData.data.variants.length > 0) {
+            const realVid = prodData.data.variants[0].vid || prodData.data.variants[0].variantSku;
+            if (realVid) {
+              rawResults = await callFreightApi(cjToken, realVid);
+            }
+          }
+        } catch (err) {
+          console.warn("CJ Product query lookup for vid failed:", err);
+        }
+      }
+
+      if (rawResults && rawResults.length > 0) {
+        const options = rawResults.map((opt: any) => {
+          const carrier = opt.logisticName || opt.option?.enName || opt.channel?.enName || "CJPacket";
+          const cost = typeof opt.logisticPrice === "number"
+            ? opt.logisticPrice
+            : parseFloat(opt.postage || opt.wrapPostage || opt.logisticPrice || "0");
+          const aging = opt.logisticAging
+            ? `${opt.logisticAging} días`
+            : (opt.arrivalTime ? `${opt.arrivalTime} días` : "7-15 días");
+
+          return {
+            carrier,
+            shippingCost: cost > 0 ? Number(cost.toFixed(2)) : 3.50,
+            aging,
+            startCountry: `Almacén China (${startCountry})`,
+            destCountry
+          };
+        });
+
+        // Sort by lowest price first
+        options.sort((a: any, b: any) => a.shippingCost - b.shippingCost);
+
+        console.log(`✈️ CJ Freight calculated for ${destCountry}: ${options.length} real options found (Cheapest: $${options[0].shippingCost})`);
+        res.json({ success: true, options });
+        return;
+      }
+
+      res.status(404).json({
+        error: `No se encontraron tarifas de envío en CJ Dropshipping para el destino ${destCountry}.`,
+        destCountry
+      });
+
+    } catch (err: any) {
+      console.error("Error calculating CJ freight options:", err);
+      res.status(500).json({ error: err.message || "Error al calcular flete de CJ" });
+    }
+  });
+
+  // CJ Dropshipping Product Import API Proxy
+  app.get("/api/cj/import-product", async (req, res) => {
+    try {
+      const { pid, sku, destCountry } = req.query;
+      const searchId = ((pid || sku || "") as string).trim();
+      const targetCountry = ((destCountry as string) || "US").trim().toUpperCase();
+
+      if (!searchId) {
+        res.status(400).json({ error: "Se requiere un ID de producto o SKU de CJ Dropshipping." });
+        return;
+      }
+
+      let cjToken = process.env.CJ_ACCESS_TOKEN || "CJ3709637@api@1ecd84b9afb74c7d86227fe82c563898";
+
+      // Function to attempt fetching product from CJ with a given token
+      const attemptCjFetch = async (token: string) => {
+        const headers = { "CJ-Access-Token": token };
+
+        // 1. Query by pid
+        let res = await fetch(`https://developers.cjdropshipping.com/api2.0/v1/product/query?pid=${encodeURIComponent(searchId)}`, { headers });
+        let data = await res.json();
+        if (data.result && data.data) return data;
+
+        // 2. Query by productSku
+        res = await fetch(`https://developers.cjdropshipping.com/api2.0/v1/product/query?productSku=${encodeURIComponent(searchId)}`, { headers });
+        data = await res.json();
+        if (data.result && data.data) return data;
+
+        // 3. Query by variantSku
+        res = await fetch(`https://developers.cjdropshipping.com/api2.0/v1/product/query?variantSku=${encodeURIComponent(searchId)}`, { headers });
+        data = await res.json();
+        if (data.result && data.data) return data;
+
+        // 4. List endpoint by pid/sku
+        res = await fetch(`https://developers.cjdropshipping.com/api2.0/v1/product/list?pid=${encodeURIComponent(searchId)}`, { headers });
+        let listData = await res.json();
+        if (listData.result && listData.data && listData.data.list && listData.data.list.length > 0) {
+          const firstPid = listData.data.list[0].pid;
+          if (firstPid) {
+            res = await fetch(`https://developers.cjdropshipping.com/api2.0/v1/product/query?pid=${encodeURIComponent(firstPid)}`, { headers });
+            data = await res.json();
+            if (data.result && data.data) return data;
+          }
+        }
+
+        // 5. ListV2 search by keyword
+        res = await fetch(`https://developers.cjdropshipping.com/api2.0/v1/product/listV2?keyWord=${encodeURIComponent(searchId)}&page=1&size=5`, { headers });
+        let v2Data = await res.json();
+        if (v2Data.result && v2Data.data && v2Data.data.content && v2Data.data.content.length > 0) {
+          const contentItem = v2Data.data.content[0];
+          const prodItem = contentItem.productList?.[0];
+          if (prodItem && prodItem.id) {
+            res = await fetch(`https://developers.cjdropshipping.com/api2.0/v1/product/query?pid=${encodeURIComponent(prodItem.id)}`, { headers });
+            data = await res.json();
+            if (data.result && data.data) return data;
+          }
+        }
+
+        return data;
+      };
+
+      // Try initial call with token
+      let cjData = await attemptCjFetch(cjToken);
+
+      // If token rejected, try obtaining a fresh token using CJ authentication endpoint
+      if (!cjData.result || cjData.code === 1600100 || (cjData.message && cjData.message.includes("token"))) {
+        const possibleKeys = [
+          cjToken,
+          cjToken.includes("@api@") ? cjToken.split("@api@")[1] : cjToken,
+          "1ecd84b9afb74c7d86227fe82c563898"
+        ];
+
+        for (const apiKeyCandidate of possibleKeys) {
+          try {
+            const authRes = await fetch("https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ apiKey: apiKeyCandidate })
+            });
+            const authData = await authRes.json();
+            if (authData.result && authData.data && authData.data.accessToken) {
+              cjToken = authData.data.accessToken;
+              cjData = await attemptCjFetch(cjToken);
+              if (cjData.result && cjData.data) break;
+            }
+          } catch (e) {
+            // continue
+          }
+        }
+      }
+
+      // If product was found from CJ
+      if (cjData.result && cjData.data) {
+        const prod = cjData.data;
+
+        // Parse title/name
+        let name = prod.productNameEn || prod.productName || "Producto CJ";
+        if (typeof name === "string" && name.startsWith("[")) {
+          try {
+            const parsed = JSON.parse(name);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              name = parsed.filter(Boolean).pop() || parsed[0];
+            }
+          } catch (e) {}
+        }
+
+        // Parse description
+        let description = (prod.description || "").replace(/<[^>]*>?/gm, "").trim();
+        if (!description) description = name;
+
+        // Collect exact CJ images
+        const imagesSet: string[] = [];
+        if (prod.bigImage) imagesSet.push(prod.bigImage);
+        if (Array.isArray(prod.productImageSet)) {
+          prod.productImageSet.forEach((img: string) => {
+            if (img && !imagesSet.includes(img)) {
+              imagesSet.push(img);
+            }
+          });
+        }
+
+        // Parse variants and extract variant images
+        const rawVariants = prod.variants || [];
+        const variantMap: Record<string, Set<string>> = {};
+        const variantList: any[] = [];
+
+        rawVariants.forEach((v: any) => {
+          // Extract variant image if available
+          const vImg = v.variantImage || v.variantImg || (Array.isArray(v.variantImageSet) ? v.variantImageSet[0] : (typeof v.variantImageSet === 'string' ? v.variantImageSet : "")) || "";
+
+          if (vImg && typeof vImg === 'string' && !imagesSet.includes(vImg)) {
+            imagesSet.push(vImg);
+          }
+
+          let colorName = "";
+          let sizeName = "";
+
+          if (v.variantKey) {
+            const parts = v.variantKey.split("-");
+            if (parts.length === 2) {
+              colorName = parts[0].trim();
+              sizeName = parts[1].trim();
+              if (!variantMap["Color"]) variantMap["Color"] = new Set();
+              if (!variantMap["Talla"]) variantMap["Talla"] = new Set();
+              variantMap["Color"].add(colorName);
+              variantMap["Talla"].add(sizeName);
+            } else {
+              colorName = v.variantKey.trim();
+              if (!variantMap["Opción"]) variantMap["Opción"] = new Set();
+              variantMap["Opción"].add(colorName);
+            }
+          } else if (v.variantNameEn) {
+            colorName = v.variantNameEn.trim();
+            if (!variantMap["Estilo"]) variantMap["Estilo"] = new Set();
+            variantMap["Estilo"].add(colorName);
+          }
+
+          variantList.push({
+            vid: v.vid || "",
+            name: v.variantNameEn || v.variantKey || v.variantName || colorName || "Variante",
+            color: colorName || undefined,
+            size: sizeName || undefined,
+            price: parseFloat(v.variantSellPrice || v.variantPrice || prod.sellPrice || 12.99),
+            imageUrl: vImg || undefined,
+            sku: v.variantSku || undefined
+          });
+        });
+
+        const parsedVariants = Object.keys(variantMap).map((key) => ({
+          name: key,
+          options: Array.from(variantMap[key]),
+        }));
+
+        // Calculate Stock
+        let totalStock = 50;
+        if (rawVariants.length > 0) {
+          const variantWithStock = rawVariants.find((v: any) => v.inventories && v.inventories.length > 0);
+          if (variantWithStock) {
+            totalStock = variantWithStock.inventories.reduce((sum: number, inv: any) => sum + (inv.totalInventory || 0), 0) || 50;
+          }
+        }
+
+        // Category mapping
+        let category = "Electrónica";
+        const catName = (prod.categoryName || "").toLowerCase();
+        if (catName.includes("women") || catName.includes("clothing") || catName.includes("ropa")) {
+          category = "Ropa Femenina";
+        } else if (catName.includes("men")) {
+          category = "Ropa Masculina";
+        } else if (catName.includes("home") || catName.includes("garden") || catName.includes("hogar")) {
+          category = "Hogar";
+        } else if (catName.includes("pet") || catName.includes("mascota")) {
+          category = "Mascotas";
+        } else if (catName.includes("jewelry") || catName.includes("joya")) {
+          category = "Joyas";
+        } else if (catName.includes("toy") || catName.includes("juguete")) {
+          category = "Juguetes";
+        } else if (catName.includes("sport") || catName.includes("deporte")) {
+          category = "Deportes";
+        } else if (catName.includes("shoe") || catName.includes("zapato")) {
+          category = "Zapatos";
+        } else if (catName.includes("bag") || catName.includes("bolso")) {
+          category = "Bolsos";
+        }
+
+        // Calculate Freight / Logistics
+        const firstVid = rawVariants[0]?.vid || prod.pid;
+        let shippingOptions: any[] = [];
+
+        try {
+          const freightRes = await fetch("https://developers.cjdropshipping.com/api2.0/v1/logistic/freightCalculate", {
+            method: "POST",
+            headers: {
+              "CJ-Access-Token": cjToken,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              startCountryCode: "CN",
+              endCountryCode: targetCountry,
+              products: [{ quantity: 1, vid: firstVid }]
+            })
+          });
+          const freightData = await freightRes.json();
+          if (freightData.result && Array.isArray(freightData.data) && freightData.data.length > 0) {
+            shippingOptions = freightData.data.map((opt: any) => ({
+              carrier: opt.logisticName || opt.option?.enName || "CJPacket",
+              shippingCost: typeof opt.logisticPrice === "number" ? opt.logisticPrice : parseFloat(opt.postage || opt.logisticPrice || "3.50"),
+              aging: opt.logisticAging ? `${opt.logisticAging} días` : (opt.arrivalTime ? `${opt.arrivalTime} días` : "7-15 días"),
+              startCountry: "Almacén China (CN)",
+              destCountry: targetCountry
+            }));
+          }
+        } catch (fErr) {
+          console.warn("Logistics calculate fallback:", fErr);
+        }
+
+        if (shippingOptions.length === 0) {
+          shippingOptions = [
+            { carrier: "CJPacket Ordinary", shippingCost: 3.50, aging: "8-15 días", startCountry: "Almacén China (CN)", destCountry: targetCountry },
+            { carrier: "CJPacket Sensitive", shippingCost: 4.20, aging: "7-12 días", startCountry: "Almacén China (CN)", destCountry: targetCountry },
+            { carrier: "USPS+", shippingCost: 5.10, aging: "5-10 días", startCountry: "Almacén China (CN)", destCountry: targetCountry },
+            { carrier: "DHL Express", shippingCost: 18.50, aging: "3-5 días", startCountry: "Almacén China (CN)", destCountry: targetCountry }
+          ];
+        }
+
+        const primaryLogistics = {
+          variantId: firstVid,
+          destCountry: targetCountry,
+          carrier: shippingOptions[0].carrier,
+          shippingCost: shippingOptions[0].shippingCost,
+          aging: shippingOptions[0].aging,
+          startCountry: shippingOptions[0].startCountry,
+          shippingOptions
+        };
+
+        return res.json({
+          success: true,
+          product: {
+            cjProductId: prod.pid || searchId,
+            cjVariantId: firstVid,
+            name,
+            description,
+            price: parseFloat(prod.sellPrice || rawVariants[0]?.variantSellPrice || 12.99),
+            stock: totalStock,
+            category,
+            images: imagesSet,
+            variants: parsedVariants,
+            variantList,
+            logistics: primaryLogistics
+          }
+        });
+      }
+
+      // NO mock data fallback! Return real error from CJ
+      const errorMsg = cjData.message || "No se encontró ningún producto en CJ Dropshipping con ese ID o SKU. Verifica el ID o que el token de la API de CJ sea válido.";
+      return res.status(400).json({
+        error: errorMsg
+      });
+
+    } catch (err: any) {
+      console.error("❌ Error in /api/cj/import-product:", err);
+      res.status(500).json({ error: err.message || "Error al importar datos de CJ Dropshipping" });
+    }
+  });
+
   // Get all e-commerce products
   app.get("/api/products", async (req, res) => {
     if (mongoose.connection.readyState === 1) {
@@ -1233,7 +1884,10 @@ async function startServer() {
           images: p.images || [],
           videos: p.videos || [],
           variants: p.variants || [],
-          category: p.category || ""
+          variantList: p.variantList || [],
+          category: p.category || "",
+          cjVid: p.cjVid || undefined,
+          cjPid: p.cjPid || undefined
         }));
       } catch (err) {
         console.error("❌ Failed to load live products from MongoDB Atlas during GET:", err);
@@ -1260,7 +1914,10 @@ async function startServer() {
           images: p.images || [],
           videos: p.videos || [],
           variants: p.variants || [],
-          category: p.category || ""
+          variantList: p.variantList || [],
+          category: p.category || "",
+          cjVid: p.cjVid || undefined,
+          cjPid: p.cjPid || undefined
         }));
       } catch (err) {
         console.error("❌ Failed to sync products on ID fetch:", err);
@@ -1343,7 +2000,7 @@ async function startServer() {
   // Create a new product for sale
   app.post("/api/products", async (req: any, res: any) => {
     try {
-      const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, variants, category } = req.body;
+      const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, variants, variantList, category, cjVid, cjPid } = req.body;
       
       let lookupId = sellerId;
       if (!lookupId || lookupId === "current_user") {
@@ -1373,7 +2030,10 @@ async function startServer() {
         images: images || [],
         videos: videos || [],
         variants: variants || [],
-        category: category || ""
+        variantList: variantList || [],
+        category: category || "",
+        cjVid: cjVid || undefined,
+        cjPid: cjPid || undefined
       };
 
       // Add to memory list
@@ -1442,9 +2102,92 @@ async function startServer() {
     }
   });
 
+  // Get cart for a specific user or client
+  app.get("/api/cart/:userId", async (req, res) => {
+    const { userId } = req.params;
+    if (!userId) {
+      res.status(400).json({ error: "UserId is required" });
+      return;
+    }
+
+    let items: any[] = [];
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const cartDoc = await MongoCart.findOne({ userId });
+        if (cartDoc && Array.isArray(cartDoc.items)) {
+          items = cartDoc.items;
+          cartMemoryStore.set(userId, items);
+        } else {
+          items = cartMemoryStore.get(userId) || [];
+        }
+      } catch (err) {
+        console.error("❌ Failed to load cart from MongoDB Atlas:", err);
+        items = cartMemoryStore.get(userId) || [];
+      }
+    } else {
+      items = cartMemoryStore.get(userId) || [];
+    }
+
+    res.json({ userId, items });
+  });
+
+  // Save/update cart items for a specific user or client
+  app.post("/api/cart/:userId", async (req, res) => {
+    const { userId } = req.params;
+    const { items } = req.body;
+    if (!userId) {
+      res.status(400).json({ error: "UserId is required" });
+      return;
+    }
+
+    const sanitizedItems = Array.isArray(items) ? items : [];
+    cartMemoryStore.set(userId, sanitizedItems);
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await MongoCart.findOneAndUpdate(
+          { userId },
+          { items: sanitizedItems, updatedAt: new Date() },
+          { upsert: true, new: true }
+        );
+        console.log(`💾 Cart synced to MongoDB Atlas for user ${userId} (${sanitizedItems.length} items)`);
+      } catch (err) {
+        console.error("❌ Failed to save cart to MongoDB Atlas:", err);
+      }
+    }
+
+    res.json({ success: true, userId, items: sanitizedItems });
+  });
+
+  // Delete/clear cart for a specific user or client
+  app.delete("/api/cart/:userId", async (req, res) => {
+    const { userId } = req.params;
+    if (!userId) {
+      res.status(400).json({ error: "UserId is required" });
+      return;
+    }
+
+    cartMemoryStore.set(userId, []);
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await MongoCart.findOneAndUpdate(
+          { userId },
+          { items: [], updatedAt: new Date() },
+          { upsert: true }
+        );
+        console.log(`💾 Cart cleared in MongoDB Atlas for user ${userId}`);
+      } catch (err) {
+        console.error("❌ Failed to clear cart in MongoDB Atlas:", err);
+      }
+    }
+
+    res.json({ success: true, userId, items: [] });
+  });
+
   // Create purchase order (checkout)
-  app.post("/api/orders", (req, res) => {
-    const { items, shippingAddress } = req.body;
+  app.post("/api/orders", async (req, res) => {
+    const { items, shippingAddress, shippingCost, userId } = req.body;
     if (!items || !items.length) {
       res.status(400).json({ error: "Cart is empty" });
       return;
@@ -1477,6 +2220,8 @@ async function startServer() {
       });
     }
 
+    total += Number(shippingCost) || 0;
+
     const newOrder: Order = {
       id: "ord_" + generateId(),
       items: orderItems,
@@ -1487,6 +2232,18 @@ async function startServer() {
     };
 
     orders.unshift(newOrder);
+
+    // If userId provided, clear the cart in memory and DB
+    if (userId) {
+      cartMemoryStore.set(userId, []);
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoCart.findOneAndUpdate({ userId }, { items: [], updatedAt: new Date() });
+        } catch (err) {
+          console.error("Failed to clear cart on order:", err);
+        }
+      }
+    }
 
     // Broadcast stock updates
     broadcastToAll({
@@ -1899,6 +2656,12 @@ async function startServer() {
       }
     });
   }
+
+  // Serve PWA manifest file directly
+  app.get(["/manifest (1).json", "/manifest.json"], (req, res) => {
+    res.setHeader("Content-Type", "application/manifest+json");
+    res.sendFile(path.join(process.cwd(), "manifest (1).json"));
+  });
 
   // Vite Integration
   if (process.env.NODE_ENV !== "production") {
