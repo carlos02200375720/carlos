@@ -87,8 +87,14 @@ html, body, #root {
   min-height: 100%;
   padding: 0;
   margin: 0;
-  background-color: transparent;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   -webkit-tap-highlight-color: transparent;
+}
+
+header, nav, #bottom-nav-bar, #shop-panel, #profile-panel, #social-page, #reels-panel {
+  border-top: none !important;
 }
 
 .pt-safe {

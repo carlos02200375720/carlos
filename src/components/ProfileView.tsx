@@ -299,7 +299,7 @@ export default function ProfileView({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto min-h-[600px] bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden flex flex-col" id="profile-panel">
+    <div className="w-full max-w-4xl mx-auto min-h-[600px] bg-white rounded-none sm:rounded-2xl border-0 sm:border sm:border-slate-200 shadow-none sm:shadow-xl overflow-hidden flex flex-col" id="profile-panel">
       {/* Profile Header Image Backbanner */}
       <div className="h-40 bg-slate-900 relative overflow-hidden">
         {profileUser.coverPhoto ? (
