@@ -374,7 +374,7 @@ export default function ReelsView({
                     )}
 
                     {/* Header Controls (Cart button on top-left, Mute on top-right) */}
-                    <div className="absolute top-4 left-4 z-20">
+                    <div className="absolute left-4 z-20" style={{ top: "calc(env(safe-area-inset-top, 0px) + 1rem)" }}>
                       <button
                         onClick={() => setShowCartDrawer(true)}
                         className="relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] flex items-center justify-center"
@@ -391,7 +391,7 @@ export default function ReelsView({
                     </div>
 
                     {/* Header Controls (Mute / Sound) */}
-                    <div className="absolute top-4 right-4 z-20">
+                    <div className="absolute right-4 z-20" style={{ top: "calc(env(safe-area-inset-top, 0px) + 1rem)" }}>
                       <button
                         onClick={() => setIsMuted(!isMuted)}
                         className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
