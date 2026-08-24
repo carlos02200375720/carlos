@@ -3,7 +3,7 @@
 // Centralized Backend & API Configuration
 export const CLOUD_RUN_BACKEND_URL = "https://carlos02200375720mall-113642516090.europe-west1.run.app";
 
-export const BACKEND_URL =
+export const BACKEND_URL: string =
   (import.meta as any).env?.VITE_BACKEND_URL || CLOUD_RUN_BACKEND_URL;
 
 /**
@@ -39,3 +39,12 @@ export const getWebSocketUrl = (): string => {
   const host = typeof window !== "undefined" && window.location.host ? window.location.host : "carlos02200375720mall-113642516090.europe-west1.run.app";
   return `${protocol}//${host}`;
 };
+
+export const apiFetch = async (
+  input: string,
+  init?: RequestInit
+): Promise<Response> => {
+  const targetUrl = getApiUrl(input);
+  return fetch(targetUrl, init);
+};
+
