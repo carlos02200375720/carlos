@@ -95,6 +95,10 @@ html, body, #root {
 
 header, nav, #bottom-nav-bar, #shop-panel, #profile-panel, #social-page, #reels-panel {
   border-top: none !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  box-shadow: none !important;
 }
 
 .pt-safe {
