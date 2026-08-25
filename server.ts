@@ -560,6 +560,17 @@ async function startServer() {
 
   // --- API ENDPOINTS ---
 
+  // Health check endpoint for fast server wake-up & readiness verification
+  app.get(["/api/health", "/health"], (req, res) => {
+    res.json({
+      status: "ok",
+      server: "mall-social-cloudrun",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      mongoConnected: mongoose.connection.readyState === 1
+    });
+  });
+
   // Upload file to Google Cloud Storage & register in MongoDB
   app.post("/api/upload", upload.single("file"), async (req: any, res: any) => {
     try {
@@ -2729,9 +2740,35 @@ async function startServer() {
   }
 
   // Serve PWA manifest file directly
-  app.get(["/manifest (1).json", "/manifest.json"], (req, res) => {
+  app.get(["/manifest.json", "/manifest (1).json"], (req, res) => {
     res.setHeader("Content-Type", "application/manifest+json");
-    res.sendFile(path.join(process.cwd(), "manifest (1).json"));
+    const manifestPath = fs.existsSync(path.join(process.cwd(), "manifest.json"))
+      ? path.join(process.cwd(), "manifest.json")
+      : path.join(process.cwd(), "public", "manifest.json");
+    res.sendFile(manifestPath);
+  });
+
+  // Serve app icon assets directly
+  app.get(["/app-icon.jpg", "/icon-512.jpg", "/icon-192.jpg"], (req, res) => {
+    const iconPath = path.join(process.cwd(), "public", "app-icon.jpg");
+    if (fs.existsSync(iconPath)) {
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.sendFile(iconPath);
+    } else {
+      res.status(404).send("Icon not found");
+    }
+  });
+
+  app.get("/favicon.svg", (req, res) => {
+    const svgPath = path.join(process.cwd(), "public", "favicon.svg");
+    if (fs.existsSync(svgPath)) {
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.sendFile(svgPath);
+    } else {
+      res.status(404).send("Favicon not found");
+    }
   });
 
   // Vite Integration

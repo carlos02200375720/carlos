@@ -1,12 +1,12 @@
 {
-  "name": "mall-social.ai",
+  "name": "MallSocial - Social & Shopping Live",
   "short_name": "MallSocial",
-  "id": "mall-social",
-  "description": "Plataforma social integral con reels de video, transmisiones en vivo, chat en tiempo real, tienda e-commerce y mensajería privada.",
+  "id": "mall-social-app",
+  "description": "Plataforma social interactiva de comercio en vivo: video reels, transmisiones en vivo con chat en tiempo real, tienda e-commerce y catálogo.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "any",
+  "orientation": "portrait-primary",
   "background_color": "#000000",
   "theme_color": "#000000",
   "dir": "ltr",
@@ -15,21 +15,33 @@
     "shopping",
     "social",
     "video",
-    "business",
-    "fashion"
+    "entertainment",
+    "lifestyle"
   ],
   "icons": [
     {
-      "src": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=192&h=192&fit=crop",
-      "type": "image/png",
-      "sizes": "192x192",
+      "src": "/app-icon.jpg",
+      "type": "image/jpeg",
+      "sizes": "512x512",
       "purpose": "any maskable"
     },
     {
-      "src": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=512&h=512&fit=crop",
-      "type": "image/png",
+      "src": "/icon-512.jpg",
+      "type": "image/jpeg",
       "sizes": "512x512",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.jpg",
+      "type": "image/jpeg",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
     }
   ]
 }

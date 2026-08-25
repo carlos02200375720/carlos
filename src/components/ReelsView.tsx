@@ -550,7 +550,7 @@ export default function ReelsView({
 
                   {/* Lateral Interaction Bar (Likes, Comments, Saves, Shares, Avatar) */}
                   <div
-                    className="absolute right-3.5 sm:right-6 bottom-6 sm:bottom-8 z-20 flex flex-col items-center space-y-3.5 select-none"
+                    className="absolute right-3.5 sm:right-6 bottom-6 sm:bottom-8 z-20 flex flex-col items-center space-y-3.5 select-none p-0 ml-0 -mr-[5px]"
                     id={`interaction-bar-${reel.id}`}
                   >
                     {/* Creator Avatar with follow button */}
@@ -564,7 +564,7 @@ export default function ReelsView({
                           src={reel.creatorAvatar}
                           alt={reel.creatorName}
                           referrerPolicy="no-referrer"
-                          className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover border border-white/80 hover:border-amber-400 transition-colors"
+                          className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover"
                         />
                       </button>
                     </div>
@@ -587,8 +587,8 @@ export default function ReelsView({
                         id={`like-btn-${reel.id}`}
                       >
                         <Heart
-                          strokeWidth={1.5}
-                          className={`w-7 h-7 sm:w-8 sm:h-8 ${
+                          strokeWidth={2.2}
+                          className={`w-8 h-7 sm:w-9 sm:h-8 scale-x-110 ${
                             isLiked
                               ? "fill-rose-500 text-rose-500 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
                               : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
@@ -614,8 +614,8 @@ export default function ReelsView({
                         id={`comment-btn-${reel.id}`}
                       >
                         <MessageCircle
-                          strokeWidth={1.5}
-                          className="w-7 h-7 sm:w-8 sm:h-8 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                          strokeWidth={2.2}
+                          className="w-8 h-7 sm:w-9 sm:h-8 scale-x-110 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
                         />
                       </button>
                       <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
@@ -641,8 +641,8 @@ export default function ReelsView({
                         id={`save-btn-${reel.id}`}
                       >
                         <Bookmark
-                          strokeWidth={1.5}
-                          className={`w-7 h-7 sm:w-8 sm:h-8 ${
+                          strokeWidth={2.2}
+                          className={`w-8 h-7 sm:w-9 sm:h-8 scale-x-110 ${
                             savedReelIds.includes(reel.id)
                               ? "fill-amber-400 text-amber-400 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
                               : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
@@ -668,8 +668,8 @@ export default function ReelsView({
                         id={`share-btn-${reel.id}`}
                       >
                         <Share2
-                          strokeWidth={1.5}
-                          className="w-7 h-7 sm:w-8 sm:h-8 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                          strokeWidth={2.2}
+                          className="w-8 h-7 sm:w-9 sm:h-8 scale-x-110 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
                         />
                       </button>
                       <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">

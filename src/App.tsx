@@ -6,6 +6,7 @@ import ShopView from "./components/ShopView";
 import SocialPanel from "./components/SocialPanel";
 import ProfileView from "./components/ProfileView";
 import LoginView from "./components/LoginView";
+import SplashScreen from "./components/SplashScreen";
 import { motion, AnimatePresence } from "motion/react";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 
@@ -76,6 +77,12 @@ export default function App() {
   const [guestInteractionAlert, setGuestInteractionAlert] = useState<string | null>(null);
   const [isLiveViewerOpen, setIsLiveViewerOpen] = useState(false);
 
+  // App Startup & Server Connection Splash State
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [splashStatus, setSplashStatus] = useState("Conectando con el servidor...");
+  const [splashHasError, setSplashHasError] = useState(false);
+  const loadAttemptsRef = useRef(0);
+
   // WebSocket reference
   const socketRef = useRef<WebSocket | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -136,72 +143,125 @@ export default function App() {
       .catch((err) => console.error("Error fetching users:", err));
   };
 
+  // Clean up static HTML preloader as soon as React component mounts
+  useEffect(() => {
+    const preloader = document.getElementById("app-preloader");
+    if (preloader) {
+      preloader.style.opacity = "0";
+      setTimeout(() => {
+        try {
+          preloader.remove();
+        } catch (e) {}
+      }, 400);
+    }
+  }, []);
+
+  const loadInitialData = async () => {
+    setSplashHasError(false);
+    setSplashStatus("Iniciando conexión con Cloud Run...");
+    loadAttemptsRef.current += 1;
+
+    try {
+      // Step 1: Health check ping to wake up Cloud Run container
+      try {
+        setSplashStatus("Despertando servidor en la nube...");
+        await apiFetch("/api/health").catch(() => null);
+      } catch (e) {}
+
+      // Step 2: Fetch all core feed data in parallel
+      setSplashStatus("Cargando reels, catálogo y sesiones en vivo...");
+      const [usersRes, reelsRes, productsRes, liveRes] = await Promise.allSettled([
+        apiFetch("/api/users").then(r => r.json()),
+        apiFetch("/api/reels").then(r => r.json()),
+        apiFetch("/api/products").then(r => r.json()),
+        apiFetch("/api/live").then(r => r.json()),
+      ]);
+
+      let hasLoadedAnyCore = false;
+
+      if (usersRes.status === "fulfilled" && Array.isArray(usersRes.value) && usersRes.value.length > 0) {
+        setUsers(deduplicateById(usersRes.value));
+        hasLoadedAnyCore = true;
+      }
+
+      if (reelsRes.status === "fulfilled" && Array.isArray(reelsRes.value) && reelsRes.value.length > 0) {
+        setReels(deduplicateById(reelsRes.value));
+        hasLoadedAnyCore = true;
+      }
+
+      if (productsRes.status === "fulfilled" && Array.isArray(productsRes.value) && productsRes.value.length > 0) {
+        setProducts(deduplicateById(productsRes.value));
+        hasLoadedAnyCore = true;
+      }
+
+      if (liveRes.status === "fulfilled" && Array.isArray(liveRes.value)) {
+        setLiveSessions(deduplicateById(liveRes.value));
+      }
+
+      // Step 3: Restore session from localStorage if logged in
+      const savedUsername = localStorage.getItem("loggedInUsername");
+      const savedPassword = localStorage.getItem("loggedInPassword") || "";
+      if (savedUsername) {
+        apiFetch("/api/users/current/switch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetUsername: savedUsername, password: savedPassword }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data && data.success && data.user) {
+              setCurrentUser(data.user);
+              setSavedReelIds(data.user.savedReelIds || []);
+            }
+          })
+          .catch((err) => console.error("Error switching session user on boot:", err));
+      } else {
+        // Fetch default server current_user details
+        apiFetch("/api/users/current_user")
+          .then((res) => res.json())
+          .then((data) => {
+            if (data && data.user) {
+              setCurrentUser(data.user);
+              setSavedReelIds(data.user.savedReelIds || []);
+            }
+          })
+          .catch((err) => console.error("Error fetching current user details:", err));
+      }
+
+      if (hasLoadedAnyCore) {
+        setSplashStatus("¡Servidor listo! Bienvenido a MallSocial...");
+        setTimeout(() => {
+          setIsInitialLoading(false);
+        }, 400);
+      } else {
+        // If the server didn't return reels/products yet, retry if under 6 attempts
+        if (loadAttemptsRef.current < 6) {
+          setSplashStatus(`Iniciando servicios (${loadAttemptsRef.current}/6)...`);
+          setTimeout(() => {
+            loadInitialData();
+          }, 1800);
+        } else {
+          // If tried multiple times, show error state with retry/continue options
+          setSplashHasError(true);
+        }
+      }
+    } catch (error) {
+      console.error("Error initializing app data:", error);
+      if (loadAttemptsRef.current < 6) {
+        setSplashStatus(`Reconectando (${loadAttemptsRef.current}/6)...`);
+        setTimeout(() => {
+          loadInitialData();
+        }, 2000);
+      } else {
+        setSplashHasError(true);
+      }
+    }
+  };
+
   // Load initial catalog & files
   useEffect(() => {
-    // Asegurar que al abrir o refrescar la aplicación, la pestaña activa sea siempre 'reels' (Inicio)
     setActiveTab('reels');
-
-    // 1. Fetch Users
-    apiFetch("/api/users")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setUsers(deduplicateById(data));
-      })
-      .catch((err) => console.error("Error fetching users:", err));
-
-    // 2. Fetch Reels
-    apiFetch("/api/reels")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setReels(deduplicateById(data));
-      })
-      .catch((err) => console.error("Error fetching reels:", err));
-
-    // 3. Fetch Products
-    apiFetch("/api/products")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setProducts(deduplicateById(data));
-      })
-      .catch((err) => console.error("Error fetching products:", err));
-
-    // 4. Fetch Live sessions
-    apiFetch("/api/live")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setLiveSessions(deduplicateById(data));
-      })
-      .catch((err) => console.error("Error fetching live sessions:", err));
-
-    // 5. Restore session from localStorage if logged in
-    const savedUsername = localStorage.getItem("loggedInUsername");
-    const savedPassword = localStorage.getItem("loggedInPassword") || "";
-    if (savedUsername) {
-      apiFetch("/api/users/current/switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUsername: savedUsername, password: savedPassword }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && data.success && data.user) {
-            setCurrentUser(data.user);
-            setSavedReelIds(data.user.savedReelIds || []);
-          }
-        })
-        .catch((err) => console.error("Error switching session user on boot:", err));
-    } else {
-      // Fetch default server current_user details
-      apiFetch("/api/users/current_user")
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && data.user) {
-            setCurrentUser(data.user);
-            setSavedReelIds(data.user.savedReelIds || []);
-          }
-        })
-        .catch((err) => console.error("Error fetching current user details:", err));
-    }
+    loadInitialData();
   }, []);
 
   // Fetch Private Chats on Active User change
@@ -882,6 +942,15 @@ export default function App() {
   return (
     <div className={`w-full min-h-screen ${isDarkNavActive ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"} font-sans flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950`}>
       
+      {/* App Launch & Cloud Run Connection Splash Screen */}
+      <SplashScreen
+        isLoading={isInitialLoading}
+        statusMessage={splashStatus}
+        hasError={splashHasError}
+        onRetry={() => loadInitialData()}
+        onContinueAnyway={() => setIsInitialLoading(false)}
+      />
+
       {/* Desktop Left Sidebar Navigation (visible on md/lg desktop screens) */}
       <aside
         id="desktop-sidebar-nav"
