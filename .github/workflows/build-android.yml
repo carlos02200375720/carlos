@@ -24,8 +24,8 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: 4. Instalar dependencias
-        run: npm install
+      - name: 4. Instalar dependencias con binarios opcionales
+        run: npm install --include=optional
 
       - name: 5. Compilar proyecto Web
         run: npm run build
