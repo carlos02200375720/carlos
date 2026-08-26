@@ -24,10 +24,10 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: 4. Instalar dependencias
+      - name: 4. Instalar dependencias con soporte nativo
         run: |
-          npm install --include=optional
-          npm install @tailwindcss/oxide-linux-x64-gnu@^4.1.14 --save-optional || true
+          npm install --include=optional --force
+          npm install @tailwindcss/oxide-linux-x64-gnu --save-optional --force
 
       - name: 5. Compilar proyecto Web
         run: npm run build
