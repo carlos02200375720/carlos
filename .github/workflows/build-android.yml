@@ -16,7 +16,7 @@ jobs:
       - name: 2. Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: 3. Configurar Java (JDK 17)
         uses: actions/setup-java@v4
@@ -24,13 +24,14 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: 4. Instalar dependencias con soporte nativo
+      - name: 4. Instalar dependencias
         run: |
-          npm install --include=optional --force
-          npm install @tailwindcss/oxide-linux-x64-gnu --save-optional --force
+          npm install
 
-      - name: 5. Compilar proyecto Web
-        run: npm run build
+      - name: 5. Reparar binario nativo de Tailwind y Compilar Web
+        run: |
+          npm install @tailwindcss/oxide-linux-x64-gnu --save-optional --force
+          npm run build
 
       - name: 6. Configurar Capacitor Android
         run: |
