@@ -33,8 +33,9 @@ jobs:
           npm install @tailwindcss/oxide-linux-x64-gnu --save-optional --force
           npm run build
 
-      - name: 6. Configurar Capacitor Android
+      - name: 6. Instalar Capacitor y Configurar Android
         run: |
+          npm install @capacitor/cli @capacitor/core @capacitor/android
           npx cap add android || true
           npx cap sync android
 
