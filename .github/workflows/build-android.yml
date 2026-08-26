@@ -26,8 +26,8 @@ jobs:
 
       - name: 4. Instalar dependencias
         run: |
-          npm install
-          npm install --no-save @tailwindcss/oxide-linux-x64-gnu
+          npm install --include=optional
+          npm install @tailwindcss/oxide-linux-x64-gnu@^4.1.14 --save-optional || true
 
       - name: 5. Compilar proyecto Web
         run: npm run build
