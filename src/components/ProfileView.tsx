@@ -299,15 +299,15 @@ export default function ProfileView({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto min-h-[600px] bg-white rounded-none sm:rounded-2xl border-0 sm:border sm:border-slate-200 shadow-none sm:shadow-xl overflow-hidden flex flex-col" id="profile-panel">
+    <div className="w-full max-w-4xl mx-auto min-h-[600px] bg-white rounded-none sm:rounded-t-none sm:rounded-b-2xl border-0 sm:border sm:border-slate-200 shadow-none sm:shadow-xl overflow-hidden flex flex-col" id="profile-panel">
       {/* Profile Header Image Backbanner */}
-      <div className="h-40 bg-slate-900 relative overflow-hidden">
+      <div className="h-40 bg-slate-900 relative overflow-hidden rounded-t-none">
         {profileUser.coverPhoto ? (
           <img
             src={profileUser.coverPhoto}
             alt="Profile cover banner"
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover opacity-85"
+            className="w-full h-full object-cover opacity-85 rounded-t-none"
           />
         ) : (
           <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900" />
@@ -322,7 +322,7 @@ export default function ProfileView({
           </button>
         )}
         <div className="absolute top-4 right-4 bg-slate-950/60 backdrop-blur-sm text-white text-[9px] font-bold font-mono px-2.5 py-1 rounded-md border border-white/10 uppercase z-10">
-          {isSelf ? "Dashboard Administrativo" : "Vista Pública de Creador"}
+          {isSelf ? "ADMINISTRATIVO" : "Vista Pública de Creador"}
         </div>
       </div>
 

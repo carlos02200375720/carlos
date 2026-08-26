@@ -47,6 +47,7 @@ export default function ReelsView({
   const [copiedLink, setCopiedLink] = useState(false);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [carouselIndices, setCarouselIndices] = useState<{ [reelId: string]: number }>({});
+  const [mediaAspectRatios, setMediaAspectRatios] = useState<{ [key: string]: 'vertical' | 'horizontal_or_square' }>({});
 
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalCartPrice = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
@@ -314,11 +315,22 @@ export default function ReelsView({
                         alt={reel.description}
                         onClick={() => setIsPlaying(!isPlaying)}
                         onDoubleClick={() => handleDoubleTap(reel.id)}
-                        className="w-full h-full object-cover cursor-pointer select-none block"
+                        onLoad={(e) => {
+                          const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.08;
+                          setMediaAspectRatios((prev) => ({
+                            ...prev,
+                            [reel.id]: isVert ? "vertical" : "horizontal_or_square",
+                          }));
+                        }}
+                        className={`w-full h-full cursor-pointer select-none block ${
+                          mediaAspectRatios[reel.id] === "horizontal_or_square"
+                            ? "object-contain"
+                            : "object-cover"
+                        }`}
                         referrerPolicy="no-referrer"
                       />
                     ) : reel.type === "carousel" ? (
-                      <div className="w-full h-full flex items-center justify-center">
+                      <div className="w-full h-full flex items-center justify-center bg-black">
                         <ReelCarousel 
                           images={reel.images || [reel.thumbnailUrl]} 
                           onDoubleClick={() => handleDoubleTap(reel.id)}
@@ -346,8 +358,17 @@ export default function ReelsView({
                           if (isCurrent) {
                             setDuration(e.currentTarget.duration || 0);
                           }
+                          const isVert = e.currentTarget.videoHeight > e.currentTarget.videoWidth * 1.08;
+                          setMediaAspectRatios((prev) => ({
+                            ...prev,
+                            [reel.id]: isVert ? "vertical" : "horizontal_or_square",
+                          }));
                         }}
-                        className="w-full h-full object-cover cursor-pointer block"
+                        className={`w-full h-full cursor-pointer block ${
+                          mediaAspectRatios[reel.id] === "horizontal_or_square"
+                            ? "object-contain"
+                            : "object-cover"
+                        }`}
                       />
                     )}
 
@@ -998,6 +1019,7 @@ function ReelCarousel({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [slideAspectRatios, setSlideAspectRatios] = useState<{ [index: number]: boolean }>({});
 
   const isDragging = useRef(false);
   const startX = useRef(0);
@@ -1065,12 +1087,18 @@ function ReelCarousel({
       {images.map((img, idx) => (
         <div
           key={idx}
-          className="w-full h-full shrink-0 snap-center flex items-center justify-center relative overflow-hidden"
+          className="w-full h-full shrink-0 snap-center flex items-center justify-center relative overflow-hidden bg-black"
         >
           <img
             src={img}
             alt={`Carousel ${idx + 1}`}
-            className="w-full h-full object-cover pointer-events-none select-none block"
+            onLoad={(e) => {
+              const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.08;
+              setSlideAspectRatios((prev) => ({ ...prev, [idx]: isVert }));
+            }}
+            className={`w-full h-full pointer-events-none select-none block ${
+              slideAspectRatios[idx] ? "object-cover" : "object-contain"
+            }`}
             referrerPolicy="no-referrer"
           />
         </div>

@@ -159,11 +159,55 @@ export default function ShopView({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("todos");
   
-  // Category track drag & horizontal scroll helpers
+  // Category track drag, infinite auto-scroll & horizontal scroll helpers
   const categoryTrackRef = useRef<HTMLDivElement>(null);
   const [isCategoryDragging, setIsCategoryDragging] = useState(false);
+  const [isCategoryHovered, setIsCategoryHovered] = useState(false);
+  const isCategoryInteractingRef = useRef(false);
+  const categoryHasMovedRef = useRef(false);
+  const categoryResumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [categoryStartX, setCategoryStartX] = useState(0);
   const [categoryScrollLeft, setCategoryScrollLeft] = useState(0);
+
+  // Duplicated list of categories for seamless infinite loop
+  const infiniteCategories = React.useMemo(() => [...CATEGORIES, ...CATEGORIES], []);
+
+  // Smooth infinite horizontal continuous motion
+  useEffect(() => {
+    let animationFrameId: number;
+    let lastTime = performance.now();
+    const speed = 0.5; // gentle, smooth continuous scroll speed
+
+    const animate = (now: number) => {
+      const delta = Math.min((now - lastTime) / 16.67, 2);
+      lastTime = now;
+
+      const track = categoryTrackRef.current;
+      if (
+        track &&
+        !isCategoryDragging &&
+        !isCategoryHovered &&
+        !isCategoryInteractingRef.current
+      ) {
+        track.scrollLeft += speed * delta;
+
+        // When scrolled past the first set, seamlessly wrap back
+        const singleSetWidth = track.scrollWidth / 2;
+        if (singleSetWidth > 0 && track.scrollLeft >= singleSetWidth) {
+          track.scrollLeft -= singleSetWidth;
+        } else if (track.scrollLeft <= 0) {
+          track.scrollLeft += singleSetWidth;
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [isCategoryDragging, isCategoryHovered]);
 
   // Main Product Gallery horizontal scroll & drag helpers
   const gallerySliderRef = useRef<HTMLDivElement>(null);
@@ -259,16 +303,21 @@ export default function ShopView({
   const handleCategoryMouseDown = (e: React.MouseEvent) => {
     if (!categoryTrackRef.current) return;
     setIsCategoryDragging(true);
+    categoryHasMovedRef.current = false;
     setCategoryStartX(e.pageX - categoryTrackRef.current.offsetLeft);
     setCategoryScrollLeft(categoryTrackRef.current.scrollLeft);
   };
 
   const handleCategoryMouseLeave = () => {
     setIsCategoryDragging(false);
+    setIsCategoryHovered(false);
   };
 
   const handleCategoryMouseUp = () => {
     setIsCategoryDragging(false);
+    setTimeout(() => {
+      categoryHasMovedRef.current = false;
+    }, 60);
   };
 
   const handleCategoryMouseMove = (e: React.MouseEvent) => {
@@ -276,14 +325,35 @@ export default function ShopView({
     e.preventDefault();
     const x = e.pageX - categoryTrackRef.current.offsetLeft;
     const walk = (x - categoryStartX) * 1.5;
+    if (Math.abs(walk) > 4) {
+      categoryHasMovedRef.current = true;
+    }
     categoryTrackRef.current.scrollLeft = categoryScrollLeft - walk;
   };
 
   const handleCategoryWheel = (e: React.WheelEvent) => {
     if (!categoryTrackRef.current) return;
-    if (e.deltaY !== 0) {
-      categoryTrackRef.current.scrollLeft += e.deltaY;
+    if (e.deltaY !== 0 || e.deltaX !== 0) {
+      categoryTrackRef.current.scrollLeft += e.deltaY || e.deltaX;
+      // Pause infinite auto-scroll temporarily on wheel scroll
+      isCategoryInteractingRef.current = true;
+      if (categoryResumeTimeoutRef.current) clearTimeout(categoryResumeTimeoutRef.current);
+      categoryResumeTimeoutRef.current = setTimeout(() => {
+        isCategoryInteractingRef.current = false;
+      }, 1200);
     }
+  };
+
+  const handleCategoryTouchStart = () => {
+    isCategoryInteractingRef.current = true;
+    if (categoryResumeTimeoutRef.current) clearTimeout(categoryResumeTimeoutRef.current);
+  };
+
+  const handleCategoryTouchEnd = () => {
+    if (categoryResumeTimeoutRef.current) clearTimeout(categoryResumeTimeoutRef.current);
+    categoryResumeTimeoutRef.current = setTimeout(() => {
+      isCategoryInteractingRef.current = false;
+    }, 1500);
   };
 
   const scrollCategoryTrack = (direction: 'left' | 'right') => {
@@ -632,35 +702,18 @@ export default function ShopView({
                   )}
                 </div>
                 
-                {/* Left Arrow Button */}
-                <button
-                  type="button"
-                  onClick={() => scrollCategoryTrack('left')}
-                  className="absolute left-0 top-[calc(50%+10px)] -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/90 border border-slate-200 shadow-md flex items-center justify-center text-slate-700 hover:bg-white hover:text-amber-600 transition-all opacity-80 sm:opacity-0 group-hover/categories:opacity-100 hover:scale-110 active:scale-95 cursor-pointer"
-                  aria-label="Deslizar a la izquierda"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-
-                {/* Right Arrow Button */}
-                <button
-                  type="button"
-                  onClick={() => scrollCategoryTrack('right')}
-                  className="absolute right-0 top-[calc(50%+10px)] -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/90 border border-slate-200 shadow-md flex items-center justify-center text-slate-700 hover:bg-white hover:text-amber-600 transition-all opacity-80 sm:opacity-0 group-hover/categories:opacity-100 hover:scale-110 active:scale-95 cursor-pointer"
-                  aria-label="Deslizar a la derecha"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-
-                {/* Scrollable track with drag-to-scroll, wheel scroll and touch pan */}
+                {/* Scrollable track with infinite auto-scroll, drag-to-scroll, wheel scroll and touch pan */}
                 <div 
                   ref={categoryTrackRef}
+                  onMouseEnter={() => setIsCategoryHovered(true)}
                   onMouseDown={handleCategoryMouseDown}
                   onMouseLeave={handleCategoryMouseLeave}
                   onMouseUp={handleCategoryMouseUp}
                   onMouseMove={handleCategoryMouseMove}
                   onWheel={handleCategoryWheel}
-                  className={`flex items-center space-x-4 overflow-x-auto scroll-smooth pb-3 pt-1 -mx-4 px-4 sm:-mx-6 sm:px-6 select-none ${isCategoryDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                  onTouchStart={handleCategoryTouchStart}
+                  onTouchEnd={handleCategoryTouchEnd}
+                  className={`flex items-center space-x-4 overflow-x-auto pb-3 pt-1 -mx-4 px-4 sm:-mx-6 sm:px-6 select-none ${isCategoryDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                   style={{ 
                     scrollbarWidth: 'none', 
                     msOverflowStyle: 'none',
@@ -673,16 +726,17 @@ export default function ShopView({
                       display: none;
                     }
                   `}</style>
-                  {CATEGORIES.map((cat, idx) => {
+                  {infiniteCategories.map((cat, idx) => {
                     const isSelected = selectedCategory === cat.id;
                     return (
                       <button
                         key={`${cat.id}-${idx}`}
+                        type="button"
                         onClick={() => {
-                          if (isCategoryDragging) return;
+                          if (categoryHasMovedRef.current) return;
                           setSelectedCategory(cat.id);
                         }}
-                        className="flex flex-col items-center space-y-2 shrink-0 outline-none group focus:outline-none cursor-pointer"
+                        className="flex flex-col items-center space-y-2 shrink-0 outline-none group focus:outline-none cursor-pointer select-none"
                         style={{ width: '72px' }}
                       >
                         <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 transition-all relative flex items-center justify-center bg-white ${isSelected ? "border-amber-500 ring-4 ring-amber-500/10 scale-105 shadow-sm" : "border-slate-100 group-hover:border-slate-300"}`}>
