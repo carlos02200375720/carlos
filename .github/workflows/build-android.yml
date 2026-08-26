@@ -18,11 +18,11 @@ jobs:
         with:
           node-version: 20
 
-      - name: 3. Configurar Java (JDK 17)
+      - name: 3. Configurar Java (JDK 21)
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21'
 
       - name: 4. Instalar dependencias
         run: |
@@ -36,7 +36,7 @@ jobs:
       - name: 6. Agregar plataforma Android y Sincronizar
         run: |
           npm install @capacitor/cli @capacitor/core @capacitor/android
-          npx cap add android
+          npx cap add android || true
           npx cap sync android
 
       - name: 7. Permisos de Gradle
