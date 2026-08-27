@@ -76,6 +76,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
         localStorage.setItem("isLoggedIn", "true");
         localStorage.setItem("loggedInUsername", cleanUsername);
         localStorage.setItem("loggedInPassword", passwordToUse || "");
+        localStorage.setItem("currentUserData", JSON.stringify(data.user));
         onLoginSuccess(data.user);
       } else {
         setLoginError(data.error || "El usuario no existe. Intenta registrándote primero o verifica tu contraseña.");
@@ -137,6 +138,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
         localStorage.setItem("isLoggedIn", "true");
         localStorage.setItem("loggedInUsername", cleanUsername);
         localStorage.setItem("loggedInPassword", regPassword.trim());
+        localStorage.setItem("currentUserData", JSON.stringify(data.user));
         onRefreshUsers();
         onLoginSuccess(data.user);
       } else {

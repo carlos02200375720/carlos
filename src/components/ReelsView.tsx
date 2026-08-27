@@ -125,8 +125,10 @@ export default function ReelsView({
     }
   };
 
+  const isGuestUser = !currentUser || currentUser.isGuest || currentUser.username === "invitado" || !currentUser.username;
+
   const handleDoubleTap = (reelId: string) => {
-    if (currentUser?.username === "invitado") {
+    if (isGuestUser) {
       onGuestInteraction("dar me gusta");
       return;
     }
@@ -136,7 +138,7 @@ export default function ReelsView({
   };
 
   const handleShare = (reelId: string) => {
-    if (currentUser?.username === "invitado") {
+    if (isGuestUser) {
       onGuestInteraction("compartir publicaciones");
       return;
     }
@@ -677,7 +679,7 @@ export default function ReelsView({
                     <div className="flex flex-col items-center">
                       <button
                         onClick={() => {
-                          if (currentUser?.username === "invitado") {
+                          if (isGuestUser) {
                             onGuestInteraction("dar me gusta");
                           } else {
                             onLikeReel(reel.id);
@@ -708,7 +710,7 @@ export default function ReelsView({
                     <div className="flex flex-col items-center">
                       <button
                         onClick={() => {
-                          if (currentUser?.username === "invitado") {
+                          if (isGuestUser) {
                             onGuestInteraction("comentar");
                           } else {
                             setShowComments(reel.id);
@@ -731,7 +733,7 @@ export default function ReelsView({
                     <div className="flex flex-col items-center">
                       <button
                         onClick={() => {
-                          if (currentUser?.username === "invitado") {
+                          if (isGuestUser) {
                             onGuestInteraction("guardar publicaciones");
                           } else {
                             onToggleSaveReel(reel.id);
@@ -762,7 +764,7 @@ export default function ReelsView({
                     <div className="flex flex-col items-center">
                       <button
                         onClick={() => {
-                          if (currentUser?.username === "invitado") {
+                          if (isGuestUser) {
                             onGuestInteraction("compartir");
                           } else {
                             handleShare(reel.id);
@@ -858,7 +860,10 @@ export default function ReelsView({
               {/* Comment Input Form */}
               <form
                 onSubmit={(e) => submitComment(e, showComments)}
-                className="p-4 pb-5 sm:pb-4 border-t border-white bg-white flex items-center space-x-2"
+                className="p-4 border-t border-slate-100 bg-white flex items-center space-x-2"
+                style={{
+                  paddingBottom: "max(1rem, calc(1rem + env(safe-area-inset-bottom, 0px)))",
+                }}
               >
                 <input
                   type="text"
@@ -869,7 +874,7 @@ export default function ReelsView({
                 />
                 <button
                   type="submit"
-                  className="p-3 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black rounded-full transition-all cursor-pointer shadow-sm"
+                  className="p-3 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black rounded-full transition-all cursor-pointer shadow-sm shrink-0"
                 >
                   <Send className="w-4 h-4" />
                 </button>

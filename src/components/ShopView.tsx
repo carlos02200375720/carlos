@@ -215,6 +215,8 @@ export default function ShopView({
   // Main Product Gallery horizontal scroll & drag helpers
   const gallerySliderRef = useRef<HTMLDivElement>(null);
   const galleryVideoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
+  const thumbnailTrackRef = useRef<HTMLDivElement>(null);
+  const thumbnailItemRefs = useRef<{ [key: number]: HTMLButtonElement | null }>({});
   const [isGalleryDragging, setIsGalleryDragging] = useState(false);
   const [galleryStartX, setGalleryStartX] = useState(0);
   const [galleryScrollLeft, setGalleryScrollLeft] = useState(0);
@@ -271,6 +273,22 @@ export default function ShopView({
       }
     });
   }, [activeGalleryIndex, productGalleryMedia, isGalleryVideoPlaying, isGalleryVideoMuted]);
+
+  // Sync thumbnail container scroll with active gallery index
+  useEffect(() => {
+    const thumbEl = thumbnailItemRefs.current[activeGalleryIndex];
+    if (thumbEl && thumbnailTrackRef.current) {
+      const container = thumbnailTrackRef.current;
+      const thumbLeft = thumbEl.offsetLeft;
+      const thumbWidth = thumbEl.offsetWidth;
+      const containerWidth = container.clientWidth;
+      const targetScroll = thumbLeft - (containerWidth / 2) + (thumbWidth / 2);
+      container.scrollTo({
+        left: Math.max(0, targetScroll),
+        behavior: 'smooth'
+      });
+    }
+  }, [activeGalleryIndex]);
 
   const handleGalleryScroll = () => {
     if (!gallerySliderRef.current) return;
@@ -519,6 +537,16 @@ export default function ShopView({
     };
   }, []);
 
+  // Notify parent component about detail view to hide app bottom navigation bar
+  useEffect(() => {
+    if (onToggleDetailView) {
+      onToggleDetailView(activeStep === 'detail');
+    }
+    if (activeStep === 'detail') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+    }
+  }, [activeStep, onToggleDetailView]);
+
   // Sync direct product clicks from reels
   useEffect(() => {
     if (selectedProductDirectly) {
@@ -656,10 +684,10 @@ export default function ShopView({
 
   return (
     <div className="w-full min-h-screen bg-white relative flex flex-col" id="shop-panel">
-      {/* 1. Detail Page Transparent Floating Header */}
+      {/* 1. Detail Page Transparent Fixed Header */}
       {activeStep === 'detail' ? (
         <header
-          className="absolute top-0 inset-x-0 z-40 flex items-center justify-between px-3 sm:px-5 pb-2.5 sm:pb-3 bg-transparent border-0 pointer-events-none transition-all duration-200"
+          className="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-3 sm:px-5 pb-2.5 sm:pb-3 bg-transparent border-0 pointer-events-none transition-all duration-200"
           style={{
             paddingTop: "max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))",
           }}
@@ -670,36 +698,24 @@ export default function ShopView({
             <button
               type="button"
               onClick={() => setActiveStep('catalog')}
-              className="w-10 h-10 rounded-full bg-slate-950/60 backdrop-blur-md text-white border border-white/20 flex items-center justify-center hover:bg-slate-900 shadow-md transition-all active:scale-95 pointer-events-auto cursor-pointer"
+              className="w-10 h-10 rounded-full bg-transparent text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer"
               aria-label="Regresar al catálogo"
               id="detail-back-button"
             >
-              <ArrowLeft className="w-5 h-5 text-white" />
+              <ArrowLeft className="w-6 h-6 text-white" />
             </button>
           </div>
-
-          {/* Contador de la Imagen */}
-          {productGalleryMedia.length > 0 && (
-            <div
-              className="px-3.5 py-1.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white font-mono text-xs font-bold border border-white/20 shadow-md tracking-wider flex items-center space-x-1 pointer-events-auto select-none"
-              id="detail-image-counter"
-            >
-              <span className="text-amber-400 font-extrabold">{activeGalleryIndex + 1}</span>
-              <span className="text-white/60">/</span>
-              <span className="text-white">{productGalleryMedia.length}</span>
-            </div>
-          )}
 
           {/* Carrito */}
           <div className="flex items-center">
             <button
               type="button"
               onClick={() => setShowCartDrawer(true)}
-              className="relative w-10 h-10 rounded-full bg-slate-950/60 backdrop-blur-md text-white border border-white/20 flex items-center justify-center hover:bg-slate-900 shadow-md transition-all active:scale-95 pointer-events-auto cursor-pointer"
+              className="relative w-10 h-10 rounded-full bg-transparent text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer"
               id="detail-cart-trigger-btn"
               aria-label="Ver carrito"
             >
-              <ShoppingCart className="w-5 h-5 text-white" />
+              <ShoppingCart className="w-6 h-6 text-white" />
               {cartItemCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-extrabold font-mono text-[9px] sm:text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center border-2 border-slate-950 shadow-xs">
                   {cartItemCount}
@@ -962,7 +978,10 @@ export default function ShopView({
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 pb-28 p-0 md:p-6"
+                className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 p-0 md:p-6"
+                style={{
+                  paddingBottom: "max(9rem, calc(7.5rem + env(safe-area-inset-bottom, 0px)))"
+                }}
               >
                 {/* Image & Showcase */}
                 <div className="space-y-4">
@@ -1065,18 +1084,36 @@ export default function ShopView({
                         );
                       })}
                     </div>
+
+                    {/* Image Counter Badge in Bottom-Right Corner */}
+                    {productGalleryMedia.length > 0 && (
+                      <div
+                        className="absolute bottom-3 right-3 z-20 px-3 py-1 rounded-full bg-slate-950/60 backdrop-blur-md text-white font-mono text-xs font-bold border border-white/20 shadow-md tracking-wider flex items-center space-x-1 pointer-events-none select-none"
+                        id="detail-image-counter"
+                      >
+                        <span className="text-amber-400 font-extrabold">{activeGalleryIndex + 1}</span>
+                        <span className="text-white/60">/</span>
+                        <span className="text-white">{productGalleryMedia.length}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Media Thumbnails list (including photos and videos) */}
                   <div className="px-4 md:px-0 space-y-4">
                     {productGalleryMedia.length > 1 && (
-                      <div className="flex space-x-2 overflow-x-auto py-1 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                      <div
+                        ref={thumbnailTrackRef}
+                        className="flex space-x-2 overflow-x-auto py-1 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden scroll-smooth"
+                      >
                         {productGalleryMedia.map((url, idx) => {
                           const isVideo = checkIsVideo(url);
                           const isSelected = activeGalleryIndex === idx;
                           return (
                             <button
                               key={`thumb-${idx}`}
+                              ref={(el) => {
+                                thumbnailItemRefs.current[idx] = el;
+                              }}
                               type="button"
                               onClick={() => scrollToGalleryIndex(idx)}
                               className={`w-12 h-12 rounded-lg overflow-hidden border-2 shrink-0 relative cursor-pointer transition-all ${

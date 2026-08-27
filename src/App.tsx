@@ -48,15 +48,41 @@ export default function App() {
 
   // Current User (Session source of truth)
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => localStorage.getItem("isLoggedIn") === "true");
-  const [currentUser, setCurrentUser] = useState<User>({
-    id: "current_user",
-    username: "",
-    name: "Cargando...",
-    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-    bio: "",
-    isOnline: false,
-    followers: 0,
-    following: 0,
+  const [currentUser, setCurrentUser] = useState<User>(() => {
+    const savedUserJson = localStorage.getItem("currentUserData");
+    if (savedUserJson) {
+      try {
+        const parsed = JSON.parse(savedUserJson);
+        if (parsed && parsed.username && parsed.username !== "invitado" && !parsed.isGuest) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    const savedUsername = localStorage.getItem("loggedInUsername");
+    if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
+      return {
+        id: "current_user",
+        username: savedUsername,
+        name: savedUsername,
+        avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+        bio: "",
+        isOnline: true,
+        followers: 0,
+        following: 0,
+        isGuest: false,
+      };
+    }
+    return {
+      id: "current_user",
+      username: "invitado",
+      name: "Invitado",
+      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+      bio: "Explorando la plataforma",
+      isOnline: false,
+      followers: 0,
+      following: 0,
+      isGuest: true,
+    };
   });
 
   // Selected details (for cross-tab linkage)
@@ -201,16 +227,20 @@ export default function App() {
       // Step 3: Restore session from localStorage if logged in
       const savedUsername = localStorage.getItem("loggedInUsername");
       const savedPassword = localStorage.getItem("loggedInPassword") || "";
-      if (savedUsername) {
+      if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
         apiFetch("/api/users/current/switch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ targetUsername: savedUsername, password: savedPassword }),
+          body: JSON.stringify({ targetUsername: savedUsername, password: savedPassword, isSessionRestore: true }),
         })
           .then((res) => res.json())
           .then((data) => {
             if (data && data.success && data.user) {
               setCurrentUser(data.user);
+              setIsLoggedIn(true);
+              localStorage.setItem("isLoggedIn", "true");
+              localStorage.setItem("loggedInUsername", data.user.username);
+              localStorage.setItem("currentUserData", JSON.stringify(data.user));
               setSavedReelIds(data.user.savedReelIds || []);
             }
           })
@@ -221,7 +251,12 @@ export default function App() {
           .then((res) => res.json())
           .then((data) => {
             if (data && data.user) {
-              setCurrentUser(data.user);
+              setCurrentUser((prev) => {
+                if (prev.username && prev.username !== "invitado" && !prev.isGuest) {
+                  return prev;
+                }
+                return data.user;
+              });
               setSavedReelIds(data.user.savedReelIds || []);
             }
           })
@@ -470,10 +505,16 @@ export default function App() {
   };
 
   const handleAddComment = (reelId: string, text: string) => {
+    if (!currentUser || currentUser.username === "invitado" || currentUser.isGuest || !currentUser.username) {
+      setGuestInteractionAlert("Para comentar en este reel, por favor inicia sesión o crea una cuenta de creador.");
+      return;
+    }
+
     apiFetch(`/api/reels/${reelId}/comment`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        userId: currentUser.originalId || currentUser.id,
         username: currentUser.username,
         avatar: currentUser.avatar,
         text: text,
@@ -498,7 +539,7 @@ export default function App() {
   };
 
   const handleToggleSaveReel = (reelId: string) => {
-    if (currentUser.username === "invitado" || currentUser.isGuest) {
+    if (!currentUser || currentUser.username === "invitado" || currentUser.isGuest || !currentUser.username) {
       setGuestInteractionAlert("Para guardar publicaciones, por favor inicia sesión o crea una cuenta.");
       return;
     }
@@ -532,7 +573,11 @@ export default function App() {
     apiFetch("/api/users/current/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reelId })
+      body: JSON.stringify({
+        reelId,
+        userId: currentUser.originalId || currentUser.id,
+        username: currentUser.username
+      })
     })
       .then((res) => res.json())
       .then((data) => {
@@ -556,7 +601,7 @@ export default function App() {
 
   const handleToggleFollowUser = (targetUserId: string) => {
     if (!targetUserId) return;
-    if (currentUser.username === "invitado" || currentUser.isGuest) {
+    if (!currentUser || currentUser.username === "invitado" || currentUser.isGuest || !currentUser.username) {
       setGuestInteractionAlert("Para seguir a creadores, por favor inicia sesión o crea una cuenta.");
       return;
     }
@@ -583,7 +628,7 @@ export default function App() {
     apiFetch(`/api/users/${targetUserId}/follow`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ currentUserId })
+      body: JSON.stringify({ currentUserId, currentUsername: currentUser.username })
     })
       .then((res) => res.json())
       .then((data) => {
@@ -865,6 +910,7 @@ export default function App() {
     localStorage.removeItem("isLoggedIn");
     localStorage.removeItem("loggedInUsername");
     localStorage.removeItem("loggedInPassword");
+    localStorage.removeItem("currentUserData");
     setIsLoggedIn(false);
     
     // First notify server to clear session
@@ -896,6 +942,7 @@ export default function App() {
           isOnline: false,
           followers: 0,
           following: 0,
+          isGuest: true,
         });
         setSavedReelIds([]);
         setActiveTab('reels');
@@ -1153,9 +1200,12 @@ export default function App() {
                 onSelectReel={handleReelLink}
                 onProfileUpdate={(updatedUser) => {
                   setCurrentUser(updatedUser);
+                  localStorage.setItem("currentUserData", JSON.stringify(updatedUser));
                   setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-                  if (updatedUser.username !== "invitado") {
+                  if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
                     setIsLoggedIn(true);
+                    localStorage.setItem("isLoggedIn", "true");
+                    localStorage.setItem("loggedInUsername", updatedUser.username);
                     setSelectedCreatorProfileId(null);
                     setActiveTab('profile');
                   }

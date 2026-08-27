@@ -818,11 +818,22 @@ async function startServer() {
 
   // Toggle save/unsave a reel
   app.post("/api/users/current/save", async (req, res) => {
-    const { reelId } = req.body;
-    let currentUserObj = null;
+    const { reelId, userId, username } = req.body;
+    let currentUserObj: any = null;
     
     if (mongoose.connection.readyState === 1) {
-      currentUserObj = await MongoUser.findOne({ id: activeOriginalUserId });
+      const candidates = [userId, username, activeOriginalUserId].filter(
+        (id) => id && id !== "user_guest" && id !== "current_user" && id !== "invitado"
+      );
+      if (candidates.length > 0) {
+        currentUserObj = await MongoUser.findOne({
+          $or: candidates.flatMap((id) => [
+            { id },
+            { username: id },
+            { username: typeof id === "string" ? id.toLowerCase() : id }
+          ])
+        });
+      }
     }
     
     if (!currentUserObj) {
@@ -845,7 +856,7 @@ async function startServer() {
 
     if (mongoose.connection.readyState === 1) {
       await MongoUser.findOneAndUpdate(
-        { id: activeOriginalUserId },
+        { id: currentUserObj.id },
         { savedReelIds: currentUserObj.savedReelIds }
       );
     }
@@ -886,22 +897,29 @@ async function startServer() {
   app.post("/api/users/:targetUserId/follow", async (req, res) => {
     const { targetUserId } = req.params;
     const currentUserIdReq = req.body?.currentUserId;
+    const currentUsernameReq = req.body?.currentUsername;
     let currentUserObj: any = null;
     let targetUserObj: any = null;
 
     if (mongoose.connection.readyState === 1) {
-      if (currentUserIdReq && currentUserIdReq !== "current_user" && currentUserIdReq !== "user_guest") {
+      const candidates = [currentUserIdReq, currentUsernameReq, activeOriginalUserId].filter(
+        (id) => id && id !== "user_guest" && id !== "current_user" && id !== "invitado"
+      );
+      if (candidates.length > 0) {
         currentUserObj = await MongoUser.findOne({
-          $or: [{ id: currentUserIdReq }, { username: currentUserIdReq.toLowerCase() }]
-        });
-      }
-      if (!currentUserObj && activeOriginalUserId && activeOriginalUserId !== "user_guest") {
-        currentUserObj = await MongoUser.findOne({
-          $or: [{ id: activeOriginalUserId }, { username: activeOriginalUserId.toLowerCase() }]
+          $or: candidates.flatMap((id) => [
+            { id },
+            { username: id },
+            { username: typeof id === "string" ? id.toLowerCase() : id }
+          ])
         });
       }
       targetUserObj = await MongoUser.findOne({
-        $or: [{ id: targetUserId }, { username: targetUserId.toLowerCase() }]
+        $or: [
+          { id: targetUserId },
+          { username: targetUserId },
+          { username: typeof targetUserId === "string" ? targetUserId.toLowerCase() : targetUserId }
+        ]
       });
     }
 
@@ -909,7 +927,7 @@ async function startServer() {
     if (!currentUserObj && currentUserIdReq && currentUserIdReq !== "user_guest" && currentUserIdReq !== "invitado") {
       currentUserObj = {
         id: currentUserIdReq,
-        username: "current_user",
+        username: currentUsernameReq || "current_user",
         followingUserIds: [],
         following: 0,
         isGuest: false
@@ -1173,24 +1191,35 @@ async function startServer() {
   // Switch current active user (swaps details and saves to Mongo)
   app.post("/api/users/current/switch", async (req, res) => {
     try {
-      const { targetUsername, password } = req.body;
+      const { targetUsername, password, isSessionRestore } = req.body;
       if (!targetUsername) {
         res.status(400).json({ error: "Target username is required" });
         return;
       }
 
+      const cleanUsername = String(targetUsername).trim().toLowerCase().replace("@", "");
+
       let targetUser = null;
       if (mongoose.connection.readyState === 1) {
-        targetUser = await MongoUser.findOne({ username: targetUsername, id: { $ne: "current_user" } });
+        targetUser = await MongoUser.findOne({
+          $or: [
+            { username: cleanUsername },
+            { username: targetUsername },
+            { username: { $regex: new RegExp(`^${cleanUsername}$`, "i") } },
+            { id: targetUsername },
+            { id: cleanUsername }
+          ],
+          id: { $ne: "current_user" }
+        });
       }
       if (!targetUser) {
         res.status(404).json({ error: "User not found" });
         return;
       }
 
-      // Require password if the user has a password registered
+      // Require password if the user has a password registered, unless it's a silent session restore from client localStorage
       const expectedPassword = targetUser.password || "";
-      if (expectedPassword && expectedPassword !== password) {
+      if (!isSessionRestore && expectedPassword && expectedPassword !== password) {
         res.status(401).json({ error: "La contraseña ingresada es incorrecta. Por favor verifícala." });
         return;
       }
@@ -1211,7 +1240,7 @@ async function startServer() {
         following: targetUser.following || 0,
         followingUserIds: targetUser.followingUserIds || [],
         savedReelIds: targetUser.savedReelIds || [],
-        isGuest: targetUser.isGuest || false,
+        isGuest: false,
         password: targetUser.password || "",
         email: targetUser.email || ""
       };

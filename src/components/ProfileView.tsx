@@ -186,7 +186,9 @@ export default function ProfileView({
         localStorage.setItem("isLoggedIn", "true");
         localStorage.setItem("loggedInUsername", targetUsername);
         localStorage.setItem("loggedInPassword", password || "");
+        localStorage.setItem("currentUserData", JSON.stringify(data.user));
 
+        setProfileUser(data.user);
         if (onProfileUpdate) {
           onProfileUpdate(data.user);
         }
