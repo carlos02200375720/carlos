@@ -940,7 +940,7 @@ export default function App() {
   const isDarkNavActive = activeTab === 'reels';
 
   return (
-    <div className={`w-full min-h-screen ${isDarkNavActive ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"} font-sans flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950`}>
+    <div className={`w-full ${isDarkNavActive ? "h-dvh max-h-dvh overflow-hidden bg-slate-950 text-slate-100" : "min-h-screen bg-white text-slate-900"} font-sans flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950`}>
       
       {/* App Launch & Cloud Run Connection Splash Screen */}
       <SplashScreen
@@ -1086,7 +1086,14 @@ export default function App() {
       </aside>
 
       {/* Main Container */}
-      <main className={`flex-1 w-full md:pl-60 lg:pl-64 ${isDarkNavActive ? "bg-slate-950" : "bg-white"} ${(activeTab === 'messages' && activeChatUser) || isLiveViewerOpen || activeTab === 'reels' ? "mb-0" : "mb-14 md:mb-0"}`}>
+      <main
+        className={`flex-1 w-full md:pl-60 lg:pl-64 ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
+        style={{
+          marginBottom: (activeTab === 'messages' && activeChatUser) || isLiveViewerOpen || activeTab === 'reels'
+            ? 0
+            : undefined
+        }}
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -1094,7 +1101,7 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.15 }}
-            className="w-full"
+            className={`w-full ${activeTab === 'reels' ? 'h-full' : ''}`}
           >
             {activeTab === 'reels' && (
               <ReelsView
@@ -1186,21 +1193,21 @@ export default function App() {
       {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && (
         <div
           id="bottom-nav-bar"
-          className={`fixed bottom-0 inset-x-0 pt-2 px-4 z-30 border-0 shadow-none transition-colors ${
+          className={`fixed bottom-0 inset-x-0 pt-1 px-2 z-30 border-0 shadow-none transition-colors ${
             activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages'
                ? "bg-white text-slate-800"
                : "bg-black text-white"
           } md:hidden`}
           style={{
-            paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))'
+            paddingBottom: 'max(0.35rem, calc(env(safe-area-inset-bottom, 0px) + 0.25rem))'
           }}
         >
-          <div className="max-w-xl mx-auto flex items-center justify-between px-3">
+          <div className="max-w-md mx-auto flex items-center justify-around px-1">
             
             {/* Tab 1: Reels */}
             <button
               onClick={() => { refreshReels(); setActiveTab('reels'); }}
-              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-3 rounded-xl cursor-pointer transition-all ${
+              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all ${
                 activeTab === 'reels'
                   ? "text-amber-500 scale-105 font-extrabold"
                   : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
@@ -1209,14 +1216,14 @@ export default function App() {
               }`}
               id="tab-reels-btn"
             >
-              <Play className={`w-4.5 h-4.5 ${activeTab === 'reels' ? "fill-amber-500/10" : ""}`} />
-              <span className="text-[10px] font-bold tracking-tight">Reels</span>
+              <Play className={`w-4 h-4 ${activeTab === 'reels' ? "fill-amber-500/10" : ""}`} />
+              <span className="text-[9px] font-bold tracking-tight leading-none">Reels</span>
             </button>
    
             {/* Tab 2: Shop */}
             <button
               onClick={() => { refreshProducts(); setActiveTab('shop'); }}
-              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-3 rounded-xl cursor-pointer transition-all ${
+              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all ${
                 activeTab === 'shop'
                   ? "text-amber-600 scale-105 font-extrabold"
                   : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
@@ -1225,14 +1232,14 @@ export default function App() {
               }`}
               id="tab-shop-btn"
             >
-              <ShoppingBag className={`w-4.5 h-4.5 ${activeTab === 'shop' ? "fill-amber-500/10" : ""}`} />
-              <span className="text-[10px] font-bold tracking-tight">Market</span>
+              <ShoppingBag className={`w-4 h-4 ${activeTab === 'shop' ? "fill-amber-500/10" : ""}`} />
+              <span className="text-[9px] font-bold tracking-tight leading-none">Market</span>
             </button>
    
             {/* Tab: Messages (between Market and Directos) */}
             <button
               onClick={() => setActiveTab('messages')}
-              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-3 rounded-xl cursor-pointer transition-all relative ${
+              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all relative ${
                 activeTab === 'messages'
                   ? "text-amber-600 scale-105 font-extrabold"
                   : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
@@ -1242,20 +1249,20 @@ export default function App() {
               id="tab-messages-btn"
             >
               <div className="relative">
-                <MessageSquare className={`w-4.5 h-4.5 ${activeTab === 'messages' ? "fill-amber-500/10" : ""}`} />
+                <MessageSquare className={`w-4 h-4 ${activeTab === 'messages' ? "fill-amber-500/10" : ""}`} />
                 {totalUnreads > 0 && (
-                  <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[8px] font-bold font-mono w-3.5 h-3.5 rounded-full flex items-center justify-center border border-white">
+                  <span className="absolute -top-1 -right-2 bg-rose-500 text-white text-[7.5px] font-bold font-mono w-3.5 h-3.5 rounded-full flex items-center justify-center border border-white">
                     {totalUnreads}
                   </span>
                 )}
               </div>
-              <span className="text-[10px] font-bold tracking-tight">Mensajes</span>
+              <span className="text-[9px] font-bold tracking-tight leading-none">Mensajes</span>
             </button>
    
             {/* Tab: Profile / Dashboard */}
             <button
               onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
-              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-3 rounded-xl cursor-pointer transition-all ${
+              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all ${
                 activeTab === 'profile' && selectedCreatorProfileId === null
                   ? "text-amber-600 scale-105 font-extrabold"
                   : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
@@ -1264,8 +1271,8 @@ export default function App() {
               }`}
               id="tab-profile-btn"
             >
-              <UserIcon className="w-4.5 h-4.5" />
-              <span className="text-[10px] font-bold tracking-tight">
+              <UserIcon className="w-4 h-4" />
+              <span className="text-[9px] font-bold tracking-tight leading-none">
                 {currentUser.username === "invitado" ? "Registro" : "Dashboard"}
               </span>
             </button>

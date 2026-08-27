@@ -35,7 +35,7 @@ jobs:
 
       - name: 6. Agregar plataforma Android y Sincronizar
         run: |
-          npm install @capacitor/cli @capacitor/core @capacitor/android
+          npm install @capacitor/cli @capacitor/core @capacitor/android @capacitor/status-bar
           npx cap add android || true
           npx cap sync android
 

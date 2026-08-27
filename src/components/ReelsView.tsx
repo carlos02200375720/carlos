@@ -8,8 +8,8 @@ interface ReelsViewProps {
   reels: Reel[];
   currentUser: User;
   cart?: CartItem[];
-  onRemoveFromCart?: (productId: string) => void;
-  onUpdateCartQuantity?: (productId: string, qty: number) => void;
+  onRemoveFromCart?: (productId: string, idx?: number) => void;
+  onUpdateCartQuantity?: (productId: string, qty: number, idx?: number) => void;
   onNavigateToShop?: () => void;
   onProductClick: (product: Product) => void;
   onCreatorClick: (creatorId: string) => void;
@@ -38,7 +38,8 @@ export default function ReelsView({
   onGuestInteraction,
 }: ReelsViewProps) {
   const [activeReelIndex, setActiveReelIndex] = useState(0);
-  const [isMuted, setIsMuted] = useState(true);
+  const [displayCount, setDisplayCount] = useState<number>(() => Math.max(reels.length * 2, 8));
+  const [isMuted, setIsMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
   const [showComments, setShowComments] = useState<string | null>(null);
   const [commentText, setCommentText] = useState("");
@@ -46,8 +47,25 @@ export default function ReelsView({
   const [showShareModal, setShowShareModal] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
-  const [carouselIndices, setCarouselIndices] = useState<{ [reelId: string]: number }>({});
+  const [carouselIndices, setCarouselIndices] = useState<{ [key: string]: number }>({});
   const [mediaAspectRatios, setMediaAspectRatios] = useState<{ [key: string]: 'vertical' | 'horizontal_or_square' }>({});
+
+  // Reset or extend displayCount when reels source changes
+  useEffect(() => {
+    if (reels.length > 0) {
+      setDisplayCount((prev) => Math.max(prev, reels.length * 2, 8));
+    }
+  }, [reels.length]);
+
+  // Construct continuous looping reels array for infinite scroll
+  const displayedReels = React.useMemo(() => {
+    if (reels.length === 0) return [];
+    const list: Reel[] = [];
+    for (let i = 0; i < displayCount; i++) {
+      list.push(reels[i % reels.length]);
+    }
+    return list;
+  }, [reels, displayCount]);
 
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalCartPrice = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
@@ -58,12 +76,12 @@ export default function ReelsView({
   const progressBarRef = useRef<HTMLDivElement>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({});
+  const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
 
   useEffect(() => {
     // Play active video, pause others
-    reels.forEach((reel, idx) => {
-      const video = videoRefs.current[reel.id];
+    displayedReels.forEach((reel, idx) => {
+      const video = videoRefs.current[idx];
       if (video) {
         if (idx === activeReelIndex && isPlaying) {
           video.play().catch(() => {
@@ -74,22 +92,28 @@ export default function ReelsView({
         }
       }
     });
-  }, [activeReelIndex, reels, isPlaying]);
+  }, [activeReelIndex, displayedReels.length, isPlaying]);
 
-  // Handle scroll detection for snap scroll
+  // Handle scroll detection for snap scroll & continuous infinite expansion
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const container = e.currentTarget;
     const scrollPos = container.scrollTop;
     const childHeight = container.clientHeight;
+    if (!childHeight) return;
     const index = Math.round(scrollPos / childHeight);
-    if (index !== activeReelIndex && index >= 0 && index < reels.length) {
+    if (index !== activeReelIndex && index >= 0 && index < displayedReels.length) {
       setActiveReelIndex(index);
       setIsPlaying(true);
     }
+
+    // Trigger infinite scroll expansion as we approach the end of the loaded reel batch
+    if (index >= displayedReels.length - 2 && reels.length > 0) {
+      setDisplayCount((prev) => prev + Math.max(reels.length, 6));
+    }
   };
 
-  const handleVideoClick = (reelId: string) => {
-    const video = videoRefs.current[reelId];
+  const handleVideoClick = (index: number) => {
+    const video = videoRefs.current[index];
     if (video) {
       if (isPlaying) {
         video.pause();
@@ -138,18 +162,18 @@ export default function ReelsView({
     });
   };
 
-  const currentReel = reels[activeReelIndex];
+  const currentReel = displayedReels[activeReelIndex];
 
   // Reset time and duration state on active reel change
   useEffect(() => {
     setCurrentTime(0);
     setDuration(0);
-    const video = currentReel ? videoRefs.current[currentReel.id] : null;
+    const video = videoRefs.current[activeReelIndex];
     if (video) {
       setCurrentTime(video.currentTime || 0);
       setDuration(video.duration || 0);
     }
-  }, [activeReelIndex, currentReel?.id]);
+  }, [activeReelIndex]);
 
   const handleSeekFromEvent = (clientX: number) => {
     if (!progressBarRef.current || !currentReel || duration <= 0) return;
@@ -157,7 +181,7 @@ export default function ReelsView({
     const clickX = clientX - rect.left;
     const percentage = Math.max(0, Math.min(1, clickX / rect.width));
     const newTime = percentage * duration;
-    const video = videoRefs.current[currentReel.id];
+    const video = videoRefs.current[activeReelIndex];
     if (video) {
       video.currentTime = newTime;
       setCurrentTime(newTime);
@@ -246,11 +270,13 @@ export default function ReelsView({
   const [navBarHeight, setNavBarHeight] = useState(() => {
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       const navBar = document.getElementById("bottom-nav-bar");
-      if (navBar) return navBar.offsetHeight || 56;
+      if (navBar) return navBar.getBoundingClientRect().height || navBar.offsetHeight || 56;
       return 56;
     }
     return 0;
   });
+
+  const [containerHeight, setContainerHeight] = useState<number>(0);
 
   useEffect(() => {
     const updateNavBarHeight = () => {
@@ -260,7 +286,7 @@ export default function ReelsView({
       }
       const navBar = document.getElementById("bottom-nav-bar");
       if (navBar) {
-        setNavBarHeight(navBar.offsetHeight || 56);
+        setNavBarHeight(navBar.getBoundingClientRect().height || navBar.offsetHeight || 56);
       } else {
         setNavBarHeight(56);
       }
@@ -268,15 +294,39 @@ export default function ReelsView({
 
     updateNavBarHeight();
     const navBar = document.getElementById("bottom-nav-bar");
+    let navObserver: ResizeObserver | null = null;
     if (navBar) {
-      const observer = new ResizeObserver(() => updateNavBarHeight());
-      observer.observe(navBar);
-      window.addEventListener("resize", updateNavBarHeight);
-      return () => {
-        observer.disconnect();
-        window.removeEventListener("resize", updateNavBarHeight);
-      };
+      navObserver = new ResizeObserver(() => updateNavBarHeight());
+      navObserver.observe(navBar);
     }
+    window.addEventListener("resize", updateNavBarHeight);
+    return () => {
+      navObserver?.disconnect();
+      window.removeEventListener("resize", updateNavBarHeight);
+    };
+  }, []);
+
+  // Strict container height measurement to ensure exact 100% viewport coverage per slide
+  useEffect(() => {
+    const updateContainerDimensions = () => {
+      if (containerRef.current) {
+        setContainerHeight(containerRef.current.clientHeight);
+      }
+    };
+
+    updateContainerDimensions();
+    let containerObserver: ResizeObserver | null = null;
+    if (containerRef.current) {
+      containerObserver = new ResizeObserver(() => {
+        updateContainerDimensions();
+      });
+      containerObserver.observe(containerRef.current);
+    }
+    window.addEventListener("resize", updateContainerDimensions);
+    return () => {
+      containerObserver?.disconnect();
+      window.removeEventListener("resize", updateContainerDimensions);
+    };
   }, []);
 
   const submitComment = (e: React.FormEvent, reelId: string) => {
@@ -288,25 +338,81 @@ export default function ReelsView({
 
   return (
     <div
-      className="relative w-full h-full bg-slate-950 overflow-hidden flex flex-col"
+      className="relative w-full bg-slate-950 overflow-hidden flex flex-col"
       id="reels-panel"
-      style={{ height: `calc(100dvh - ${navBarHeight}px)` }}
+      style={{
+        height: navBarHeight > 0 ? `calc(100dvh - ${navBarHeight}px)` : "100dvh",
+        maxHeight: navBarHeight > 0 ? `calc(100dvh - ${navBarHeight}px)` : "100dvh",
+      }}
     >
+      {/* Cabecera fija con fondo transparente que respeta la barra de estado */}
+      <header
+        className="absolute top-0 inset-x-0 z-40 flex items-center justify-between px-4 pointer-events-none"
+        style={{
+          paddingTop: "max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
+          paddingBottom: "0.75rem",
+        }}
+        id="reels-fixed-header"
+      >
+        {/* Botón del Carrito */}
+        <button
+          onClick={() => setShowCartDrawer(true)}
+          className="relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto"
+          id="reels-header-cart-btn"
+          title="Ver carrito de compras"
+        >
+          <ShoppingBag className="w-5 h-5 text-amber-400 drop-shadow-md" />
+          {totalCartCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-mono text-[10px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center border border-slate-950 shadow-md animate-pulse">
+              {totalCartCount}
+            </span>
+          )}
+        </button>
+
+        {/* Grupo derecho: Contador de imágenes y Botón de Sonido */}
+        <div className="flex items-center space-x-2 pointer-events-auto">
+          {/* Contador de imágenes (solo si la publicación contiene únicamente imágenes) */}
+          {currentReel && !currentReel.videoUrl && currentReel.type !== "video" && ((currentReel.type === "carousel" && (currentReel.images?.length || 0) > 1) || (currentReel.images && currentReel.images.length > 1)) && (
+            <div
+              className="inline-flex items-center space-x-1 px-1.5 py-1 bg-transparent text-xs font-extrabold text-white drop-shadow-md"
+              id={`carousel-counter-${currentReel.id}`}
+            >
+              <span className="text-amber-400 font-mono font-black">{(carouselIndices[`${currentReel.id}_${activeReelIndex}`] ?? carouselIndices[currentReel.id] ?? 0) + 1}</span>
+              <span className="text-white/70 font-mono">/</span>
+              <span className="text-white font-mono font-bold">{currentReel.images?.length || 1}</span>
+            </div>
+          )}
+
+          {/* Botón de Sonido (Activar / Silenciar) */}
+          <button
+            onClick={() => setIsMuted(!isMuted)}
+            className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto"
+            id="reels-header-mute-btn"
+            title={isMuted ? "Activar sonido" : "Silenciar video"}
+          >
+            {isMuted ? <VolumeX className="w-5 h-5 drop-shadow-md" /> : <Volume2 className="w-5 h-5 drop-shadow-md" />}
+          </button>
+        </div>
+      </header>
+
       {/* Scrollable Feed Container */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-scroll snap-y snap-mandatory scroll-smooth no-scrollbar relative"
-        style={{ scrollbarWidth: "none" }}
+        className="w-full h-full min-h-0 flex-1 overflow-y-scroll snap-y snap-mandatory scroll-smooth no-scrollbar relative"
+        style={{
+          scrollbarWidth: "none",
+          scrollSnapType: "y mandatory",
+        }}
       >
-        {reels.length === 0 ? (
+        {displayedReels.length === 0 ? (
           <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <Play className="w-12 h-12 stroke-1 text-slate-600 mb-3 animate-pulse" />
             <p className="font-display font-medium text-slate-300">No hay videos disponibles</p>
             <p className="text-xs text-slate-500 mt-1">Sube contenido o inicia una transmisión para empezar</p>
           </div>
         ) : (
-          reels.map((reel, index) => {
+          displayedReels.map((reel, index) => {
             const isCurrent = index === activeReelIndex;
             const reelProduct = reel.productId ? taggedProductsMap[reel.productId] : null;
             const isLiked = Boolean(
@@ -318,12 +424,18 @@ export default function ReelsView({
             );
             return (
               <div
-                key={reel.id}
-                className="h-full w-full snap-start relative flex items-center justify-center bg-slate-950 overflow-hidden py-0 px-0"
-                style={{ height: "100%" }}
+                key={`${reel.id}_${index}`}
+                className="w-full shrink-0 snap-start snap-always relative flex items-center justify-center bg-slate-950 overflow-hidden py-0 px-0"
+                style={{
+                  height: containerHeight > 0 ? `${containerHeight}px` : "100%",
+                  minHeight: containerHeight > 0 ? `${containerHeight}px` : "100%",
+                  maxHeight: containerHeight > 0 ? `${containerHeight}px` : "100%",
+                  scrollSnapAlign: "start",
+                  scrollSnapStop: "always",
+                }}
               >
                 {/* Full-Width Publication Container */}
-                <div className="relative w-full h-full flex items-center justify-center">
+                <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
                   {/* Publication Frame: 100% width and full viewport height */}
                   <div
                     className="relative w-full h-full rounded-none overflow-hidden flex items-center justify-center bg-black"
@@ -333,6 +445,7 @@ export default function ReelsView({
                       <img
                         src={reel.images?.[0] || reel.thumbnailUrl}
                         alt={reel.description}
+                        draggable={false}
                         onClick={() => setIsPlaying(!isPlaying)}
                         onDoubleClick={() => handleDoubleTap(reel.id)}
                         onLoad={(e) => {
@@ -342,11 +455,12 @@ export default function ReelsView({
                             [reel.id]: isVert ? "vertical" : "horizontal_or_square",
                           }));
                         }}
-                        className={`w-full h-full cursor-pointer select-none block ${
+                        className={`w-full h-full cursor-pointer select-none block touch-auto ${
                           mediaAspectRatios[reel.id] === "horizontal_or_square"
                             ? "object-contain"
                             : "object-cover"
                         }`}
+                        style={{ touchAction: "pan-y" }}
                         referrerPolicy="no-referrer"
                       />
                     ) : reel.type === "carousel" ? (
@@ -354,19 +468,19 @@ export default function ReelsView({
                         <ReelCarousel 
                           images={reel.images || [reel.thumbnailUrl]} 
                           onDoubleClick={() => handleDoubleTap(reel.id)}
-                          onIndexChange={(idx) => setCarouselIndices((prev) => ({ ...prev, [reel.id]: idx }))}
+                          onIndexChange={(idx) => setCarouselIndices((prev) => ({ ...prev, [`${reel.id}_${index}`]: idx }))}
                         />
                       </div>
                     ) : (
                       <video
                         ref={(el) => {
-                          videoRefs.current[reel.id] = el;
+                          videoRefs.current[index] = el;
                         }}
                         src={reel.videoUrl}
                         loop
                         muted={isMuted}
                         playsInline
-                        onClick={() => handleVideoClick(reel.id)}
+                        onClick={() => handleVideoClick(index)}
                         onDoubleClick={() => handleDoubleTap(reel.id)}
                         onTimeUpdate={(e) => {
                           if (isCurrent) {
@@ -414,36 +528,7 @@ export default function ReelsView({
                       </div>
                     )}
 
-                    {/* Top status bar gradient overlay for native status bar contrast */}
-                    <div className="absolute top-0 inset-x-0 h-28 bg-gradient-to-b from-black/80 via-black/35 to-transparent pointer-events-none z-15" />
 
-                    {/* Header Controls (Cart button on top-left, Mute on top-right) */}
-                    <div className="absolute left-4 z-20" style={{ top: "max(1rem, calc(env(safe-area-inset-top, 0px) + 0.625rem))" }}>
-                      <button
-                        onClick={() => setShowCartDrawer(true)}
-                        className="relative p-2.5 rounded-full bg-black/30 backdrop-blur-md text-white hover:bg-white/10 transition-colors cursor-pointer border border-white/10 drop-shadow-md flex items-center justify-center"
-                        id={`cart-btn-${reel.id}`}
-                        title="Ver carrito de compras"
-                      >
-                        <ShoppingBag className="w-5 h-5 text-amber-400" />
-                        {totalCartCount > 0 && (
-                          <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-mono text-[10px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center border border-slate-950 shadow-md animate-pulse">
-                            {totalCartCount}
-                          </span>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Header Controls (Mute / Sound) */}
-                    <div className="absolute right-4 z-20" style={{ top: "max(1rem, calc(env(safe-area-inset-top, 0px) + 0.625rem))" }}>
-                      <button
-                        onClick={() => setIsMuted(!isMuted)}
-                        className="p-2.5 rounded-full bg-black/30 backdrop-blur-md text-white hover:bg-white/10 transition-colors cursor-pointer border border-white/10 drop-shadow-md flex items-center justify-center"
-                        id={`mute-btn-${reel.id}`}
-                      >
-                        {isMuted ? <VolumeX className="w-5 h-5 drop-shadow-xs" /> : <Volume2 className="w-5 h-5 drop-shadow-xs" />}
-                      </button>
-                    </div>
 
                     {/* Bottom Info Banner (Creator, Description, Tagged Product) */}
                     <div className="absolute left-4 sm:left-6 bottom-4 sm:bottom-6 right-20 sm:right-24 z-20 flex flex-col space-y-3 max-w-xl">
@@ -452,18 +537,6 @@ export default function ReelsView({
                         className="text-white bg-transparent p-3 rounded-xl drop-shadow-md"
                         style={{ marginLeft: "-15px", marginBottom: "-10px" }}
                       >
-                        {/* Image Counter (Always 5px above creator username) */}
-                        {((reel.type === "carousel" && (reel.images?.length || 0) > 1) || (reel.images && reel.images.length > 1)) && (
-                          <div
-                            className="inline-flex items-center space-x-1.5 bg-transparent border-none text-white text-xs font-extrabold px-0 py-0.5 mb-[5px] z-30 drop-shadow"
-                            id={`carousel-counter-${reel.id}`}
-                          >
-                            <span className="text-amber-400 font-mono font-black">{(carouselIndices[reel.id] || 0) + 1}</span>
-                            <span className="text-white/70">/</span>
-                            <span className="text-white font-mono">{reel.images?.length || 1}</span>
-                          </div>
-                        )}
-
                         <h3 className="font-display font-bold text-base sm:text-lg tracking-wide flex items-center space-x-2.5">
                           <span
                             className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm"
@@ -525,43 +598,30 @@ export default function ReelsView({
                           animate={{ y: 0, opacity: 1 }}
                           transition={{ delay: 0.2 }}
                           onClick={() => onProductClick(reelProduct)}
-                          className="bg-black/25 backdrop-blur-md border border-white/20 text-white p-2.5 rounded-xl flex items-center space-x-3 cursor-pointer hover:bg-black/40 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg"
+                          className="bg-black/40 backdrop-blur-md border border-white/20 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/60 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg overflow-hidden"
                           id={`tagged-product-${reel.id}`}
                           style={{
                             marginLeft: "-4px",
-                            paddingRight: "10px",
-                            paddingLeft: "7px",
-                            paddingTop: "9px",
-                            paddingBottom: "9px",
                             width: "285.606px",
                             height: "68.3438px"
                           }}
                         >
-                          <img
-                            src={reelProduct.imageUrl}
-                            alt={reelProduct.name}
-                            referrerPolicy="no-referrer"
-                            className="object-cover rounded-lg border border-white/10"
-                            style={{
-                              width: "70.9937px",
-                              height: "70.9937px",
-                              marginRight: "12px",
-                              marginBottom: "-18px",
-                              marginLeft: "-10px",
-                              marginTop: "-18px",
-                              paddingLeft: "0px",
-                              paddingTop: "-2px",
-                              paddingBottom: "0px",
-                            }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-[10px] uppercase tracking-wider font-bold text-amber-400 flex items-center space-x-1">
-                              <ShoppingBag className="w-2.5 h-2.5 mr-0.5" /> Producto Destacado
+                          <div className="w-20 shrink-0 h-full relative overflow-hidden bg-black/50 border-r border-white/10">
+                            <img
+                              src={reelProduct.imageUrl}
+                              alt={reelProduct.name}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between">
+                            <span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center">
+                              <ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado
                             </span>
-                            <h4 className="text-xs font-bold truncate text-slate-100 mt-0.5">{reelProduct.name}</h4>
-                            <div className="flex items-center justify-between mt-0.5">
+                            <h4 className="text-xs font-bold truncate text-slate-100">{reelProduct.name}</h4>
+                            <div className="flex items-center justify-between">
                               <span className="text-xs font-semibold text-emerald-400 font-mono">${reelProduct.price.toFixed(2)}</span>
-                              <span className="text-[9px] text-amber-500 font-medium">Ver detalles →</span>
+                              <span className="text-[9px] text-amber-400 font-semibold">Ver detalles →</span>
                             </div>
                           </div>
                         </motion.div>
@@ -578,14 +638,14 @@ export default function ReelsView({
                         onTouchStart={handleMouseDown}
                         id="video-progress-bar"
                       >
-                        {/* Background Track */}
-                        <div className="w-full h-1 group-hover:h-2 bg-white/20 backdrop-blur-md transition-all relative overflow-hidden">
+                        {/* Background Track with uniform solid thickness */}
+                        <div className="w-full h-[3px] bg-white/30 backdrop-blur-md relative overflow-hidden">
                           {/* Filled Progress */}
                           <div
                             className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 rounded-r-full shadow-[0_0_10px_rgba(245,158,11,0.9)] transition-all duration-75 relative"
                             style={{ width: `${Math.min(100, Math.max(0, (currentTime / duration) * 100))}%` }}
                           >
-                            <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-2.5 h-2.5 bg-amber-400 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-2 h-2 bg-amber-400 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
                         </div>
                       </div>
@@ -934,70 +994,94 @@ export default function ReelsView({
                     )}
                   </div>
                 ) : (
-                  cart.map((item) => (
-                    <div
-                      key={item.product.id}
-                      className="flex items-center space-x-3 p-3 bg-slate-50 rounded-2xl border border-slate-200 hover:border-slate-300 transition-all shadow-sm"
-                    >
-                      <img
-                        src={item.product.imageUrl}
-                        alt={item.product.name}
-                        referrerPolicy="no-referrer"
-                        className="w-14 h-14 object-cover rounded-xl border border-slate-200 shrink-0 cursor-pointer"
-                        onClick={() => {
-                          setShowCartDrawer(false);
-                          onProductClick(item.product);
-                        }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <h4
-                          className="text-xs font-extrabold text-slate-900 truncate cursor-pointer hover:text-amber-600 transition-colors"
-                          onClick={() => {
-                            setShowCartDrawer(false);
-                            onProductClick(item.product);
+                  cart.map((item, idx) => {
+                    const shippingFee = item.selectedShippingCost !== undefined 
+                      ? item.selectedShippingCost 
+                      : (item.product.shippingCost !== undefined ? item.product.shippingCost : 0);
+                    const carrierName = item.selectedCarrier || item.product.selectedCarrier;
+
+                    return (
+                      <div
+                        key={`${item.product.id}_${idx}`}
+                        className="flex items-stretch bg-slate-50 rounded-2xl border border-slate-200 hover:border-slate-300 transition-all shadow-sm overflow-hidden h-28 shrink-0"
+                      >
+                        <div className="w-24 sm:w-28 shrink-0 relative bg-slate-200 h-full overflow-hidden">
+                          <img
+                            src={item.product.imageUrl}
+                            alt={item.product.name}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
+                            onClick={() => {
+                              setShowCartDrawer(false);
+                              onProductClick(item.product);
+                            }}
+                          />
+                        </div>
+                        <div
+                          className="flex-1 min-w-0 p-2.5 flex flex-col justify-between h-full"
+                          style={{
+                            width: "182.4px",
+                            height: "90.594px",
                           }}
                         >
-                          {item.product.name}
-                        </h4>
-                        <p className="text-xs font-mono font-extrabold text-amber-600 mt-0.5">
-                          ${item.product.price.toFixed(2)}
-                        </p>
+                          <div>
+                            <div className="flex items-start justify-between gap-1">
+                              <h4
+                                className="text-xs font-extrabold text-slate-900 truncate cursor-pointer hover:text-amber-600 transition-colors"
+                                onClick={() => {
+                                  setShowCartDrawer(false);
+                                  onProductClick(item.product);
+                                }}
+                              >
+                                {item.product.name}
+                              </h4>
+                              <button
+                                onClick={() => onRemoveFromCart?.(item.product.id, idx)}
+                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0 -mt-1 -mr-1"
+                                title="Eliminar producto"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                              <span className="text-xs font-mono font-extrabold text-amber-600">
+                                ${item.product.price.toFixed(2)}
+                              </span>
+                              <span className="text-[9.5px] font-bold text-slate-600 bg-slate-200/80 px-1.5 py-0.5 rounded leading-tight">
+                                Envío: {shippingFee > 0 ? `$${shippingFee.toFixed(2)}` : "Gratis"}
+                                {carrierName ? ` (${carrierName})` : ""}
+                              </span>
+                            </div>
+                          </div>
 
-                        {/* Quantity Controls */}
-                        <div className="flex items-center space-x-2 mt-2">
-                          <button
-                            onClick={() => {
-                              if (item.quantity > 1) {
-                                onUpdateCartQuantity?.(item.product.id, item.quantity - 1);
-                              } else {
-                                onRemoveFromCart?.(item.product.id);
-                              }
-                            }}
-                            className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
-                          >
-                            -
-                          </button>
-                          <span className="text-xs font-mono font-extrabold text-slate-900 px-1">
-                            {item.quantity}
-                          </span>
-                          <button
-                            onClick={() => onUpdateCartQuantity?.(item.product.id, item.quantity + 1)}
-                            className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
-                          >
-                            +
-                          </button>
+                          {/* Quantity Controls */}
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => {
+                                if (item.quantity > 1) {
+                                  onUpdateCartQuantity?.(item.product.id, item.quantity - 1, idx);
+                                } else {
+                                  onRemoveFromCart?.(item.product.id, idx);
+                                }
+                              }}
+                              className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <span className="text-xs font-mono font-extrabold text-slate-900 px-1">
+                              {item.quantity}
+                            </span>
+                            <button
+                              onClick={() => onUpdateCartQuantity?.(item.product.id, item.quantity + 1, idx)}
+                              className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
+                            >
+                              +
+                            </button>
+                          </div>
                         </div>
                       </div>
-
-                      <button
-                        onClick={() => onRemoveFromCart?.(item.product.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
-                        title="Eliminar producto"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
@@ -1104,17 +1188,19 @@ function ReelCarousel({
           onDoubleClick();
         }
       }}
-      className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-none select-none touch-pan-x bg-black cursor-grab active:cursor-grabbing"
-      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-none select-none bg-black cursor-grab active:cursor-grabbing touch-auto"
+      style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-x pan-y" }}
     >
       {images.map((img, idx) => (
         <div
           key={idx}
           className="w-full h-full shrink-0 snap-center flex items-center justify-center relative overflow-hidden bg-black"
+          style={{ touchAction: "pan-x pan-y" }}
         >
           <img
             src={img}
             alt={`Carousel ${idx + 1}`}
+            draggable={false}
             onLoad={(e) => {
               const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.08;
               setSlideAspectRatios((prev) => ({ ...prev, [idx]: isVert }));
@@ -1122,6 +1208,7 @@ function ReelCarousel({
             className={`w-full h-full pointer-events-none select-none block ${
               slideAspectRatios[idx] ? "object-cover" : "object-contain"
             }`}
+            style={{ touchAction: "pan-x pan-y" }}
             referrerPolicy="no-referrer"
           />
         </div>
