@@ -52,13 +52,13 @@ jobs:
       - name: 7. Permisos de Gradle
         run: chmod +x android/gradlew
 
-      - name: 8. Compilar APK de Android
+      - name: 8. Compilar APK de Android (Modo Debug)
         run: |
           cd android
-          ./gradlew assembleRelease
+          ./gradlew assembleDebug
 
       - name: 9. Guardar APK listo para descargar
         uses: actions/upload-artifact@v4
         with:
-          name: app-android-release
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          name: app-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
