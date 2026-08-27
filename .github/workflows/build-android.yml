@@ -39,6 +39,16 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
+      - name: 6.1. Corregir clases duplicadas de Kotlin
+        run: |
+          node -e "
+          const fs = require('fs');
+          const file = 'android/build.gradle';
+          const patch = \`\nsubprojects {\n    configurations.all {\n        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'\n        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'\n    }\n}\n\`;
+          fs.appendFileSync(file, patch);
+          console.log('Parche de Kotlin aplicado correctamente');
+          "
+
       - name: 7. Permisos de Gradle
         run: chmod +x android/gradlew
 
