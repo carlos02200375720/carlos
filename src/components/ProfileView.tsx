@@ -316,12 +316,16 @@ export default function ProfileView({
         {!isSelf && (
           <button
             onClick={onBackToSelf}
-            className="absolute top-4 left-4 text-xs px-3 py-1.5 bg-slate-950/60 backdrop-blur-sm text-white hover:bg-slate-950/80 rounded-full border border-white/10 font-bold transition-all cursor-pointer z-10"
+            className="absolute left-4 text-xs px-3 py-1.5 bg-slate-950/60 backdrop-blur-sm text-white hover:bg-slate-950/80 rounded-full border border-white/10 font-bold transition-all cursor-pointer z-10"
+            style={{ top: "max(1rem, calc(env(safe-area-inset-top, 0px) + 0.625rem))" }}
           >
             ← Mi Dashboard Privado
           </button>
         )}
-        <div className="absolute top-4 right-4 bg-slate-950/60 backdrop-blur-sm text-white text-[9px] font-bold font-mono px-2.5 py-1 rounded-md border border-white/10 uppercase z-10">
+        <div
+          className="absolute right-4 bg-slate-950/60 backdrop-blur-sm text-white text-[9px] font-bold font-mono px-2.5 py-1 rounded-md border border-white/10 uppercase z-10"
+          style={{ top: "max(1rem, calc(env(safe-area-inset-top, 0px) + 0.625rem))" }}
+        >
           {isSelf ? "ADMINISTRATIVO" : "Vista Pública de Creador"}
         </div>
       </div>

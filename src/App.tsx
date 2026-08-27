@@ -1086,7 +1086,7 @@ export default function App() {
       </aside>
 
       {/* Main Container */}
-      <main className={`flex-1 w-full md:pl-60 lg:pl-64 ${isDarkNavActive ? "bg-slate-950" : "bg-white"} ${(activeTab === 'messages' && activeChatUser) || isLiveViewerOpen ? "mb-0" : "mb-12 md:mb-0"}`}>
+      <main className={`flex-1 w-full md:pl-60 lg:pl-64 ${isDarkNavActive ? "bg-slate-950" : "bg-white"} ${(activeTab === 'messages' && activeChatUser) || isLiveViewerOpen || activeTab === 'reels' ? "mb-0" : "mb-14 md:mb-0"}`}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

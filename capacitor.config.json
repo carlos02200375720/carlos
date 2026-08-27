@@ -2,5 +2,11 @@
   "appId": "com.mall.app",
   "appName": "MiApp",
   "webDir": "dist",
-  "bundledWebRuntime": false
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https"
+  }
 }

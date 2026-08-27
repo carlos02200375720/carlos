@@ -243,19 +243,39 @@ export default function ReelsView({
     });
   }, [reels]);
 
-  const [navBarHeight, setNavBarHeight] = useState(64);
+  const [navBarHeight, setNavBarHeight] = useState(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      const navBar = document.getElementById("bottom-nav-bar");
+      if (navBar) return navBar.offsetHeight || 56;
+      return 56;
+    }
+    return 0;
+  });
 
   useEffect(() => {
+    const updateNavBarHeight = () => {
+      if (window.innerWidth >= 768) {
+        setNavBarHeight(0);
+        return;
+      }
+      const navBar = document.getElementById("bottom-nav-bar");
+      if (navBar) {
+        setNavBarHeight(navBar.offsetHeight || 56);
+      } else {
+        setNavBarHeight(56);
+      }
+    };
+
+    updateNavBarHeight();
     const navBar = document.getElementById("bottom-nav-bar");
     if (navBar) {
-      setNavBarHeight(navBar.offsetHeight);
-      const observer = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          setNavBarHeight(entry.target.clientHeight);
-        }
-      });
+      const observer = new ResizeObserver(() => updateNavBarHeight());
       observer.observe(navBar);
-      return () => observer.disconnect();
+      window.addEventListener("resize", updateNavBarHeight);
+      return () => {
+        observer.disconnect();
+        window.removeEventListener("resize", updateNavBarHeight);
+      };
     }
   }, []);
 
@@ -394,17 +414,20 @@ export default function ReelsView({
                       </div>
                     )}
 
+                    {/* Top status bar gradient overlay for native status bar contrast */}
+                    <div className="absolute top-0 inset-x-0 h-28 bg-gradient-to-b from-black/80 via-black/35 to-transparent pointer-events-none z-15" />
+
                     {/* Header Controls (Cart button on top-left, Mute on top-right) */}
-                    <div className="absolute left-4 z-20" style={{ top: "calc(env(safe-area-inset-top, 0px) + 1rem)" }}>
+                    <div className="absolute left-4 z-20" style={{ top: "max(1rem, calc(env(safe-area-inset-top, 0px) + 0.625rem))" }}>
                       <button
                         onClick={() => setShowCartDrawer(true)}
-                        className="relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)] flex items-center justify-center"
+                        className="relative p-2.5 rounded-full bg-black/30 backdrop-blur-md text-white hover:bg-white/10 transition-colors cursor-pointer border border-white/10 drop-shadow-md flex items-center justify-center"
                         id={`cart-btn-${reel.id}`}
                         title="Ver carrito de compras"
                       >
-                        <ShoppingBag className="w-6 h-6 text-amber-400" />
+                        <ShoppingBag className="w-5 h-5 text-amber-400" />
                         {totalCartCount > 0 && (
-                          <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-mono text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border border-slate-950 shadow-md animate-pulse">
+                          <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-mono text-[10px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center border border-slate-950 shadow-md animate-pulse">
                             {totalCartCount}
                           </span>
                         )}
@@ -412,13 +435,13 @@ export default function ReelsView({
                     </div>
 
                     {/* Header Controls (Mute / Sound) */}
-                    <div className="absolute right-4 z-20" style={{ top: "calc(env(safe-area-inset-top, 0px) + 1rem)" }}>
+                    <div className="absolute right-4 z-20" style={{ top: "max(1rem, calc(env(safe-area-inset-top, 0px) + 0.625rem))" }}>
                       <button
                         onClick={() => setIsMuted(!isMuted)}
-                        className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                        className="p-2.5 rounded-full bg-black/30 backdrop-blur-md text-white hover:bg-white/10 transition-colors cursor-pointer border border-white/10 drop-shadow-md flex items-center justify-center"
                         id={`mute-btn-${reel.id}`}
                       >
-                        {isMuted ? <VolumeX className="w-7 h-7 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]" /> : <Volume2 className="w-7 h-7 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]" />}
+                        {isMuted ? <VolumeX className="w-5 h-5 drop-shadow-xs" /> : <Volume2 className="w-5 h-5 drop-shadow-xs" />}
                       </button>
                     </div>
 

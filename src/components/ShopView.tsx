@@ -616,11 +616,16 @@ export default function ShopView({
   return (
     <div className="w-full min-h-screen bg-white relative flex flex-col" id="shop-panel">
       {/* Shop Navigation Header */}
-      <header className={`px-3 sm:px-5 pt-2.5 pb-2 sm:pt-3 sm:pb-2.5 flex items-center justify-between gap-3 z-30 transition-all duration-300 ease-in-out ${
-        activeStep === 'detail'
-          ? "absolute top-0 inset-x-0 bg-transparent border-0 pointer-events-none"
-          : "sticky top-0 bg-white border-0"
-      } ${showHeader ? "translate-y-0" : "-translate-y-full"}`}>
+      <header
+        className={`px-3 sm:px-5 pb-2 sm:pb-2.5 flex items-center justify-between gap-3 z-30 transition-all duration-300 ease-in-out ${
+          activeStep === 'detail'
+            ? "absolute top-0 inset-x-0 bg-transparent border-0 pointer-events-none"
+            : "sticky top-0 bg-white border-0"
+        } ${showHeader ? "translate-y-0" : "-translate-y-full"}`}
+        style={{
+          paddingTop: "max(0.625rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))"
+        }}
+      >
         <div className="flex items-center space-x-2 shrink-0">
           {activeStep !== 'catalog' && (
             <button
