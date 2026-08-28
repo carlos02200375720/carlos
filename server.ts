@@ -725,15 +725,43 @@ async function startServer() {
   // Get specific user profile with their products, reels, and orders
   app.get("/api/users/:id", async (req, res) => {
     const dbUsers = await getUsers();
-    let user = dbUsers.find((u) => u.id === req.params.id);
+    const rawParam = (req.params.id || "").trim();
+    const cleanParam = rawParam.toLowerCase();
 
-    // Dynamic current_user resolver to avoid seeding mock guest users at startup
-    if (req.params.id === "current_user") {
-      let activeUser = null;
+    const headerUsername = (req.headers["x-user-username"] as string)?.trim().toLowerCase();
+    const headerUserId = (req.headers["x-user-id"] as string)?.trim();
+    const queryUsername = (req.query.username as string)?.trim().toLowerCase();
+    const queryUserId = (req.query.userId as string)?.trim();
+
+    let user: any = null;
+
+    // Dynamic current_user resolver to preserve user session
+    if (rawParam === "current_user" || cleanParam === "current_user") {
+      let activeUser: any = null;
+      const targetIdentifier = headerUsername || queryUsername || headerUserId || queryUserId;
+
       if (mongoose.connection.readyState === 1) {
-        if (activeOriginalUserId && activeOriginalUserId !== "user_guest") {
+        if (targetIdentifier && targetIdentifier !== "invitado" && targetIdentifier !== "user_guest" && targetIdentifier !== "current_user") {
+          activeUser = await MongoUser.findOne({
+            $or: [
+              { username: targetIdentifier.toLowerCase() },
+              { id: targetIdentifier },
+              { email: targetIdentifier.toLowerCase() }
+            ]
+          });
+        }
+
+        if (!activeUser && activeOriginalUserId && activeOriginalUserId !== "user_guest" && activeOriginalUserId !== "current_user") {
           activeUser = await MongoUser.findOne({ id: activeOriginalUserId });
         }
+      }
+
+      if (!activeUser && targetIdentifier && targetIdentifier !== "invitado" && targetIdentifier !== "user_guest") {
+        activeUser = dbUsers.find(u =>
+          u.username?.toLowerCase() === targetIdentifier.toLowerCase() ||
+          u.id === targetIdentifier ||
+          (u.originalId && u.originalId === targetIdentifier)
+        );
       }
 
       if (activeUser) {
@@ -744,18 +772,18 @@ async function startServer() {
           name: activeUser.name,
           avatar: activeUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
           bio: activeUser.bio || "Creador en la plataforma",
-          isOnline: activeUser.isOnline !== undefined ? activeUser.isOnline : false,
+          isOnline: activeUser.isOnline !== undefined ? activeUser.isOnline : true,
           followers: activeUser.followers || 0,
           following: activeUser.following || 0,
           followingUserIds: activeUser.followingUserIds || [],
           savedReelIds: activeUser.savedReelIds || [],
           coverPhoto: activeUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-          isGuest: activeUser.isGuest || false,
+          isGuest: false,
           password: activeUser.password || "",
           email: activeUser.email || ""
         };
       } else {
-        // Fallback to transient memory guest user if no users are in DB yet or active user is guest
+        // Fallback to transient memory guest user if no session is found
         user = {
           id: "current_user",
           username: "invitado",
@@ -772,6 +800,42 @@ async function startServer() {
           email: ""
         };
       }
+    } else {
+      user = dbUsers.find(
+        (u) =>
+          u.id === rawParam ||
+          u.username?.toLowerCase() === cleanParam ||
+          u.id?.toLowerCase() === cleanParam ||
+          (u.originalId && u.originalId === rawParam)
+      );
+
+      if (!user && mongoose.connection.readyState === 1) {
+        const found = await MongoUser.findOne({
+          $or: [
+            { id: rawParam },
+            { username: cleanParam },
+            { username: rawParam }
+          ]
+        });
+        if (found) {
+          user = {
+            id: found.id,
+            originalId: found.id,
+            username: found.username,
+            name: found.name,
+            avatar: found.avatar,
+            bio: found.bio,
+            followers: found.followers || 0,
+            following: found.following || 0,
+            followingUserIds: found.followingUserIds || [],
+            savedReelIds: found.savedReelIds || [],
+            coverPhoto: found.coverPhoto,
+            isGuest: false,
+            password: found.password || "",
+            email: found.email || ""
+          };
+        }
+      }
     }
 
     if (!user) {
@@ -779,9 +843,23 @@ async function startServer() {
        return;
     }
 
+    const userIdentifiers = new Set<string>();
+    if (user.id) userIdentifiers.add(user.id);
+    if (user.originalId) userIdentifiers.add(user.originalId);
+    if (user.username) {
+      userIdentifiers.add(user.username);
+      userIdentifiers.add(user.username.toLowerCase());
+    }
+    if (activeOriginalUserId && activeOriginalUserId !== "user_guest" && (user.id === "current_user" || user.originalId === activeOriginalUserId)) {
+      userIdentifiers.add(activeOriginalUserId);
+    }
+
     const seenProd = new Set<string>();
     const userProducts = products
-      .filter((p) => p.sellerId === user.id || (user.id === "current_user" && p.sellerId === activeOriginalUserId))
+      .filter((p) =>
+        userIdentifiers.has(p.sellerId) ||
+        (user.id === "current_user" && p.sellerId === activeOriginalUserId)
+      )
       .filter((p) => {
         if (!p.id || seenProd.has(p.id)) return false;
         seenProd.add(p.id);
@@ -790,7 +868,11 @@ async function startServer() {
 
     const seenReel = new Set<string>();
     const userReels = reels
-      .filter((r) => r.creatorId === user.id || (user.id === "current_user" && r.creatorId === activeOriginalUserId))
+      .filter((r) =>
+        userIdentifiers.has(r.creatorId) ||
+        (r.creatorUsername && userIdentifiers.has(r.creatorUsername.toLowerCase())) ||
+        (user.id === "current_user" && r.creatorId === activeOriginalUserId)
+      )
       .filter((r) => {
         if (!r.id || seenReel.has(r.id)) return false;
         seenReel.add(r.id);
@@ -1409,10 +1491,15 @@ async function startServer() {
       return;
     }
 
+    const headerUsername = (req.headers["x-user-username"] as string)?.trim();
+    const resolvedUsername = username || headerUsername || "usuario";
+    const resolvedAvatar =
+      avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
+
     const newComment: Comment = {
       id: "c_" + generateId(),
-      username: username || "cg0220037",
-      avatar: avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+      username: resolvedUsername,
+      avatar: resolvedAvatar,
       text,
       createdAt: new Date().toISOString(),
     };

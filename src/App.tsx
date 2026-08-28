@@ -1194,7 +1194,7 @@ export default function App() {
                 currentUser={currentUser}
                 selectedCreatorId={selectedCreatorProfileId}
                 users={users}
-                onBackToSelf={() => setSelectedCreatorProfileId(currentUser.id)}
+                onBackToSelf={() => setSelectedCreatorProfileId(null)}
                 onOpenDirectChat={openPrivateChatDirectly}
                 onSelectProduct={handleProductDetailsLink}
                 onSelectReel={handleReelLink}

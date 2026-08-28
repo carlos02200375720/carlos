@@ -122,16 +122,45 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
   const generateVideoThumbnail = (videoFile: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const video = document.createElement("video");
-      video.preload = "metadata";
-      video.src = URL.createObjectURL(videoFile);
+      video.preload = "auto";
       video.muted = true;
       video.playsInline = true;
+      // @ts-ignore
+      video.webkitPlaysInline = true;
+      video.src = URL.createObjectURL(videoFile);
 
-      video.onloadedmetadata = () => {
-        video.currentTime = Math.min(1.0, (video.duration || 1) / 2);
+      let handled = false;
+      const cleanup = () => {
+        handled = true;
+        clearTimeout(timer);
+        URL.revokeObjectURL(video.src);
       };
 
-      video.onseeked = () => {
+      const timer = setTimeout(() => {
+        if (!handled) {
+          cleanup();
+          // Generate a fallback dark canvas thumbnail if video decoding times out
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = 640;
+            canvas.height = 360;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.fillStyle = "#0f172a";
+              ctx.fillRect(0, 0, 640, 360);
+              canvas.toBlob((blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error("Timeout al generar portada del video"));
+              }, "image/jpeg", 0.85);
+              return;
+            }
+          } catch (e) {}
+          reject(new Error("Timeout al generar portada del video"));
+        }
+      }, 5000);
+
+      const captureFrame = () => {
+        if (handled) return;
         try {
           const canvas = document.createElement("canvas");
           canvas.width = video.videoWidth || 640;
@@ -140,7 +169,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
           if (ctx) {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             canvas.toBlob((blob) => {
-              URL.revokeObjectURL(video.src);
+              cleanup();
               if (blob) {
                 resolve(blob);
               } else {
@@ -148,19 +177,27 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
               }
             }, "image/jpeg", 0.85);
           } else {
-            URL.revokeObjectURL(video.src);
+            cleanup();
             reject(new Error("No se pudo crear contexto del canvas"));
           }
         } catch (err) {
-          URL.revokeObjectURL(video.src);
+          cleanup();
           reject(err);
         }
       };
 
+      video.onloadeddata = () => {
+        video.currentTime = Math.min(0.5, (video.duration || 1) / 2);
+      };
+
+      video.onseeked = captureFrame;
+
       video.onerror = (err) => {
-        URL.revokeObjectURL(video.src);
+        cleanup();
         reject(err);
       };
+
+      video.load();
     });
   };
 

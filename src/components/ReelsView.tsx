@@ -79,20 +79,36 @@ export default function ReelsView({
   const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
 
   useEffect(() => {
-    // Play active video, pause others
+    // Play active video, pause others, and buffer adjacent reels
     displayedReels.forEach((reel, idx) => {
       const video = videoRefs.current[idx];
       if (video) {
-        if (idx === activeReelIndex && isPlaying) {
-          video.play().catch(() => {
-            // Browser blocked autoplay
-          });
+        if (idx === activeReelIndex) {
+          if (isPlaying) {
+            video.muted = isMuted;
+            video.defaultMuted = isMuted;
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((err) => {
+                console.log("Autoplay notification:", err);
+              });
+            }
+          } else {
+            video.pause();
+          }
         } else {
           video.pause();
+          // For adjacent reels (next and previous), set preload to auto so they buffer instantly
+          if (Math.abs(idx - activeReelIndex) <= 2) {
+            video.preload = "auto";
+          } else if (Math.abs(idx - activeReelIndex) > 3) {
+            // Far away reels: pause and reset time to release GPU buffers
+            video.currentTime = 0;
+          }
         }
       }
     });
-  }, [activeReelIndex, displayedReels.length, isPlaying]);
+  }, [activeReelIndex, displayedReels.length, isPlaying, isMuted]);
 
   // Handle scroll detection for snap scroll & continuous infinite expansion
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -351,7 +367,7 @@ export default function ReelsView({
       <header
         className="absolute top-0 inset-x-0 z-40 flex items-center justify-between px-4 pointer-events-none"
         style={{
-          paddingTop: "max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
+          paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))",
           paddingBottom: "0.75rem",
         }}
         id="reels-fixed-header"
@@ -477,11 +493,25 @@ export default function ReelsView({
                       <video
                         ref={(el) => {
                           videoRefs.current[index] = el;
+                          if (el) {
+                            el.muted = isMuted;
+                            el.defaultMuted = isMuted;
+                          }
                         }}
                         src={reel.videoUrl}
                         loop
                         muted={isMuted}
                         playsInline
+                        // @ts-ignore
+                        webkit-playsinline="true"
+                        // @ts-ignore
+                        x5-playsinline="true"
+                        // @ts-ignore
+                        x5-video-player-type="h5-page"
+                        disablePictureInPicture
+                        disableRemotePlayback
+                        controls={false}
+                        preload={Math.abs(index - activeReelIndex) <= 2 ? "auto" : "metadata"}
                         onClick={() => handleVideoClick(index)}
                         onDoubleClick={() => handleDoubleTap(reel.id)}
                         onTimeUpdate={(e) => {

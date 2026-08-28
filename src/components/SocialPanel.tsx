@@ -147,7 +147,7 @@ export default function SocialPanel({
         <div
           className="p-4 border-0 flex items-center gap-3 bg-white shrink-0"
           style={{
-            paddingTop: "max(1rem, calc(env(safe-area-inset-top, 0px) + 0.625rem))"
+            paddingTop: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))"
           }}
         >
           <div className="relative flex-1">
@@ -337,7 +337,12 @@ export default function SocialPanel({
           /* 1-on-1 CHAT WINDOW VIEW */
           <div className="flex-1 flex flex-col justify-between overflow-hidden max-w-lg mx-auto w-full border-x border-slate-200 bg-white">
             {/* Chat Partner details header */}
-            <div className="px-4 py-3 bg-white border-b border-slate-200 flex items-center justify-between shrink-0">
+            <div 
+              className="px-4 pb-3 bg-white border-b border-slate-200 flex items-center justify-between shrink-0"
+              style={{
+                paddingTop: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))"
+              }}
+            >
               <button
                 onClick={() => onSelectChatUser(null)}
                 className="text-xs text-amber-600 hover:underline font-semibold cursor-pointer flex items-center space-x-1"

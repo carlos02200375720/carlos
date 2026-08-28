@@ -155,10 +155,11 @@ export default function ShopView({
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedProductMediaUrl, setSelectedProductMediaUrl] = useState<string>("");
   const [selectedVariants, setSelectedVariants] = useState<{[key: string]: string}>({});
+  const [optionsValidationError, setOptionsValidationError] = useState<string | null>(null);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("todos");
-  const [displayCount, setDisplayCount] = useState<number>(8);
+  const [displayCount, setDisplayCount] = useState<number>(12);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const infiniteLoaderRef = useRef<HTMLDivElement>(null);
   
@@ -547,12 +548,34 @@ export default function ShopView({
     }
   }, [activeStep, onToggleDetailView]);
 
+  // Helper to validate required product options (color, size, style, etc.)
+  const getMissingOptions = (product: Product | null, selected: { [key: string]: string }) => {
+    if (!product) return [];
+    const missing: string[] = [];
+    
+    if (product.variants && product.variants.length > 0) {
+      product.variants.forEach((v) => {
+        if (!selected[v.name] || !selected[v.name].trim()) {
+          missing.push(v.name);
+        }
+      });
+    } else if (product.variantList && product.variantList.length > 0) {
+      const hasSwatches = product.variantList.some(item => item.imageUrl || item.color || item.name);
+      if (hasSwatches && !selected["Color"] && !selected["Opción"]) {
+        missing.push("Color");
+      }
+    }
+
+    return missing;
+  };
+
   // Sync direct product clicks from reels
   useEffect(() => {
     if (selectedProductDirectly) {
       setSelectedProduct(selectedProductDirectly);
       setSelectedProductMediaUrl(selectedProductDirectly.imageUrl);
       setSelectedVariants({});
+      setOptionsValidationError(null);
       setSelectedShippingOption(null);
       setActiveGalleryIndex(0);
       setIsGalleryVideoPlaying(true);
@@ -566,6 +589,7 @@ export default function ShopView({
     setSelectedProduct(product);
     setSelectedProductMediaUrl(product.imageUrl);
     setSelectedVariants({});
+    setOptionsValidationError(null);
     setSelectedShippingOption(null);
     setActiveGalleryIndex(0);
     setIsGalleryVideoPlaying(true);
@@ -646,30 +670,51 @@ export default function ShopView({
 
   // Reset infinite scroll count when filter/search changes
   useEffect(() => {
-    setDisplayCount(8);
+    setDisplayCount(12);
   }, [selectedCategory, searchQuery]);
 
-  // Infinite Scroll Trigger via IntersectionObserver and scroll listener
+  // Infinite Scroll Trigger via IntersectionObserver and window scroll listener
   useEffect(() => {
     if (activeStep !== 'catalog') return;
+
+    const handleWindowScroll = () => {
+      if (isLoadingMore || filteredProducts.length === 0) return;
+      const scrollPosition = window.innerHeight + window.scrollY;
+      const threshold = document.documentElement.scrollHeight - 500;
+      if (scrollPosition >= threshold) {
+        setIsLoadingMore(true);
+        setTimeout(() => {
+          setDisplayCount((prev) => prev + 8);
+          setIsLoadingMore(false);
+        }, 200);
+      }
+    };
+
+    window.addEventListener("scroll", handleWindowScroll, { passive: true });
+
     const target = infiniteLoaderRef.current;
-    if (!target) return;
+    let observer: IntersectionObserver | null = null;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !isLoadingMore && filteredProducts.length > 0) {
-          setIsLoadingMore(true);
-          setTimeout(() => {
-            setDisplayCount((prev) => prev + 8);
-            setIsLoadingMore(false);
-          }, 350);
-        }
-      },
-      { threshold: 0.1, rootMargin: "250px" }
-    );
+    if (target) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting && !isLoadingMore && filteredProducts.length > 0) {
+            setIsLoadingMore(true);
+            setTimeout(() => {
+              setDisplayCount((prev) => prev + 8);
+              setIsLoadingMore(false);
+            }, 200);
+          }
+        },
+        { threshold: 0, rootMargin: "600px" }
+      );
+      observer.observe(target);
+    }
 
-    observer.observe(target);
-    return () => observer.disconnect();
+    return () => {
+      window.removeEventListener("scroll", handleWindowScroll);
+      if (observer) observer.disconnect();
+    };
   }, [activeStep, isLoadingMore, filteredProducts.length]);
 
   // Compute displayed products for continuous infinite exploration
@@ -683,13 +728,13 @@ export default function ShopView({
   }, [filteredProducts, displayCount]);
 
   return (
-    <div className="w-full min-h-screen bg-white relative flex flex-col" id="shop-panel">
+    <div className="w-full min-h-screen bg-white relative flex flex-col no-scrollbar" id="shop-panel" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
       {/* 1. Detail Page Transparent Fixed Header */}
       {activeStep === 'detail' ? (
         <header
           className="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-3 sm:px-5 pb-2.5 sm:pb-3 bg-transparent border-0 pointer-events-none transition-all duration-200"
           style={{
-            paddingTop: "max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))",
+            paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 0.85rem))",
           }}
           id="product-detail-transparent-header"
         >
@@ -731,7 +776,7 @@ export default function ShopView({
             showHeader ? "translate-y-0" : "-translate-y-full"
           }`}
           style={{
-            paddingTop: "max(1.25rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))"
+            paddingTop: "max(2.25rem, calc(env(safe-area-inset-top, 0px) + 0.85rem))"
           }}
         >
           <div className="flex items-center space-x-2 shrink-0">
@@ -1014,6 +1059,13 @@ export default function ShopView({
                                   controls
                                   loop
                                   playsInline
+                                  // @ts-ignore
+                                  webkit-playsinline="true"
+                                  // @ts-ignore
+                                  x5-playsinline="true"
+                                  disablePictureInPicture
+                                  disableRemotePlayback
+                                  poster={selectedProduct.imageUrl || selectedProduct.images?.[0]}
                                   preload="auto"
                                   muted={isGalleryVideoMuted}
                                   onPlay={() => setIsGalleryVideoPlaying(true)}
@@ -1088,7 +1140,7 @@ export default function ShopView({
                     {/* Image Counter Badge in Bottom-Right Corner */}
                     {productGalleryMedia.length > 0 && (
                       <div
-                        className="absolute bottom-3 right-3 z-20 px-3 py-1 rounded-full bg-slate-950/60 backdrop-blur-md text-white font-mono text-xs font-bold border border-white/20 shadow-md tracking-wider flex items-center space-x-1 pointer-events-none select-none"
+                        className="absolute bottom-3 right-3 z-20 px-3 py-1 rounded-full bg-gradient-to-r from-black/80 via-black/50 to-black/20 backdrop-blur-sm text-white font-mono text-xs font-bold border border-white/10 shadow-lg tracking-wider flex items-center space-x-1 pointer-events-none select-none"
                         id="detail-image-counter"
                       >
                         <span className="text-amber-400 font-extrabold">{activeGalleryIndex + 1}</span>
@@ -1122,12 +1174,11 @@ export default function ShopView({
                             >
                               {isVideo ? (
                                 <div className="w-full h-full bg-slate-900 flex items-center justify-center relative overflow-hidden">
-                                  <video
-                                    src={url}
+                                  <img
+                                    src={selectedProduct.imageUrl || selectedProduct.images?.[0]}
                                     className="w-full h-full object-cover opacity-75"
-                                    muted
-                                    playsInline
-                                    preload="metadata"
+                                    referrerPolicy="no-referrer"
+                                    alt=""
                                   />
                                   <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                                     <Play className="w-3.5 h-3.5 text-white fill-white drop-shadow-xs" />
@@ -1181,16 +1232,31 @@ export default function ShopView({
                       <span className="text-[10px] text-amber-600 font-medium ml-1">Ver perfil →</span>
                     </div>
 
-                    <h1 className="font-display font-extrabold text-2xl text-slate-900 mt-4">{selectedProduct.name}</h1>
+                    <h1 className="font-display font-extrabold text-2xl sm:text-3xl text-slate-900 mt-4 leading-tight">{selectedProduct.name}</h1>
                     
-                    {/* Rating Stars */}
-                    <div className="flex items-center space-x-1.5 mt-2">
-                      <div className="flex items-center text-amber-400">
-                        {[...Array(5)].map((_, i) => (
-                          <Star key={i} className="w-4 h-4 fill-amber-400" />
-                        ))}
+                    {/* Rating Stars & Price Section */}
+                    <div className="flex items-center justify-between gap-3 mt-3 flex-wrap bg-slate-50/80 p-3 rounded-xl border border-slate-100">
+                      <div className="flex items-center space-x-1.5">
+                        <div className="flex items-center text-amber-400">
+                          {[...Array(5)].map((_, i) => (
+                            <Star key={i} className="w-4 h-4 fill-amber-400" />
+                          ))}
+                        </div>
+                        <span className="text-xs font-bold text-slate-700">{selectedProduct.rating} (Verificado)</span>
                       </div>
-                      <span className="text-xs font-bold text-slate-700">{selectedProduct.rating} (Verificado)</span>
+
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-2xl sm:text-3xl font-black font-mono text-slate-950 tracking-tight" id="product-detail-price">
+                          ${selectedProduct.price.toFixed(2)}
+                        </span>
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                          selectedProduct.stock > 0
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200/80"
+                            : "bg-rose-50 text-rose-700 border-rose-200/80"
+                        }`}>
+                          {selectedProduct.stock > 0 ? `En Stock` : "Agotado"}
+                        </span>
+                      </div>
                     </div>
 
                     <p className="text-sm text-slate-600 mt-4 leading-relaxed whitespace-pre-line">{selectedProduct.description}</p>
@@ -1216,10 +1282,23 @@ export default function ShopView({
                       const hasOptionGroups = selectedProduct.variants && selectedProduct.variants.length > 0;
 
                       return (
-                        <div className="mt-6 space-y-4 border-t border-slate-100 pt-4">
+                        <div className="mt-6 space-y-4 border-t border-slate-100 pt-4" id="product-options-section">
                           <div className="flex items-center justify-between">
-                            <p className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Selecciona tus opciones:</p>
+                            <p className="text-xs font-extrabold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                              <span>Selecciona tus opciones:</span>
+                              <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded font-bold border border-amber-200/60 lowercase">
+                                (requerido)
+                              </span>
+                            </p>
                           </div>
+
+                          {/* Options Validation Error Notice */}
+                          {optionsValidationError && (
+                            <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs font-bold flex items-center gap-2.5 animate-bounce shadow-xs">
+                              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span>{optionsValidationError}</span>
+                            </div>
+                          )}
 
                           {/* If we have option groups (e.g. Color, Talla) */}
                           {hasOptionGroups ? (
@@ -1244,9 +1323,13 @@ export default function ShopView({
                                   <div key={idx} className="space-y-2 text-left">
                                     <div className="flex items-center space-x-1.5 text-[11px] font-bold">
                                       <span className="text-slate-600">{v.name}:</span>
-                                      {selectedColorVal && (
+                                      {selectedColorVal ? (
                                         <span className="text-amber-600 font-extrabold capitalize bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80">
                                           {selectedColorVal}
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
+                                          Selecciona un {v.name.toLowerCase()}
                                         </span>
                                       )}
                                     </div>
@@ -1272,6 +1355,7 @@ export default function ShopView({
                                             onClick={() => {
                                               const nextVariants = { ...selectedVariants, [v.name]: opt };
                                               setSelectedVariants(nextVariants);
+                                              setOptionsValidationError(null);
                                               if (imgUrl) {
                                                 setSelectedProductMediaUrl(imgUrl);
                                               } else if (selectedProduct.variantList) {
@@ -1318,9 +1402,13 @@ export default function ShopView({
                                 <div key={idx} className="space-y-1.5 text-left">
                                   <div className="flex items-center space-x-1.5 text-[11px] font-bold">
                                     <span className="text-slate-600">{v.name}:</span>
-                                    {selectedOptVal && (
+                                    {selectedOptVal ? (
                                       <span className="text-slate-900 font-extrabold bg-slate-100 px-2 py-0.5 rounded-md">
                                         {selectedOptVal}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
+                                        Selecciona una {v.name.toLowerCase()}
                                       </span>
                                     )}
                                   </div>
@@ -1331,7 +1419,10 @@ export default function ShopView({
                                         <button
                                           key={oIdx}
                                           type="button"
-                                          onClick={() => setSelectedVariants({ ...selectedVariants, [v.name]: opt })}
+                                          onClick={() => {
+                                            setSelectedVariants({ ...selectedVariants, [v.name]: opt });
+                                            setOptionsValidationError(null);
+                                          }}
                                           className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
                                             isSelected 
                                               ? "bg-slate-950 text-white border-slate-950 shadow-sm ring-2 ring-amber-500/30" 
@@ -1351,15 +1442,19 @@ export default function ShopView({
                             <div className="space-y-2 text-left">
                               <div className="flex items-center space-x-1.5 text-[11px] font-bold">
                                 <span className="text-slate-600">Color:</span>
-                                {(selectedVariants["Color"] || (uniqueSwatches.find(s => s.imageUrl === selectedProductMediaUrl)?.name)) && (
+                                {(selectedVariants["Color"] || (uniqueSwatches.find(s => s.imageUrl === selectedProductMediaUrl)?.name)) ? (
                                   <span className="text-amber-600 font-extrabold capitalize bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80">
                                     {selectedVariants["Color"] || (uniqueSwatches.find(s => s.imageUrl === selectedProductMediaUrl)?.name)}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
+                                    Selecciona un color
                                   </span>
                                 )}
                               </div>
                               <div className="flex items-center gap-2.5 overflow-x-auto pb-3 pt-1 px-1 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden snap-x">
                                 {uniqueSwatches.map((swatch, sIdx) => {
-                                  const isSelected = selectedProductMediaUrl === swatch.imageUrl;
+                                  const isSelected = selectedProductMediaUrl === swatch.imageUrl || selectedVariants["Color"] === swatch.name;
                                   return (
                                     <button
                                       key={sIdx}
@@ -1368,6 +1463,7 @@ export default function ShopView({
                                       onClick={() => {
                                         setSelectedProductMediaUrl(swatch.imageUrl);
                                         setSelectedVariants(prev => ({ ...prev, Color: swatch.name }));
+                                        setOptionsValidationError(null);
                                       }}
                                       className={`group snap-start flex items-center justify-center p-0 overflow-hidden rounded-xl border transition-all cursor-pointer w-16 h-16 shrink-0 relative ${
                                         isSelected
@@ -1413,78 +1509,86 @@ export default function ShopView({
 
               {/* Fixed Bottom Action Bar for Product Details (Replaces main navigation bar) */}
               <div 
-                className="fixed bottom-0 inset-x-0 z-40 bg-white border-0 pt-3 px-4 sm:px-6 shadow-none"
-                style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+                className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-100 py-2.5 sm:py-3 px-4 sm:px-6 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]"
+                style={{ paddingBottom: 'max(1.75rem, calc(env(safe-area-inset-bottom, 0px) + 0.85rem))' }}
               >
-                <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
-                  <div>
-                    <span className="text-[10px] text-slate-500 uppercase tracking-widest font-extrabold block">Precio unitario</span>
-                    <div className="flex items-baseline space-x-1.5">
-                      <span className="text-xl sm:text-2xl font-extrabold font-mono text-slate-950">${selectedProduct.price.toFixed(2)}</span>
-                      {selectedShippingOption ? (
-                        <span className="text-[10px] text-amber-800 font-extrabold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-300">
-                          Envío: {selectedShippingOption.shippingCost === 0 ? "GRATIS" : `$${selectedShippingOption.shippingCost.toFixed(2)}`}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-amber-900 font-extrabold bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-300 flex items-center space-x-1">
-                          <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
-                          <span>Envío no seleccionado</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                <div className="max-w-md mx-auto w-full flex items-center justify-center min-h-[46px]">
+                  {(() => {
+                    const missingOpts = getMissingOptions(selectedProduct, selectedVariants);
+                    const hasMissingOpts = missingOpts.length > 0;
 
-                  <button
-                    onClick={() => {
-                      if (selectedProduct.stock > 0) {
-                        // Check if shipping option is selected for destination country
-                        if (!selectedShippingOption) {
-                          setShowShippingModal(true);
-                          fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
-                          return;
-                        }
-
-                        const finalVariants = { ...selectedVariants };
-                        if (selectedProduct.variants && selectedProduct.variants.length > 0) {
-                          selectedProduct.variants.forEach((v) => {
-                            if (!finalVariants[v.name]) {
-                              finalVariants[v.name] = v.options[0];
+                    return (
+                      <button
+                        onClick={() => {
+                          if (selectedProduct.stock > 0) {
+                            const currentMissing = getMissingOptions(selectedProduct, selectedVariants);
+                            if (currentMissing.length > 0) {
+                              setOptionsValidationError(`Por favor selecciona tu ${currentMissing.join(" y ")} antes de añadir al carrito.`);
+                              document.getElementById("product-options-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                              return;
                             }
-                          });
-                        }
-                        
-                        const variantStr = Object.entries(finalVariants)
-                          .map(([k, v]) => `${k}: ${v}`)
-                          .join(", ");
-                        
-                        // Active variant image selected by user
-                        const activeImageUrl = selectedProductMediaUrl || selectedProduct.imageUrl;
 
-                        const customizedProduct: Product = {
-                          ...selectedProduct,
-                          imageUrl: activeImageUrl,
-                          name: variantStr ? `${selectedProduct.name} (${variantStr})` : selectedProduct.name,
-                          shippingCost: selectedShippingOption.shippingCost,
-                          selectedCarrier: selectedShippingOption.carrier
-                        };
-                        
-                        onAddToCart(customizedProduct);
-                        setShowCartDrawer(true);
-                      }
-                    }}
-                    disabled={selectedProduct.stock <= 0}
-                    className={`px-5 py-3 sm:px-8 sm:py-3.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-md ${
-                      selectedProduct.stock <= 0
-                        ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                        : !selectedShippingOption
-                        ? "bg-amber-400 hover:bg-amber-500 text-slate-950 ring-2 ring-amber-400/50 animate-pulse"
-                        : "bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 ring-2 ring-amber-500/30"
-                    }`}
-                    id="add-to-cart-detail-btn"
-                  >
-                    <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
-                    <span>{!selectedShippingOption ? "Calcular envío" : "Añadir al Carrito"}</span>
-                  </button>
+                            // Check if shipping option is selected for destination country
+                            if (!selectedShippingOption) {
+                              setShowShippingModal(true);
+                              fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
+                              return;
+                            }
+
+                            const variantStr = Object.entries(selectedVariants)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join(", ");
+                            
+                            // Active variant image selected by user
+                            const activeImageUrl = selectedProductMediaUrl || selectedProduct.imageUrl;
+
+                            const customizedProduct: Product = {
+                              ...selectedProduct,
+                              imageUrl: activeImageUrl,
+                              name: variantStr ? `${selectedProduct.name} (${variantStr})` : selectedProduct.name,
+                              shippingCost: selectedShippingOption.shippingCost,
+                              selectedCarrier: selectedShippingOption.carrier
+                            };
+                            
+                            onAddToCart(customizedProduct);
+                            setShowCartDrawer(true);
+                          }
+                        }}
+                        disabled={selectedProduct.stock <= 0}
+                        className={`w-full py-3.5 sm:py-4 px-6 rounded-2xl font-black text-sm sm:text-base transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-98 text-center ${
+                          selectedProduct.stock <= 0
+                            ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                            : hasMissingOpts
+                            ? "bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/20"
+                            : !selectedShippingOption
+                            ? "bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/20"
+                            : "bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-amber-500/25"
+                        }`}
+                        id="add-to-cart-detail-btn"
+                      >
+                        {selectedProduct.stock <= 0 ? (
+                          <span>Agotado</span>
+                        ) : hasMissingOpts ? (
+                          <>
+                            <AlertCircle className="w-4.5 h-4.5 shrink-0 text-slate-950" />
+                            <span className="whitespace-nowrap">
+                              {missingOpts.length === 1 ? `Elegir ${missingOpts[0]}` : "Elegir opciones"}
+                            </span>
+                          </>
+                        ) : !selectedShippingOption ? (
+                          <>
+                            <Truck className="w-4.5 h-4.5 shrink-0 text-slate-950" />
+                            <span className="whitespace-nowrap">Calcular envío</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShoppingCart className="w-4.5 h-4.5 shrink-0 text-slate-950" />
+                            <span className="whitespace-nowrap">Añadir al Carrito</span>
+                          </>
+                        )}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
             </>
@@ -1709,32 +1813,20 @@ export default function ShopView({
                 className="fixed bottom-0 inset-x-0 z-40 bg-white border-0 pt-2.5 px-4 sm:px-6 sm:pt-3.5 shadow-none"
                 style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
               >
-                <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-                  <div className="flex items-center space-x-2 sm:space-x-4">
-                    <div className="hidden sm:flex p-2.5 bg-amber-50 rounded-xl text-amber-600 border border-amber-200/60">
-                      <ShieldCheck className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-none mb-0.5">Total a Pagar</span>
-                      <span className="text-lg sm:text-2xl font-mono font-extrabold text-slate-900">${cartTotal.toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-end">
-                    {!isFormValid && (
-                      <span className="text-[10px] text-rose-500 font-bold mb-1 animate-pulse">
-                        Por favor complete todos los datos
-                      </span>
-                    )}
-                    <button
-                      onClick={executePayment}
-                      className="bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold px-6 py-3 sm:px-8 sm:py-3.5 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-amber-500/25 border border-amber-400"
-                      id="pay-now-btn"
-                    >
-                      <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
-                      <span>Pagar (${cartTotal.toFixed(2)})</span>
-                    </button>
-                  </div>
+                <div className="max-w-md mx-auto flex flex-col items-center justify-center">
+                  {!isFormValid && (
+                    <span className="text-[10px] text-rose-500 font-bold mb-1 animate-pulse text-center">
+                      Por favor complete todos los datos
+                    </span>
+                  )}
+                  <button
+                    onClick={executePayment}
+                    className="w-full sm:w-auto min-w-[240px] bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold px-8 py-3.5 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-amber-500/25 border border-amber-400"
+                    id="pay-now-btn"
+                  >
+                    <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span>Pagar (${cartTotal.toFixed(2)})</span>
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -1837,7 +1929,12 @@ export default function ShopView({
               className="fixed top-0 right-0 bottom-0 w-full max-w-sm bg-white shadow-2xl z-[100] border-l border-slate-200 flex flex-col justify-between"
             >
               {/* Drawer Header */}
-              <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div 
+                className="px-4 pb-3 border-b border-slate-100 flex items-center justify-between bg-slate-50"
+                style={{
+                  paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))"
+                }}
+              >
                 <button
                   onClick={() => setShowCartDrawer(false)}
                   className="p-1 rounded-full hover:bg-slate-200 text-slate-500 cursor-pointer transition-colors"
@@ -1944,7 +2041,12 @@ export default function ShopView({
 
               {/* Drawer Footer summary */}
               {cart.length > 0 && (
-                <div className="p-5 border-t border-slate-100 bg-slate-50 space-y-3">
+                <div 
+                  className="p-5 border-t border-slate-100 bg-slate-50 space-y-3 shrink-0"
+                  style={{ 
+                    paddingBottom: 'max(2.25rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem))' 
+                  }}
+                >
                   <div className="flex justify-between text-xs text-slate-500 font-medium">
                     <span>Subtotal productos:</span>
                     <span className="font-mono text-slate-800 font-semibold">${cartSubtotal.toFixed(2)}</span>
@@ -1962,11 +2064,11 @@ export default function ShopView({
 
                   <button
                     onClick={startCheckout}
-                    className="w-full bg-slate-950 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer mt-1"
+                    className="w-full bg-amber-500 hover:bg-amber-600 active:scale-98 text-slate-950 font-black py-3.5 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-1 shadow-lg shadow-amber-500/25"
                     id="checkout-btn"
                   >
                     <span>Iniciar Pago Seguro</span>
-                    <ArrowLeft className="w-4 h-4 rotate-180" />
+                    <ArrowLeft className="w-4 h-4 rotate-180 text-slate-950" />
                   </button>
                 </div>
               )}
@@ -2000,9 +2102,6 @@ export default function ShopView({
                   </div>
                   <div>
                     <h3 className="font-bold text-sm text-slate-900 leading-tight">Calcular Envío</h3>
-                    <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px] sm:max-w-xs leading-none mt-0.5">
-                      {selectedProduct.name}
-                    </p>
                   </div>
                 </div>
                 <button
@@ -2082,40 +2181,42 @@ export default function ShopView({
                                 selectedProduct.shippingCost = option.shippingCost;
                               }
                             }}
-                            className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                            className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-2.5 sm:gap-3.5 w-full overflow-hidden ${
                               isSelected
                                 ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/30 shadow-md"
                                 : "bg-white hover:bg-slate-50 border-slate-200 shadow-2xs"
                             }`}
                           >
-                            <div className="flex items-start space-x-3">
-                              <div className={`p-2 rounded-xl mt-0.5 ${isSelected ? "bg-amber-500 text-slate-950" : "bg-slate-100 text-slate-600"}`}>
+                            <div className="flex items-start gap-2.5 sm:gap-3 min-w-0 flex-1">
+                              <div className={`p-2 rounded-xl mt-0.5 shrink-0 ${isSelected ? "bg-amber-500 text-slate-950" : "bg-slate-100 text-slate-600"}`}>
                                 <Truck className="w-4 h-4" />
                               </div>
-                              <div>
-                                <h5 className="text-xs font-extrabold text-slate-900 flex items-center space-x-2">
-                                  <span>{option.carrier}</span>
+                              <div className="min-w-0 flex-1 overflow-hidden">
+                                <div className="flex flex-wrap items-center gap-1.5 leading-tight">
+                                  <span className="text-xs font-extrabold text-slate-900 truncate">
+                                    {option.carrier}
+                                  </span>
                                   {idx === 0 && (
-                                    <span className="text-[9px] bg-emerald-500 text-white font-black px-1.5 py-0.2 rounded-md uppercase">
+                                    <span className="text-[9px] bg-emerald-500 text-white font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider shrink-0 whitespace-nowrap">
                                       Recomendado
                                     </span>
                                   )}
-                                </h5>
-                                <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                                  ⏱️ Tiempo de entrega: <span className="font-bold text-slate-800">{option.aging}</span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">
+                                  ⏱️ Entrega: <span className="font-bold text-slate-800">{option.aging}</span>
                                 </p>
-                                <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                                  📦 Origen: Almacén China (CN) → {shippingCountry}
+                                <p className="text-[10px] text-slate-400 font-medium mt-0.5 truncate">
+                                  📦 Almacén CN → {shippingCountry}
                                 </p>
                               </div>
                             </div>
 
-                            <div className="text-right shrink-0">
-                              <span className="text-sm font-black font-mono text-slate-900 block">
+                            <div className="text-right shrink-0 flex flex-col items-end justify-center pl-1">
+                              <span className="text-xs sm:text-sm font-black font-mono text-slate-900 block whitespace-nowrap">
                                 {option.shippingCost === 0 ? "GRATIS" : `$${option.shippingCost.toFixed(2)}`}
                               </span>
-                              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-block mt-1 ${
-                                isSelected ? "bg-amber-500 text-slate-950 font-black" : "bg-slate-100 text-slate-600"
+                              <span className={`text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full inline-block mt-1 whitespace-nowrap text-center ${
+                                isSelected ? "bg-amber-500 text-slate-950 font-black shadow-xs" : "bg-slate-100 text-slate-600"
                               }`}>
                                 {isSelected ? "Seleccionado" : "Elegir"}
                               </span>
@@ -2128,26 +2229,52 @@ export default function ShopView({
                 </div>
               </div>
 
-              {/* Modal Footer */}
-              <div className="p-4 border-t border-slate-200 bg-slate-50/90 flex items-center justify-between gap-3 shrink-0">
-                <div className="text-left">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Envío seleccionado:</span>
-                  <span className="text-xs font-extrabold text-slate-900">
-                    {selectedShippingOption ? `${selectedShippingOption.carrier} ($${selectedShippingOption.shippingCost.toFixed(2)})` : "Estándar ($3.50)"}
-                  </span>
-                </div>
-
+              {/* Modal Footer with Safe-Area bottom inset */}
+              <div 
+                className="p-4 border-t border-slate-200 bg-slate-50/95 flex items-center justify-end shrink-0"
+                style={{ paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom, 0px) + 1.25rem))' }}
+              >
                 <button
                   onClick={() => {
                     if (selectedShippingOption && selectedProduct) {
                       selectedProduct.shippingCost = selectedShippingOption.shippingCost;
+
+                      const variantStr = Object.entries(selectedVariants)
+                        .map(([k, v]) => `${k}: ${v}`)
+                        .join(", ");
+                      
+                      const activeImageUrl = selectedProductMediaUrl || selectedProduct.imageUrl;
+
+                      const customizedProduct: Product = {
+                        ...selectedProduct,
+                        imageUrl: activeImageUrl,
+                        name: variantStr ? `${selectedProduct.name} (${variantStr})` : selectedProduct.name,
+                        shippingCost: selectedShippingOption.shippingCost,
+                        selectedCarrier: selectedShippingOption.carrier
+                      };
+
+                      onAddToCart(customizedProduct);
+                      setShowShippingModal(false);
+                      setShowCartDrawer(true);
+                    } else {
+                      setShowShippingModal(false);
                     }
-                    setShowShippingModal(false);
                   }}
-                  className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-2xl transition-all cursor-pointer shadow-md shadow-amber-500/20 active:scale-95"
+                  className={`w-full py-3.5 rounded-2xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md text-center ${
+                    selectedShippingOption
+                      ? "bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20 active:scale-95"
+                      : "bg-slate-200 hover:bg-slate-300 text-slate-700"
+                  }`}
                   id="apply-shipping-btn"
                 >
-                  Confirmar y Aplicar
+                  {selectedShippingOption ? (
+                    <>
+                      <ShoppingCart className="w-4 h-4 shrink-0 text-slate-950" />
+                      <span>Añadir al Carrito</span>
+                    </>
+                  ) : (
+                    <span>Cerrar</span>
+                  )}
                 </button>
               </div>
             </motion.div>

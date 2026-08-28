@@ -15,6 +15,87 @@ const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
   });
 };
 
+function PublicationCover({ reel }: { reel: Reel }) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(() => {
+    if (reel.thumbnailUrl && !reel.thumbnailUrl.toLowerCase().endsWith(".mp4") && !reel.thumbnailUrl.toLowerCase().endsWith(".mov") && !reel.thumbnailUrl.includes("photo-1618005182384")) {
+      return reel.thumbnailUrl;
+    }
+    if (reel.images && reel.images.length > 0 && !reel.images[0].toLowerCase().endsWith(".mp4")) {
+      return reel.images[0];
+    }
+    return null;
+  });
+
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    if (thumbUrl) return;
+
+    if (reel.videoUrl && typeof document !== "undefined") {
+      let isCancelled = false;
+      const video = document.createElement("video");
+      video.crossOrigin = "anonymous";
+      video.src = reel.videoUrl;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "metadata";
+
+      const captureFrame = () => {
+        if (isCancelled) return;
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.min(video.videoWidth || 480, 480);
+          canvas.height = Math.min(video.videoHeight || 640, 640);
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+            if (dataUrl && dataUrl.length > 100) {
+              setThumbUrl(dataUrl);
+            }
+          }
+        } catch (e) {
+          // Fallback gracefully on CORS
+        }
+      };
+
+      video.addEventListener("loadeddata", () => {
+        video.currentTime = 0.1;
+      });
+      video.addEventListener("seeked", captureFrame);
+      video.load();
+
+      return () => {
+        isCancelled = true;
+        video.src = "";
+      };
+    }
+  }, [reel.videoUrl, thumbUrl]);
+
+  if (thumbUrl && !hasError) {
+    return (
+      <img
+        src={thumbUrl}
+        alt={reel.description || "Publicación"}
+        onError={() => setHasError(true)}
+        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+
+  return (
+    <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950 flex flex-col items-center justify-center p-3 text-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+      <div className="w-9 h-9 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mb-1.5 shadow-md">
+        <Play className="w-4 h-4 fill-amber-400 translate-x-0.5" />
+      </div>
+      <p className="text-[10px] text-slate-300 font-bold line-clamp-2 leading-tight">
+        {reel.description || (reel.type === "video" ? "Video Reel" : "Publicación")}
+      </p>
+    </div>
+  );
+}
+
 interface ProfileViewProps {
   currentUser: User;
   selectedCreatorId: string | null; // Null means we view our own private admin profile
@@ -45,8 +126,14 @@ export default function ProfileView({
   socket,
 }: ProfileViewProps) {
   // Determine if we are looking at public creator profile or our private dashboard
-  const isSelf = selectedCreatorId === null || selectedCreatorId === currentUser.id;
-  const activeUserId = isSelf ? currentUser.id : selectedCreatorId;
+  const isSelf =
+    selectedCreatorId === null ||
+    selectedCreatorId === currentUser.id ||
+    (!!currentUser.originalId && selectedCreatorId === currentUser.originalId) ||
+    (!!currentUser.username && selectedCreatorId === currentUser.username);
+  const activeUserId = isSelf
+    ? (currentUser.originalId || currentUser.username || currentUser.id)
+    : selectedCreatorId;
 
   // Profiles data states
   const [profileUser, setProfileUser] = useState<User | null>(null);
@@ -206,8 +293,13 @@ export default function ProfileView({
   };
 
   useEffect(() => {
-    if (isSelf) {
+    if (isSelf && currentUser && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest) {
       setProfileUser(currentUser);
+      setEditName(currentUser.name || "");
+      setEditUsername(currentUser.username || "");
+      setEditBio(currentUser.bio || "");
+      setEditAvatar(currentUser.avatar || "");
+      setEditCoverPhoto(currentUser.coverPhoto || "");
     }
   }, [currentUser, isSelf]);
 
@@ -215,22 +307,47 @@ export default function ProfileView({
     if (!activeUserId) return;
     setLoading(true);
     
-    apiFetch(`/api/users/${activeUserId}`)
+    const targetEndpoint = isSelf && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest
+      ? `/api/users/${encodeURIComponent(currentUser.originalId || currentUser.username || currentUser.id)}`
+      : `/api/users/${encodeURIComponent(activeUserId)}`;
+
+    apiFetch(targetEndpoint)
       .then((res) => res.json())
       .then((data) => {
-        if (!data.error) {
-          setProfileUser(data.user);
+        if (!data.error && data.user) {
+          if (isSelf && currentUser && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest) {
+            // Keep authenticated client identity fields while updating metrics and server stats
+            setProfileUser({
+              ...currentUser,
+              ...data.user,
+              id: currentUser.id,
+              originalId: currentUser.originalId || data.user.originalId || data.user.id,
+              username: currentUser.username || data.user.username,
+              name: currentUser.name || data.user.name,
+              avatar: currentUser.avatar || data.user.avatar,
+              coverPhoto: currentUser.coverPhoto || data.user.coverPhoto,
+              isGuest: false,
+            });
+          } else {
+            setProfileUser(data.user);
+          }
           setUserProducts(deduplicateById(data.products || []));
           setUserReels(deduplicateById(data.reels || []));
           setUserOrders(deduplicateById(data.orders || []));
           setSavedReels(deduplicateById(data.savedReels || []));
+        } else if (isSelf && currentUser && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest) {
+          setProfileUser(currentUser);
         }
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Error loading profile:", err);
+        if (isSelf && currentUser && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest) {
+          setProfileUser(currentUser);
+        }
         setLoading(false);
       });
-  }, [activeUserId, currentUser.username, currentUser.avatar, isSelf]);
+  }, [activeUserId, currentUser.username, currentUser.avatar, currentUser.isGuest, currentUser.originalId, isSelf]);
 
   // Calculate Creator Dashboard metrics (sum likes, views, comments)
   const totalViews = userReels.reduce((acc, r) => acc + r.views, 0);
@@ -281,7 +398,10 @@ export default function ProfileView({
     );
   }
 
-  const isGuestMode = isSelf && (profileUser.isGuest || profileUser.username === "invitado");
+  const isGuestMode =
+    isSelf &&
+    (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || !currentUser.username) &&
+    (!profileUser || profileUser.isGuest || profileUser.username === "invitado" || !profileUser.username);
 
   if (isGuestMode) {
     return (
@@ -301,7 +421,7 @@ export default function ProfileView({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto min-h-[600px] bg-white rounded-none sm:rounded-t-none sm:rounded-b-2xl border-0 sm:border sm:border-slate-200 shadow-none sm:shadow-xl overflow-hidden flex flex-col" id="profile-panel">
+    <div className="w-full max-w-4xl mx-auto min-h-[600px] bg-white rounded-none sm:rounded-t-none sm:rounded-b-2xl border-0 sm:border sm:border-slate-200 shadow-none sm:shadow-xl overflow-hidden flex flex-col no-scrollbar" id="profile-panel">
       {/* Profile Header Image Backbanner */}
       <div className="h-40 bg-slate-900 relative overflow-hidden rounded-t-none">
         {profileUser.coverPhoto ? (
@@ -517,22 +637,7 @@ export default function ProfileView({
                             className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
                             id={`admin-my-reel-${reel.id}`}
                           >
-                            {reel.type === "video" && (!reel.thumbnailUrl || reel.thumbnailUrl.includes("photo-1618005182384")) ? (
-                              <video
-                                src={reel.videoUrl}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                muted
-                                playsInline
-                                preload="metadata"
-                              />
-                            ) : (
-                              <img
-                                src={reel.thumbnailUrl || reel.images?.[0] || reel.videoUrl}
-                                alt="Portada publicación"
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                referrerPolicy="no-referrer"
-                              />
-                            )}
+                            <PublicationCover reel={reel} />
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
                             
                             {/* Botón (X) para eliminar publicación de MongoDB y Google Cloud Storage */}
@@ -633,22 +738,7 @@ export default function ProfileView({
                             className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
                             id={`saved-reel-${reel.id}`}
                           >
-                            {reel.type === "video" && (!reel.thumbnailUrl || reel.thumbnailUrl.includes("photo-1618005182384") || reel.thumbnailUrl === reel.videoUrl || reel.thumbnailUrl.endsWith(".mp4")) ? (
-                              <video
-                                src={reel.videoUrl || reel.thumbnailUrl}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                muted
-                                playsInline
-                                preload="metadata"
-                              />
-                            ) : (
-                              <img
-                                src={reel.thumbnailUrl || reel.images?.[0] || reel.videoUrl}
-                                alt="Portada publicación guardada"
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                referrerPolicy="no-referrer"
-                              />
-                            )}
+                            <PublicationCover reel={reel} />
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
                             
                             <div className="absolute top-2 left-2 bg-slate-950/80 backdrop-blur-md px-1.5 py-0.5 rounded text-[8px] font-bold text-white flex items-center space-x-1">
@@ -1347,22 +1437,7 @@ export default function ProfileView({
                         className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900"
                         id={`profile-reel-${reel.id}`}
                       >
-                        {reel.type === "video" && (!reel.thumbnailUrl || reel.thumbnailUrl.includes("photo-1618005182384")) ? (
-                          <video
-                            src={reel.videoUrl}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            muted
-                            playsInline
-                            preload="metadata"
-                          />
-                        ) : (
-                          <img
-                            src={reel.thumbnailUrl || reel.images?.[0] || reel.videoUrl}
-                            alt="Portada publicación"
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            referrerPolicy="no-referrer"
-                          />
-                        )}
+                        <PublicationCover reel={reel} />
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
                         
                         {isSelf && (
