@@ -191,16 +191,16 @@ export default function App() {
       // Step 1: Health check ping to wake up Cloud Run container
       try {
         setSplashStatus("Despertando servidor en la nube...");
-        await apiFetch("/api/health", undefined, 20000).catch(() => null);
+        await apiFetch("/api/health").catch(() => null);
       } catch (e) {}
 
       // Step 2: Fetch all core feed data in parallel
       setSplashStatus("Cargando reels, catálogo y sesiones en vivo...");
       const [usersRes, reelsRes, productsRes, liveRes] = await Promise.allSettled([
-        apiFetch("/api/users", undefined, 20000).then(r => r.json()),
-        apiFetch("/api/reels", undefined, 20000).then(r => r.json()),
-        apiFetch("/api/products", undefined, 20000).then(r => r.json()),
-        apiFetch("/api/live", undefined, 20000).then(r => r.json()),
+        apiFetch("/api/users").then(r => r.json()),
+        apiFetch("/api/reels").then(r => r.json()),
+        apiFetch("/api/products").then(r => r.json()),
+        apiFetch("/api/live").then(r => r.json()),
       ]);
 
       let hasLoadedAnyCore = false;
