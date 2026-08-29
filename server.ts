@@ -494,6 +494,12 @@ async function connectToMongoDB() {
       console.log("🌱 Seeding reels completed!");
     } else {
       console.log("📦 Loading reels from MongoDB...");
+      // Clean up any old rainbow placeholder thumbnails from MongoDB
+      await MongoReel.updateMany(
+        { thumbnailUrl: { $regex: "1618005182384" } },
+        { $set: { thumbnailUrl: "" } }
+      ).catch(() => {});
+
       const dbReels = await MongoReel.find();
       const userMap = new Map<string, any>();
       dbUsers.forEach((u: any) => {
@@ -510,7 +516,7 @@ async function connectToMongoDB() {
         return {
           id: r.id,
           videoUrl: r.videoUrl || "",
-          thumbnailUrl: r.thumbnailUrl || "",
+          thumbnailUrl: (r.thumbnailUrl && !r.thumbnailUrl.includes("1618005182384")) ? r.thumbnailUrl : "",
           description: r.description || "",
           creatorId: r.creatorId || "current_user",
           creatorName: creatorUser ? creatorUser.name : (r.creatorName || "Carlos Gómez"),
@@ -524,7 +530,7 @@ async function connectToMongoDB() {
           views: r.views || 0,
           productId: r.productId || undefined,
           type: r.type || "video",
-          images: r.images || []
+          images: (r.images || []).filter((img: string) => !img || !img.includes("1618005182384"))
         };
       });
       console.log(`📦 Loaded ${reels.length} unique reels successfully from MongoDB Atlas!`);
@@ -2159,7 +2165,7 @@ async function startServer() {
       const newReel: Reel = {
         id: "reel_" + generateId(),
         videoUrl: videoUrl || "",
-        thumbnailUrl: thumbnailUrl || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=300&q=80",
+        thumbnailUrl: (thumbnailUrl && !thumbnailUrl.includes("1618005182384")) ? thumbnailUrl : "",
         description: description || "",
         creatorId: creator.id,
         creatorName: creator.name,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X, Video, Globe, PackageCheck, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play, Volume2, VolumeX } from "lucide-react";
+import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X, Video, Globe, PackageCheck, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Check } from "lucide-react";
 import { Product, CartItem, Order, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../config";
@@ -127,12 +127,15 @@ interface ShopViewProps {
   onAddToCart: (product: Product) => void;
   onRemoveFromCart: (productId: string, cartItemIndex?: number) => void;
   onUpdateCartQuantity: (productId: string, qty: number, cartItemIndex?: number) => void;
-  onCheckout: (address: string, shippingCost: number, onComplete: (newOrder: Order) => void) => void;
+  onCheckout: (address: string, shippingCost: number, onComplete: (newOrder: Order) => void, itemsToCheckout?: CartItem[]) => void;
   onCreatorClick: (creatorId: string) => void;
   selectedProductDirectly: Product | null;
   clearDirectProduct: () => void;
   onNavigateToHistory: () => void;
   onToggleDetailView?: (isOpen: boolean) => void;
+  initialStep?: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou';
+  initialSelectedCartIndices?: number[];
+  onClearInitialStep?: () => void;
 }
 
 export default function ShopView({
@@ -148,7 +151,10 @@ export default function ShopView({
   selectedProductDirectly,
   clearDirectProduct,
   onNavigateToHistory,
-  onToggleDetailView
+  onToggleDetailView,
+  initialStep,
+  initialSelectedCartIndices,
+  onClearInitialStep
 }: ShopViewProps) {
   // Navigation states: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou'
   const [activeStep, setActiveStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>('catalog');
@@ -600,13 +606,63 @@ export default function ShopView({
     setActiveStep('detail');
   };
 
-  const cartSubtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
-  const cartShippingTotal = cart.reduce((acc, item) => acc + (item.product.shippingCost || 0) * item.quantity, 0);
+  // Cart selection state
+  const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>([]);
+
+  // Respond to initialStep or initialSelectedCartIndices from external navigation (e.g., from ReelsView)
+  useEffect(() => {
+    if (initialStep && initialStep !== 'catalog') {
+      setActiveStep(initialStep);
+      if (initialSelectedCartIndices && initialSelectedCartIndices.length > 0) {
+        setSelectedCartIndices(initialSelectedCartIndices);
+      }
+      onClearInitialStep?.();
+    }
+  }, [initialStep, initialSelectedCartIndices, onClearInitialStep]);
+
+  // Automatically sync cart selections when cart items change
+  useEffect(() => {
+    setSelectedCartIndices((prev) => {
+      if (cart.length === 0) return [];
+      if (prev.length === 0) return cart.map((_, i) => i);
+      const valid = prev.filter((i) => i < cart.length);
+      return valid.length > 0 ? valid : cart.map((_, i) => i);
+    });
+  }, [cart.length]);
+
+  const toggleItemSelection = (index: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedCartIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+
+  const isAllCartSelected = cart.length > 0 && selectedCartIndices.length === cart.length;
+
+  const toggleSelectAllCart = () => {
+    if (isAllCartSelected) {
+      setSelectedCartIndices([]);
+    } else {
+      setSelectedCartIndices(cart.map((_, i) => i));
+    }
+  };
+
+  const selectedCartItems = cart.filter((_, idx) => selectedCartIndices.includes(idx));
+  const effectiveCheckoutItems = selectedCartItems.length > 0 ? selectedCartItems : cart;
+
+  const cartSubtotal = effectiveCheckoutItems.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
+  const cartShippingTotal = effectiveCheckoutItems.reduce((acc, item) => {
+    const shippingFee = item.selectedShippingCost !== undefined 
+      ? item.selectedShippingCost 
+      : (item.product.shippingCost !== undefined ? item.product.shippingCost : 0);
+    return acc + shippingFee * item.quantity;
+  }, 0);
   const cartTotal = cartSubtotal + cartShippingTotal;
   const cartItemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
+  const selectedItemCount = selectedCartItems.reduce((acc, item) => acc + item.quantity, 0);
 
   const startCheckout = () => {
-    if (cart.length === 0) return;
+    if (effectiveCheckoutItems.length === 0) return;
     setShowCartDrawer(false);
     setActiveStep('checkout');
   };
@@ -622,11 +678,16 @@ export default function ShopView({
     // Simulate Payment Gateway loading
     setTimeout(() => {
       const fullShippingAddress = `${address}, ${city}, ${postalCode}, ${country} (Tel: ${phone}, Email: ${email})`;
-      const totalShippingCost = cart.reduce((acc, item) => acc + ((item.product.shippingCost || 0) * item.quantity), 0);
+      const totalShippingCost = effectiveCheckoutItems.reduce((acc, item) => {
+        const shippingFee = item.selectedShippingCost !== undefined 
+          ? item.selectedShippingCost 
+          : (item.product.shippingCost !== undefined ? item.product.shippingCost : 0);
+        return acc + ((shippingFee || 0) * item.quantity);
+      }, 0);
       onCheckout(fullShippingAddress, totalShippingCost, (newOrder) => {
         setCompletedOrder(newOrder);
         setActiveStep('thankyou');
-      });
+      }, effectiveCheckoutItems);
     }, 2500);
   };
 
@@ -772,65 +833,133 @@ export default function ShopView({
       ) : (
         /* 2. Regular Shop Navigation Header (Catalog / Checkout / Thankyou) */
         <header
-          className={`px-3 sm:px-5 pb-2.5 sm:pb-3 flex items-center justify-between gap-3 z-30 sticky top-0 bg-white border-0 shadow-xs transition-all duration-300 ease-in-out ${
+          className={`z-30 sticky top-0 bg-white border-b border-slate-100 shadow-2xs transition-all duration-300 ease-in-out flex flex-col ${
             showHeader ? "translate-y-0" : "-translate-y-full"
           }`}
           style={{
             paddingTop: "max(2.25rem, calc(env(safe-area-inset-top, 0px) + 0.85rem))"
           }}
         >
-          <div className="flex items-center space-x-2 shrink-0">
-            {activeStep !== 'catalog' && (
-              <button
-                onClick={() => {
-                  if (activeStep === 'checkout') setActiveStep('catalog');
-                  else if (activeStep === 'thankyou') setActiveStep('catalog');
-                }}
-                className="p-1 sm:p-1.5 rounded-full hover:bg-slate-200 text-slate-600 transition-all cursor-pointer flex items-center justify-center pointer-events-auto"
-              >
-                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="text-xs font-bold text-slate-700 ml-1">Regresar</span>
-              </button>
-            )}
-          </div>
-
-          {/* Center Search Bar */}
-          {activeStep === 'catalog' && (
-            <div className="flex-1 max-w-md relative mx-1 sm:mx-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Buscar productos..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-100 focus:bg-white border border-transparent focus:border-slate-200 rounded-full transition-all outline-none text-slate-800 placeholder-slate-400 font-medium"
-              />
-              {searchQuery && (
+          {/* Top Bar: Navigation / Search / Cart */}
+          <div className="px-3 sm:px-5 pb-2.5 sm:pb-3 flex items-center justify-between gap-3 w-full">
+            <div className="flex items-center space-x-2 shrink-0">
+              {activeStep !== 'catalog' && (
                 <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors"
+                  onClick={() => {
+                    if (activeStep === 'checkout') setActiveStep('catalog');
+                    else if (activeStep === 'thankyou') setActiveStep('catalog');
+                  }}
+                  className="p-1 sm:p-1.5 rounded-full hover:bg-slate-200 text-slate-600 transition-all cursor-pointer flex items-center justify-center pointer-events-auto"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="text-xs font-bold text-slate-700 ml-1">Regresar</span>
                 </button>
               )}
             </div>
-          )}
 
-          {/* Cart Trigger Badge */}
-          <div className="flex items-center shrink-0">
-            <button
-              onClick={() => setShowCartDrawer(true)}
-              className="relative p-1.5 sm:p-2 rounded-full bg-slate-900 text-white hover:bg-slate-800 transition-colors cursor-pointer shadow-sm pointer-events-auto active:scale-95"
-              id="cart-trigger-btn"
-            >
-              <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
-              {cartItemCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-extrabold font-mono text-[9px] sm:text-[10px] w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full flex items-center justify-center border-2 border-white animate-bounce">
-                  {cartItemCount}
-                </span>
-              )}
-            </button>
+            {/* Center Search Bar */}
+            {activeStep === 'catalog' && (
+              <div className="flex-1 max-w-md relative mx-1 sm:mx-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar productos..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-100 focus:bg-white border border-transparent focus:border-slate-200 rounded-full transition-all outline-none text-slate-800 placeholder-slate-400 font-medium"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Cart Trigger Badge */}
+            <div className="flex items-center shrink-0">
+              <button
+                onClick={() => setShowCartDrawer(true)}
+                className="relative p-1.5 sm:p-2 rounded-full bg-slate-900 text-white hover:bg-slate-800 transition-colors cursor-pointer shadow-sm pointer-events-auto active:scale-95"
+                id="cart-trigger-btn"
+              >
+                <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
+                {cartItemCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-extrabold font-mono text-[9px] sm:text-[10px] w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full flex items-center justify-center border-2 border-white animate-bounce">
+                    {cartItemCount}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
+
+          {/* Sticky Category Carousel directly anchored below search bar */}
+          {activeStep === 'catalog' && (
+            <div className="w-full relative group/categories border-t border-slate-50/80 pt-1 pb-2">
+              {selectedCategory !== "todos" && (
+                <div className="flex items-center justify-end mb-1 px-3 sm:px-5">
+                  <button 
+                    onClick={() => setSelectedCategory("todos")} 
+                    className="text-[10px] font-bold text-amber-500 hover:text-amber-600 transition-colors cursor-pointer"
+                  >
+                    Limpiar filtro ({CATEGORIES.find(c => c.id === selectedCategory)?.name})
+                  </button>
+                </div>
+              )}
+              
+              {/* Scrollable track with infinite auto-scroll, drag-to-scroll, wheel scroll and touch pan */}
+              <div 
+                ref={categoryTrackRef}
+                onMouseEnter={() => setIsCategoryHovered(true)}
+                onMouseDown={handleCategoryMouseDown}
+                onMouseLeave={handleCategoryMouseLeave}
+                onMouseUp={handleCategoryMouseUp}
+                onMouseMove={handleCategoryMouseMove}
+                onWheel={handleCategoryWheel}
+                onTouchStart={handleCategoryTouchStart}
+                onTouchEnd={handleCategoryTouchEnd}
+                className={`flex items-center space-x-3.5 sm:space-x-4 overflow-x-auto pb-1.5 pt-0.5 px-3 sm:px-5 select-none no-scrollbar ${isCategoryDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                style={{ 
+                  scrollbarWidth: 'none', 
+                  msOverflowStyle: 'none',
+                  WebkitOverflowScrolling: 'touch',
+                  touchAction: 'pan-x',
+                  height: '78px'
+                }}
+              >
+                {infiniteCategories.map((cat, idx) => {
+                  const isSelected = selectedCategory === cat.id;
+                  return (
+                    <button
+                      key={`${cat.id}-${idx}`}
+                      type="button"
+                      onClick={() => {
+                        if (categoryHasMovedRef.current) return;
+                        setSelectedCategory(cat.id);
+                      }}
+                      className="flex flex-col items-center space-y-1.5 shrink-0 outline-none group focus:outline-none cursor-pointer select-none"
+                      style={{ width: '66px' }}
+                    >
+                      <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 transition-all relative flex items-center justify-center bg-white ${isSelected ? "border-amber-500 ring-4 ring-amber-500/10 scale-105 shadow-sm" : "border-slate-100 group-hover:border-slate-300"}`}>
+                        <img
+                          src={cat.imageUrl}
+                          alt={cat.name}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-110"
+                        />
+                      </div>
+                      <span className={`text-[9.5px] sm:text-[10.5px] text-center font-bold tracking-tight line-clamp-1 w-full transition-colors ${isSelected ? "text-amber-600 font-extrabold" : "text-slate-500 group-hover:text-slate-800"}`}>
+                        {cat.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </header>
       )}
 
@@ -840,80 +969,11 @@ export default function ShopView({
           {/* 1. CATALOG STEP */}
           {activeStep === 'catalog' && (
             <div
-              className="flex flex-col space-y-6 p-4 sm:p-6 pb-28 sm:pb-24"
+              className="flex flex-col space-y-4 p-3 sm:p-5 pt-3 pb-28 sm:pb-24"
               style={{
                 paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))'
               }}
             >
-              {/* Category Carousel */}
-              <div className="w-full relative group/categories">
-                <div className="flex items-center justify-between mb-3 px-1">
-                  <div className="flex items-center space-x-2">
-                    <h3 className="font-display font-extrabold text-xs text-slate-400 uppercase tracking-wider">Categorías</h3>
-                  </div>
-                  {selectedCategory !== "todos" && (
-                    <button 
-                      onClick={() => setSelectedCategory("todos")} 
-                      className="text-[10px] font-bold text-amber-500 hover:text-amber-600 transition-colors"
-                    >
-                      Limpiar filtro
-                    </button>
-                  )}
-                </div>
-                
-                {/* Scrollable track with infinite auto-scroll, drag-to-scroll, wheel scroll and touch pan */}
-                <div 
-                  ref={categoryTrackRef}
-                  onMouseEnter={() => setIsCategoryHovered(true)}
-                  onMouseDown={handleCategoryMouseDown}
-                  onMouseLeave={handleCategoryMouseLeave}
-                  onMouseUp={handleCategoryMouseUp}
-                  onMouseMove={handleCategoryMouseMove}
-                  onWheel={handleCategoryWheel}
-                  onTouchStart={handleCategoryTouchStart}
-                  onTouchEnd={handleCategoryTouchEnd}
-                  className={`flex items-center space-x-4 overflow-x-auto pb-3 pt-1 -mx-4 px-4 sm:-mx-6 sm:px-6 select-none ${isCategoryDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-                  style={{ 
-                    scrollbarWidth: 'none', 
-                    msOverflowStyle: 'none',
-                    WebkitOverflowScrolling: 'touch',
-                    touchAction: 'pan-x'
-                  }}
-                >
-                  <style>{`
-                    .overflow-x-auto::-webkit-scrollbar {
-                      display: none;
-                    }
-                  `}</style>
-                  {infiniteCategories.map((cat, idx) => {
-                    const isSelected = selectedCategory === cat.id;
-                    return (
-                      <button
-                        key={`${cat.id}-${idx}`}
-                        type="button"
-                        onClick={() => {
-                          if (categoryHasMovedRef.current) return;
-                          setSelectedCategory(cat.id);
-                        }}
-                        className="flex flex-col items-center space-y-2 shrink-0 outline-none group focus:outline-none cursor-pointer select-none"
-                        style={{ width: '72px' }}
-                      >
-                        <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 transition-all relative flex items-center justify-center bg-white ${isSelected ? "border-amber-500 ring-4 ring-amber-500/10 scale-105 shadow-sm" : "border-slate-100 group-hover:border-slate-300"}`}>
-                          <img
-                            src={cat.imageUrl}
-                            alt={cat.name}
-                            referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-110"
-                          />
-                        </div>
-                        <span className={`text-[10px] sm:text-[11px] text-center font-bold tracking-tight line-clamp-1 w-full transition-colors ${isSelected ? "text-amber-600 font-extrabold" : "text-slate-500 group-hover:text-slate-800"}`}>
-                          {cat.name}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
 
               {/* Products List or No-results message */}
               {filteredProducts.length === 0 ? (
@@ -1140,11 +1200,11 @@ export default function ShopView({
                     {/* Image Counter Badge in Bottom-Right Corner */}
                     {productGalleryMedia.length > 0 && (
                       <div
-                        className="absolute bottom-3 right-3 z-20 px-3 py-1 rounded-full bg-gradient-to-r from-black/80 via-black/50 to-black/20 backdrop-blur-sm text-white font-mono text-xs font-bold border border-white/10 shadow-lg tracking-wider flex items-center space-x-1 pointer-events-none select-none"
+                        className="absolute bottom-3 right-3 z-20 px-2 py-0.5 text-white font-mono text-xs font-bold tracking-wider flex items-center space-x-1 pointer-events-none select-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
                         id="detail-image-counter"
                       >
                         <span className="text-amber-400 font-extrabold">{activeGalleryIndex + 1}</span>
-                        <span className="text-white/60">/</span>
+                        <span className="text-white/80">/</span>
                         <span className="text-white">{productGalleryMedia.length}</span>
                       </div>
                     )}
@@ -1758,12 +1818,12 @@ export default function ShopView({
                       <h3 className="font-display font-extrabold text-sm text-slate-900">Resumen del Pedido</h3>
                     </div>
                     <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                      {cart.reduce((acc, i) => acc + i.quantity, 0)} {cart.reduce((acc, i) => acc + i.quantity, 0) === 1 ? 'producto' : 'productos'}
+                      {effectiveCheckoutItems.reduce((acc, i) => acc + i.quantity, 0)} {effectiveCheckoutItems.reduce((acc, i) => acc + i.quantity, 0) === 1 ? 'producto' : 'productos'}
                     </span>
                   </div>
 
                   <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1 divide-y divide-slate-100">
-                    {cart.map((item, idx) => (
+                    {effectiveCheckoutItems.map((item, idx) => (
                       <div key={`${item.product.id}-${idx}`} className="flex items-center justify-between text-xs pt-2.5 first:pt-0">
                         <div className="flex items-center space-x-3 truncate flex-1 pr-2">
                           <img
@@ -1930,26 +1990,56 @@ export default function ShopView({
             >
               {/* Drawer Header */}
               <div 
-                className="px-4 pb-3 border-b border-slate-100 flex items-center justify-between bg-slate-50"
+                className="px-4 pb-3 border-b border-slate-100 flex items-center justify-between bg-white shrink-0"
                 style={{
                   paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))"
                 }}
               >
-                <button
-                  onClick={() => setShowCartDrawer(false)}
-                  className="p-1 rounded-full hover:bg-slate-200 text-slate-500 cursor-pointer transition-colors"
-                  id="close-cart-drawer-btn"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                <div className="flex items-center space-x-1.5">
-                  <ShoppingCart className="w-4 h-4 text-amber-500" />
-                  <span className="font-display font-bold text-sm text-slate-900">Carrito de Compra ({cartItemCount})</span>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setShowCartDrawer(false)}
+                    className="p-1 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer transition-colors"
+                    id="close-cart-drawer-btn"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                  <div className="flex items-center space-x-1.5">
+                    <ShoppingCart className="w-4 h-4 text-amber-500" />
+                    <span className="font-display font-bold text-sm text-slate-900">Carrito ({cartItemCount})</span>
+                  </div>
                 </div>
+
+                {cart.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={toggleSelectAllCart}
+                    className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer bg-transparent border border-slate-200 hover:border-amber-400 hover:bg-amber-50/40 text-slate-700 active:scale-95"
+                    id="select-all-cart-btn"
+                  >
+                    <div
+                      className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-colors ${
+                        isAllCartSelected
+                          ? "bg-amber-500 text-slate-950"
+                          : selectedCartIndices.length > 0
+                          ? "bg-amber-200 text-amber-900"
+                          : "border border-slate-300 bg-white"
+                      }`}
+                    >
+                      {isAllCartSelected ? (
+                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                      ) : selectedCartIndices.length > 0 ? (
+                        <div className="w-1.5 h-1.5 bg-amber-900 rounded-xs" />
+                      ) : null}
+                    </div>
+                    <span className="text-[10.5px]">
+                      {isAllCartSelected ? "Deseleccionar" : "Todo"} ({selectedCartIndices.length}/{cart.length})
+                    </span>
+                  </button>
+                )}
               </div>
 
               {/* Drawer Content */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {cart.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-slate-400 text-center">
                     <ShoppingCart className="w-12 h-12 stroke-1 text-slate-300 mb-3" />
@@ -1958,6 +2048,7 @@ export default function ShopView({
                   </div>
                 ) : (
                   cart.map((item, idx) => {
+                    const isSelected = selectedCartIndices.includes(idx);
                     const shippingFee = item.selectedShippingCost !== undefined 
                       ? item.selectedShippingCost 
                       : (item.product.shippingCost !== undefined ? item.product.shippingCost : 0);
@@ -1966,7 +2057,12 @@ export default function ShopView({
                     return (
                       <div
                         key={`${item.product.id}_${idx}`}
-                        className="flex items-stretch bg-slate-50 rounded-2xl border border-slate-200 hover:border-slate-300 transition-all shadow-sm overflow-hidden h-28 shrink-0"
+                        className={`flex items-stretch rounded-2xl border transition-all shadow-sm overflow-hidden h-28 shrink-0 relative ${
+                          isSelected
+                            ? "bg-amber-500/[0.04] border-amber-400/80 shadow-amber-500/10 ring-1 ring-amber-400/40"
+                            : "bg-slate-50/70 border-slate-200 opacity-70 hover:opacity-100"
+                        }`}
+                        id={`cart-item-${item.product.id}-${idx}`}
                       >
                         <div className="w-24 sm:w-28 shrink-0 relative bg-slate-200 h-full overflow-hidden">
                           <img
@@ -2008,28 +2104,45 @@ export default function ShopView({
                               <span className="text-xs font-mono font-extrabold text-amber-600">
                                 ${item.product.price.toFixed(2)}
                               </span>
-                              <span className="text-[9.5px] font-bold text-slate-600 bg-slate-200/80 px-1.5 py-0.5 rounded leading-tight">
+                              <span className="text-[9px] font-bold text-slate-600 bg-slate-200/80 px-1.5 py-0.5 rounded leading-tight">
                                 Envío: {shippingFee > 0 ? `$${shippingFee.toFixed(2)}` : "Gratis"}
                                 {carrierName ? ` (${carrierName})` : ""}
                               </span>
                             </div>
                           </div>
                           
-                          {/* Incrementor buttons */}
-                          <div className="flex items-center space-x-2">
+                          {/* Incrementor buttons & Selection in bottom-right */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-1.5">
+                              <button
+                                onClick={() => onUpdateCartQuantity(item.product.id, Math.max(1, item.quantity - 1), idx)}
+                                className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="text-xs font-mono font-extrabold text-slate-900 px-1">{item.quantity}</span>
+                              <button
+                                onClick={() => onUpdateCartQuantity(item.product.id, item.quantity + 1, idx)}
+                                disabled={item.quantity >= item.product.stock}
+                                className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs disabled:opacity-50 transition-colors cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+
+                            {/* Selector in bottom-right corner */}
                             <button
-                              onClick={() => onUpdateCartQuantity(item.product.id, Math.max(1, item.quantity - 1), idx)}
-                              className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
+                              type="button"
+                              onClick={(e) => toggleItemSelection(idx, e)}
+                              className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+                                isSelected
+                                  ? "bg-amber-500 border-amber-500 text-slate-950 shadow-sm shadow-amber-500/30 scale-105"
+                                  : "bg-white border-slate-300 hover:border-amber-400 text-transparent hover:text-slate-300"
+                              }`}
+                              title={isSelected ? "Deseleccionar producto para pago" : "Seleccionar producto para pagar"}
+                              id={`select-item-checkbox-${idx}`}
                             >
-                              <Minus className="w-3 h-3" />
-                            </button>
-                            <span className="text-xs font-mono font-extrabold text-slate-900 px-1">{item.quantity}</span>
-                            <button
-                              onClick={() => onUpdateCartQuantity(item.product.id, item.quantity + 1, idx)}
-                              disabled={item.quantity >= item.product.stock}
-                              className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs disabled:opacity-50 transition-colors cursor-pointer"
-                            >
-                              <Plus className="w-3 h-3" />
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
                             </button>
                           </div>
                         </div>
@@ -2042,13 +2155,13 @@ export default function ShopView({
               {/* Drawer Footer summary */}
               {cart.length > 0 && (
                 <div 
-                  className="p-5 border-t border-slate-100 bg-slate-50 space-y-3 shrink-0"
+                  className="p-4 border-t border-slate-100 bg-white space-y-2.5 shrink-0"
                   style={{ 
-                    paddingBottom: 'max(2.25rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem))' 
+                    paddingBottom: 'max(2.25rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem))'
                   }}
                 >
                   <div className="flex justify-between text-xs text-slate-500 font-medium">
-                    <span>Subtotal productos:</span>
+                    <span>Subtotal ({selectedCartItems.length} de {cart.length} selec.):</span>
                     <span className="font-mono text-slate-800 font-semibold">${cartSubtotal.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-xs text-slate-500 font-medium">
@@ -2057,18 +2170,29 @@ export default function ShopView({
                       {cartShippingTotal === 0 ? "GRATIS" : `$${cartShippingTotal.toFixed(2)}`}
                     </span>
                   </div>
-                  <div className="flex justify-between text-xs font-bold text-slate-900 border-t border-slate-200/80 pt-2">
-                    <span>Total del Carrito:</span>
+                  <div className="flex justify-between text-xs font-bold text-slate-900 border-t border-slate-100 pt-2">
+                    <span>Total a Pagar:</span>
                     <span className="font-mono text-slate-950 font-black text-sm">${cartTotal.toFixed(2)}</span>
                   </div>
 
                   <button
                     onClick={startCheckout}
-                    className="w-full bg-amber-500 hover:bg-amber-600 active:scale-98 text-slate-950 font-black py-3.5 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-1 shadow-lg shadow-amber-500/25"
+                    disabled={selectedCartItems.length === 0}
+                    className={`w-full font-black py-3 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-1 shadow-lg ${
+                      selectedCartItems.length > 0
+                        ? "bg-amber-500 hover:bg-amber-600 active:scale-98 text-slate-950 shadow-amber-500/25"
+                        : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                    }`}
                     id="checkout-btn"
                   >
-                    <span>Iniciar Pago Seguro</span>
-                    <ArrowLeft className="w-4 h-4 rotate-180 text-slate-950" />
+                    {selectedCartItems.length > 0 ? (
+                      <>
+                        <span>Pagar ({selectedCartItems.length} {selectedCartItems.length === 1 ? 'producto' : 'productos'})</span>
+                        <ArrowLeft className="w-4 h-4 rotate-180 text-slate-950" />
+                      </>
+                    ) : (
+                      <span>Selecciona productos para pagar</span>
+                    )}
                   </button>
                 </div>
               )}

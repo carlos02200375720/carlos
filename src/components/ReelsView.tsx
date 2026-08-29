@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, VolumeX, Send, X, Play, Bookmark, Trash2 } from "lucide-react";
+import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, VolumeX, Send, X, Play, Bookmark, Trash2, Check, ArrowLeft, Plus, Minus } from "lucide-react";
 import { Reel, Product, Comment, User, CartItem } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../config";
@@ -11,6 +11,7 @@ interface ReelsViewProps {
   onRemoveFromCart?: (productId: string, idx?: number) => void;
   onUpdateCartQuantity?: (productId: string, qty: number, idx?: number) => void;
   onNavigateToShop?: () => void;
+  onNavigateToCheckout?: (selectedIndices?: number[]) => void;
   onProductClick: (product: Product) => void;
   onCreatorClick: (creatorId: string) => void;
   onLikeReel: (reelId: string) => void;
@@ -28,6 +29,7 @@ export default function ReelsView({
   onRemoveFromCart,
   onUpdateCartQuantity,
   onNavigateToShop,
+  onNavigateToCheckout,
   onProductClick,
   onCreatorClick,
   onLikeReel,
@@ -47,6 +49,7 @@ export default function ReelsView({
   const [showShareModal, setShowShareModal] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
+  const [mediaLoading, setMediaLoading] = useState<{ [key: string]: boolean }>({});
   const [carouselIndices, setCarouselIndices] = useState<{ [key: string]: number }>({});
   const [mediaAspectRatios, setMediaAspectRatios] = useState<{ [key: string]: 'vertical' | 'horizontal_or_square' }>({});
 
@@ -67,8 +70,48 @@ export default function ReelsView({
     return list;
   }, [reels, displayCount]);
 
+  const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>([]);
+
+  // Automatically sync cart selections when cart items change
+  useEffect(() => {
+    setSelectedCartIndices((prev) => {
+      if (cart.length === 0) return [];
+      if (prev.length === 0) return cart.map((_, i) => i);
+      const valid = prev.filter((i) => i < cart.length);
+      return valid.length > 0 ? valid : cart.map((_, i) => i);
+    });
+  }, [cart.length]);
+
+  const toggleItemSelection = (index: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedCartIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+
+  const isAllCartSelected = cart.length > 0 && selectedCartIndices.length === cart.length;
+
+  const toggleSelectAllCart = () => {
+    if (isAllCartSelected) {
+      setSelectedCartIndices([]);
+    } else {
+      setSelectedCartIndices(cart.map((_, i) => i));
+    }
+  };
+
+  const selectedCartItems = cart.filter((_, idx) => selectedCartIndices.includes(idx));
+  const effectiveCheckoutItems = selectedCartItems.length > 0 ? selectedCartItems : cart;
+
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const totalCartPrice = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const selectedCartCount = selectedCartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const effectiveSubtotal = effectiveCheckoutItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const effectiveShipping = effectiveCheckoutItems.reduce((sum, item) => {
+    const shippingFee = item.selectedShippingCost !== undefined 
+      ? item.selectedShippingCost 
+      : (item.product.shippingCost !== undefined ? item.product.shippingCost : 0);
+    return sum + shippingFee * item.quantity;
+  }, 0);
+  const effectiveTotal = effectiveSubtotal + effectiveShipping;
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -79,7 +122,7 @@ export default function ReelsView({
   const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
 
   useEffect(() => {
-    // Play active video, pause others, and buffer adjacent reels
+    // Play active video immediately, pause others, and proactively preload/buffer adjacent reels
     displayedReels.forEach((reel, idx) => {
       const video = videoRefs.current[idx];
       if (video) {
@@ -90,7 +133,7 @@ export default function ReelsView({
             const playPromise = video.play();
             if (playPromise !== undefined) {
               playPromise.catch((err) => {
-                // If browser blocks unmuted autoplay without user interaction, mute and retry silently
+                // If browser blocks unmuted autoplay without user interaction, mute and retry immediately
                 if (err?.name === "NotAllowedError" && !video.muted) {
                   video.muted = true;
                   video.play().catch(() => {});
@@ -102,17 +145,40 @@ export default function ReelsView({
           }
         } else {
           video.pause();
-          // For adjacent reels (next and previous), set preload to auto so they buffer instantly
-          if (Math.abs(idx - activeReelIndex) <= 2) {
+          // For adjacent reels (next 2 and previous 1), set preload to auto and load buffer ahead of time
+          const dist = Math.abs(idx - activeReelIndex);
+          if (dist <= 2) {
             video.preload = "auto";
-          } else if (Math.abs(idx - activeReelIndex) > 3) {
-            // Far away reels: pause and reset time to release GPU buffers
+            if (video.readyState === 0 && reel.videoUrl) {
+              video.load();
+            }
+          } else if (dist > 3) {
+            // Far away reels: pause and reset time to release GPU memory
             video.currentTime = 0;
           }
         }
       }
     });
-  }, [activeReelIndex, displayedReels.length, isPlaying, isMuted]);
+
+    // Proactively pre-fetch next upcoming video URLs in the network cache
+    const nextReels = [
+      displayedReels[activeReelIndex + 1]?.videoUrl,
+      displayedReels[activeReelIndex + 2]?.videoUrl
+    ].filter(Boolean);
+
+    nextReels.forEach((url) => {
+      if (url && typeof document !== "undefined") {
+        const existing = document.querySelector(`link[href="${url}"]`);
+        if (!existing) {
+          const link = document.createElement("link");
+          link.rel = "prefetch";
+          link.as = "video";
+          link.href = url;
+          document.head.appendChild(link);
+        }
+      }
+    });
+  }, [activeReelIndex, displayedReels, isPlaying, isMuted]);
 
   // Handle scroll detection for snap scroll & continuous infinite expansion
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -465,18 +531,21 @@ export default function ReelsView({
                     {/* Media Element: 100% width and height */}
                     {reel.type === "image" ? (
                       <img
-                        src={reel.images?.[0] || reel.thumbnailUrl}
+                        src={(reel.images?.[0] && !reel.images[0].includes("1618005182384")) ? reel.images[0] : (reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") ? reel.thumbnailUrl : "")}
                         alt={reel.description}
                         draggable={false}
                         onClick={() => setIsPlaying(!isPlaying)}
                         onDoubleClick={() => handleDoubleTap(reel.id)}
+                        onLoadStart={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: true }))}
                         onLoad={(e) => {
+                          setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
                           const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.08;
                           setMediaAspectRatios((prev) => ({
                             ...prev,
                             [reel.id]: isVert ? "vertical" : "horizontal_or_square",
                           }));
                         }}
+                        onError={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: false }))}
                         className={`w-full h-full cursor-pointer select-none block touch-auto ${
                           mediaAspectRatios[reel.id] === "horizontal_or_square"
                             ? "object-contain"
@@ -488,7 +557,7 @@ export default function ReelsView({
                     ) : reel.type === "carousel" ? (
                       <div className="w-full h-full flex items-center justify-center bg-black">
                         <ReelCarousel 
-                          images={reel.images || [reel.thumbnailUrl]} 
+                          images={(reel.images || [reel.thumbnailUrl]).filter((img): img is string => !!img && !img.includes("1618005182384"))} 
                           onDoubleClick={() => handleDoubleTap(reel.id)}
                           onIndexChange={(idx) => setCarouselIndices((prev) => ({ ...prev, [`${reel.id}_${index}`]: idx }))}
                         />
@@ -503,7 +572,9 @@ export default function ReelsView({
                           }
                         }}
                         src={reel.videoUrl}
+                        poster={(reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".mp4")) ? reel.thumbnailUrl : undefined}
                         loop
+                        autoPlay={isCurrent}
                         muted={isMuted}
                         playsInline
                         // @ts-ignore
@@ -518,8 +589,39 @@ export default function ReelsView({
                         preload={Math.abs(index - activeReelIndex) <= 2 ? "auto" : "metadata"}
                         onClick={() => handleVideoClick(index)}
                         onDoubleClick={() => handleDoubleTap(reel.id)}
+                        onLoadStart={() => {
+                          if (isCurrent) {
+                            setMediaLoading((prev) => ({ ...prev, [reel.id]: true }));
+                          }
+                        }}
+                        onWaiting={() => {
+                          if (isCurrent) {
+                            setMediaLoading((prev) => ({ ...prev, [reel.id]: true }));
+                          }
+                        }}
+                        onPlaying={() => {
+                          setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                        }}
+                        onCanPlay={(e) => {
+                          setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                          if (isCurrent && isPlaying) {
+                            const p = e.currentTarget.play();
+                            if (p !== undefined) {
+                              p.catch(() => {});
+                            }
+                          }
+                        }}
+                        onLoadedData={() => {
+                          setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                        }}
+                        onError={() => {
+                          setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                        }}
                         onTimeUpdate={(e) => {
                           if (isCurrent) {
+                            if (mediaLoading[reel.id]) {
+                              setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                            }
                             setCurrentTime(e.currentTarget.currentTime);
                             setDuration(e.currentTarget.duration || 0);
                           }
@@ -534,12 +636,20 @@ export default function ReelsView({
                             [reel.id]: isVert ? "vertical" : "horizontal_or_square",
                           }));
                         }}
-                        className={`w-full h-full cursor-pointer block ${
+                        className={`w-full h-full cursor-pointer block bg-black ${
                           mediaAspectRatios[reel.id] === "horizontal_or_square"
                             ? "object-contain"
                             : "object-cover"
                         }`}
                       />
+                    )}
+
+                    {/* Black Loading Spinner Overlay for Media Buffering */}
+                    {isCurrent && mediaLoading[reel.id] && (
+                      <div className="absolute inset-0 z-15 bg-black flex flex-col items-center justify-center pointer-events-none transition-opacity duration-300">
+                        <div className="w-10 h-10 border-2 border-white/20 border-t-amber-500 rounded-full animate-spin" />
+                        <span className="text-[11px] text-white/60 font-semibold tracking-wider mt-3">Cargando publicación...</span>
+                      </div>
                     )}
 
                     {/* Floating Large Double Tap Heart Animation */}
@@ -634,7 +744,7 @@ export default function ReelsView({
                           animate={{ y: 0, opacity: 1 }}
                           transition={{ delay: 0.2 }}
                           onClick={() => onProductClick(reelProduct)}
-                          className="bg-black/40 backdrop-blur-md border border-white/20 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/60 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg overflow-hidden"
+                          className="bg-black/10 backdrop-blur-md border border-white/15 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/20 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg overflow-hidden"
                           id={`tagged-product-${reel.id}`}
                           style={{
                             marginLeft: "-4px",
@@ -642,7 +752,7 @@ export default function ReelsView({
                             height: "68.3438px"
                           }}
                         >
-                          <div className="w-20 shrink-0 h-full relative overflow-hidden bg-black/50 border-r border-white/10">
+                          <div className="w-20 shrink-0 h-full relative overflow-hidden bg-black/10 border-r border-white/10">
                             <img
                               src={reelProduct.imageUrl}
                               alt={reelProduct.name}
@@ -650,7 +760,7 @@ export default function ReelsView({
                               className="w-full h-full object-cover"
                             />
                           </div>
-                          <div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between">
+                          <div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-black/10">
                             <span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center">
                               <ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado
                             </span>
@@ -989,27 +1099,56 @@ export default function ReelsView({
               id="cart-drawer-panel"
             >
               {/* Drawer Header */}
-              <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/90">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
                 <div className="flex items-center space-x-2.5">
-                  <div className="p-2 bg-amber-500/15 rounded-xl text-amber-600">
-                    <ShoppingBag className="w-5 h-5" />
+                  <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600">
+                    <ShoppingBag className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-base text-slate-900">Carrito de Compras</h3>
-                    <p className="text-[11px] text-slate-500 font-bold font-mono">{totalCartCount} {totalCartCount === 1 ? 'producto' : 'productos'}</p>
+                    <h3 className="font-extrabold text-sm text-slate-900 leading-tight">Carrito</h3>
+                    <p className="text-[11px] text-slate-500 font-semibold">{totalCartCount} {totalCartCount === 1 ? 'producto' : 'productos'}</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowCartDrawer(false)}
-                  className="p-1.5 rounded-full hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
-                  id="close-cart-drawer-btn"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center space-x-1.5">
+                  {cart.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={toggleSelectAllCart}
+                      className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer bg-transparent border border-slate-200 hover:border-amber-400 hover:bg-amber-50/40 text-slate-700 active:scale-95"
+                      id="reel-cart-select-all-btn"
+                    >
+                      <div
+                        className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-colors ${
+                          isAllCartSelected
+                            ? "bg-amber-500 text-slate-950"
+                            : selectedCartIndices.length > 0
+                            ? "bg-amber-200 text-amber-900"
+                            : "border border-slate-300 bg-white"
+                        }`}
+                      >
+                        {isAllCartSelected ? (
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        ) : selectedCartIndices.length > 0 ? (
+                          <div className="w-1.5 h-1.5 bg-amber-900 rounded-xs" />
+                        ) : null}
+                      </div>
+                      <span className="text-[10.5px]">
+                        {isAllCartSelected ? "Deseleccionar" : "Todo"} ({selectedCartIndices.length}/{cart.length})
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowCartDrawer(false)}
+                    className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                    id="close-cart-drawer-btn"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Cart Items List */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {cart.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-12 space-y-3">
                     <div className="p-4 bg-slate-100 rounded-full border border-slate-200">
@@ -1034,6 +1173,7 @@ export default function ReelsView({
                   </div>
                 ) : (
                   cart.map((item, idx) => {
+                    const isSelected = selectedCartIndices.includes(idx);
                     const shippingFee = item.selectedShippingCost !== undefined 
                       ? item.selectedShippingCost 
                       : (item.product.shippingCost !== undefined ? item.product.shippingCost : 0);
@@ -1042,7 +1182,12 @@ export default function ReelsView({
                     return (
                       <div
                         key={`${item.product.id}_${idx}`}
-                        className="flex items-stretch bg-slate-50 rounded-2xl border border-slate-200 hover:border-slate-300 transition-all shadow-sm overflow-hidden h-28 shrink-0"
+                        className={`flex items-stretch rounded-2xl border transition-all shadow-sm overflow-hidden h-28 shrink-0 relative ${
+                          isSelected
+                            ? "bg-amber-500/[0.04] border-amber-400/80 shadow-amber-500/10 ring-1 ring-amber-400/40"
+                            : "bg-slate-50/70 border-slate-200 opacity-70 hover:opacity-100"
+                        }`}
+                        id={`reel-cart-item-${item.product.id}-${idx}`}
                       >
                         <div className="w-24 sm:w-28 shrink-0 relative bg-slate-200 h-full overflow-hidden">
                           <img
@@ -1056,13 +1201,7 @@ export default function ReelsView({
                             }}
                           />
                         </div>
-                        <div
-                          className="flex-1 min-w-0 p-2.5 flex flex-col justify-between h-full"
-                          style={{
-                            width: "182.4px",
-                            height: "90.594px",
-                          }}
-                        >
+                        <div className="flex-1 min-w-0 p-2.5 flex flex-col justify-between h-full">
                           <div>
                             <div className="flex items-start justify-between gap-1">
                               <h4
@@ -1086,35 +1225,53 @@ export default function ReelsView({
                               <span className="text-xs font-mono font-extrabold text-amber-600">
                                 ${item.product.price.toFixed(2)}
                               </span>
-                              <span className="text-[9.5px] font-bold text-slate-600 bg-slate-200/80 px-1.5 py-0.5 rounded leading-tight">
+                              <span className="text-[9px] font-bold text-slate-600 bg-slate-200/80 px-1.5 py-0.5 rounded leading-tight">
                                 Envío: {shippingFee > 0 ? `$${shippingFee.toFixed(2)}` : "Gratis"}
                                 {carrierName ? ` (${carrierName})` : ""}
                               </span>
                             </div>
                           </div>
 
-                          {/* Quantity Controls */}
-                          <div className="flex items-center space-x-2">
+                          {/* Quantity Controls & Bottom-Right Corner Selector */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-1.5">
+                              <button
+                                onClick={() => {
+                                  if (item.quantity > 1) {
+                                    onUpdateCartQuantity?.(item.product.id, item.quantity - 1, idx);
+                                  } else {
+                                    onRemoveFromCart?.(item.product.id, idx);
+                                  }
+                                }}
+                                className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="text-xs font-mono font-extrabold text-slate-900 px-1">
+                                {item.quantity}
+                              </span>
+                              <button
+                                onClick={() => onUpdateCartQuantity?.(item.product.id, item.quantity + 1, idx)}
+                                disabled={item.product.stock !== undefined && item.quantity >= item.product.stock}
+                                className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs disabled:opacity-50 transition-colors cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+
+                            {/* Selector in bottom right corner */}
                             <button
-                              onClick={() => {
-                                if (item.quantity > 1) {
-                                  onUpdateCartQuantity?.(item.product.id, item.quantity - 1, idx);
-                                } else {
-                                  onRemoveFromCart?.(item.product.id, idx);
-                                }
-                              }}
-                              className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
+                              type="button"
+                              onClick={(e) => toggleItemSelection(idx, e)}
+                              className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+                                isSelected
+                                  ? "bg-amber-500 border-amber-500 text-slate-950 shadow-sm shadow-amber-500/30 scale-105"
+                                  : "bg-white border-slate-300 hover:border-amber-400 text-transparent hover:text-slate-300"
+                              }`}
+                              title={isSelected ? "Deseleccionar producto para pago" : "Seleccionar producto para pagar"}
+                              id={`reel-cart-select-${idx}`}
                             >
-                              -
-                            </button>
-                            <span className="text-xs font-mono font-extrabold text-slate-900 px-1">
-                              {item.quantity}
-                            </span>
-                            <button
-                              onClick={() => onUpdateCartQuantity?.(item.product.id, item.quantity + 1, idx)}
-                              className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
-                            >
-                              +
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
                             </button>
                           </div>
                         </div>
@@ -1126,24 +1283,54 @@ export default function ReelsView({
 
               {/* Drawer Footer */}
               {cart.length > 0 && (
-                <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-600 font-bold">Subtotal:</span>
-                    <span className="font-mono font-extrabold text-amber-600 text-base">${totalCartPrice.toFixed(2)}</span>
+                <div 
+                  className="p-4 border-t border-slate-100 bg-white space-y-2.5 shrink-0"
+                  style={{ 
+                    paddingBottom: 'max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1rem))'
+                  }}
+                >
+                  <div className="flex justify-between text-xs text-slate-500 font-medium">
+                    <span>Subtotal ({selectedCartItems.length} de {cart.length} selec.):</span>
+                    <span className="font-mono text-slate-800 font-semibold">${effectiveSubtotal.toFixed(2)}</span>
                   </div>
-                  {onNavigateToShop && (
-                    <button
-                      onClick={() => {
-                        setShowCartDrawer(false);
+                  <div className="flex justify-between text-xs text-slate-500 font-medium">
+                    <span>Envío estimado:</span>
+                    <span className="font-mono text-slate-800 font-semibold">
+                      {effectiveShipping > 0 ? `$${effectiveShipping.toFixed(2)}` : "Gratis"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-slate-900 border-t border-slate-100 pt-2">
+                    <span>Total a Pagar:</span>
+                    <span className="font-mono text-slate-950 font-black text-sm">${effectiveTotal.toFixed(2)}</span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setShowCartDrawer(false);
+                      if (onNavigateToCheckout) {
+                        onNavigateToCheckout(selectedCartIndices);
+                      } else if (onNavigateToShop) {
                         onNavigateToShop();
-                      }}
-                      className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/20 text-center flex items-center justify-center space-x-2"
-                      id="cart-checkout-btn"
-                    >
-                      <ShoppingCart className="w-4 h-4" />
-                      <span>Ir al Mercado a Pagar</span>
-                    </button>
-                  )}
+                      }
+                    }}
+                    disabled={selectedCartItems.length === 0}
+                    className={`w-full font-black py-3 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-1 shadow-lg ${
+                      selectedCartItems.length > 0
+                        ? "bg-amber-500 hover:bg-amber-600 active:scale-98 text-slate-950 shadow-amber-500/25"
+                        : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                    }`}
+                    id="cart-checkout-btn"
+                  >
+                    {selectedCartItems.length > 0 ? (
+                      <>
+                        <ShoppingCart className="w-4 h-4 text-slate-950" />
+                        <span>Pagar ({selectedCartItems.length} {selectedCartItems.length === 1 ? 'producto' : 'productos'})</span>
+                        <ArrowLeft className="w-4 h-4 rotate-180 text-slate-950" />
+                      </>
+                    ) : (
+                      <span>Selecciona productos para pagar</span>
+                    )}
+                  </button>
                 </div>
               )}
             </motion.div>

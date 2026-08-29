@@ -89,6 +89,8 @@ export default function App() {
   const [directSelectedProduct, setDirectSelectedProduct] = useState<Product | null>(null);
   const [selectedCreatorProfileId, setSelectedCreatorProfileId] = useState<string | null>(null);
   const [isProductDetailOpen, setIsProductDetailOpen] = useState(false);
+  const [shopInitialStep, setShopInitialStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>('catalog');
+  const [shopInitialSelectedIndices, setShopInitialSelectedIndices] = useState<number[]>([]);
 
   // Private 1-on-1 Chat States
   const [activeChatUser, setActiveChatUser] = useState<User | null>(null);
@@ -793,14 +795,20 @@ export default function App() {
     });
   };
 
-  const handleCheckoutCart = (address: string, shippingCost: number = 0, onComplete: (newOrder: Order) => void) => {
+  const handleCheckoutCart = (
+    address: string,
+    shippingCost: number = 0,
+    onComplete: (newOrder: Order) => void,
+    itemsToCheckout?: CartItem[]
+  ) => {
     const userId = getCartUserId(currentUser);
+    const checkoutItems = itemsToCheckout && itemsToCheckout.length > 0 ? itemsToCheckout : cart;
     apiFetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         userId,
-        items: cart,
+        items: checkoutItems,
         shippingAddress: address,
         shippingCost: shippingCost,
       }),
@@ -808,8 +816,30 @@ export default function App() {
       .then((res) => res.json())
       .then((data) => {
         if (!data.error) {
-          setCart([]); // Clear cart locally
-          saveCartToMongo([]); // Clear cart in MongoDB
+          // If partial checkout, only remove the selected items that were purchased
+          setCart((prev) => {
+            let updated: CartItem[];
+            if (itemsToCheckout && itemsToCheckout.length > 0 && itemsToCheckout.length < prev.length) {
+              const toRemove = [...itemsToCheckout];
+              updated = prev.filter((cartItem) => {
+                const matchIndex = toRemove.findIndex(
+                  (r) =>
+                    r.product.id === cartItem.product.id &&
+                    r.product.name === cartItem.product.name &&
+                    r.quantity === cartItem.quantity
+                );
+                if (matchIndex !== -1) {
+                  toRemove.splice(matchIndex, 1);
+                  return false;
+                }
+                return true;
+              });
+            } else {
+              updated = [];
+            }
+            saveCartToMongo(updated);
+            return updated;
+          });
           onComplete(data);
         } else {
           alert(data.error);
@@ -1031,7 +1061,7 @@ export default function App() {
           <nav className="space-y-1.5">
             <button
               onClick={() => { refreshReels(); setActiveTab('reels'); }}
-              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
+              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
                 activeTab === 'reels'
                   ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
                   : isDarkNavActive
@@ -1040,13 +1070,13 @@ export default function App() {
               }`}
               id="desktop-nav-reels"
             >
-              <Play className={`w-5 h-5 ${activeTab === 'reels' ? "fill-slate-950" : ""}`} />
-              <span>Reels & Videos</span>
+              <Play strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'reels' ? "fill-slate-950" : ""}`} />
+              <span className="font-black tracking-wide">Reels & Videos</span>
             </button>
 
             <button
               onClick={() => { refreshProducts(); setActiveTab('shop'); }}
-              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
+              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
                 activeTab === 'shop'
                   ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
                   : isDarkNavActive
@@ -1055,13 +1085,13 @@ export default function App() {
               }`}
               id="desktop-nav-shop"
             >
-              <ShoppingBag className={`w-5 h-5 ${activeTab === 'shop' ? "fill-slate-950" : ""}`} />
-              <span>Mercado</span>
+              <ShoppingBag strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'shop' ? "fill-slate-950" : ""}`} />
+              <span className="font-black tracking-wide">Mercado</span>
             </button>
 
             <button
               onClick={() => setActiveTab('messages')}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
                 activeTab === 'messages'
                   ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
                   : isDarkNavActive
@@ -1071,8 +1101,8 @@ export default function App() {
               id="desktop-nav-messages"
             >
               <div className="flex items-center space-x-3.5">
-                <MessageSquare className={`w-5 h-5 ${activeTab === 'messages' ? "fill-slate-950" : ""}`} />
-                <span>Mensajes</span>
+                <MessageSquare strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'messages' ? "fill-slate-950" : ""}`} />
+                <span className="font-black tracking-wide">Mensajes</span>
               </div>
               {totalUnreads > 0 && (
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
@@ -1085,7 +1115,7 @@ export default function App() {
 
             <button
               onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
-              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
+              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
                 activeTab === 'profile' && selectedCreatorProfileId === null
                   ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
                   : isDarkNavActive
@@ -1094,8 +1124,8 @@ export default function App() {
               }`}
               id="desktop-nav-profile"
             >
-              <UserIcon className="w-5 h-5" />
-              <span>{currentUser.username === "invitado" ? "Registro / Cuenta" : "Dashboard / Perfil"}</span>
+              <UserIcon strokeWidth={2.6} className="w-5 h-5" />
+              <span className="font-black tracking-wide">{currentUser.username === "invitado" ? "Registro / Cuenta" : "Dashboard / Perfil"}</span>
             </button>
           </nav>
         </div>
@@ -1158,6 +1188,11 @@ export default function App() {
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}
                 onNavigateToShop={() => setActiveTab('shop')}
+                onNavigateToCheckout={(selectedIndices) => {
+                  setShopInitialStep('checkout');
+                  setShopInitialSelectedIndices(selectedIndices);
+                  setActiveTab('shop');
+                }}
                 onProductClick={handleProductDetailsLink}
                 onCreatorClick={handleCreatorProfileLink}
                 onLikeReel={handleLikeReel}
@@ -1186,6 +1221,12 @@ export default function App() {
                 clearDirectProduct={() => setDirectSelectedProduct(null)}
                 onNavigateToHistory={() => { setSelectedCreatorProfileId(currentUser.id); setActiveTab('profile'); }}
                 onToggleDetailView={setIsProductDetailOpen}
+                initialStep={shopInitialStep}
+                initialSelectedCartIndices={shopInitialSelectedIndices}
+                onClearInitialStep={() => {
+                  setShopInitialStep('catalog');
+                  setShopInitialSelectedIndices([]);
+                }}
               />
             )}
 
@@ -1243,13 +1284,13 @@ export default function App() {
       {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && (
         <div
           id="bottom-nav-bar"
-          className={`fixed bottom-0 inset-x-0 pt-1 px-2 z-30 border-0 shadow-none transition-colors ${
+          className={`fixed bottom-0 inset-x-0 pt-1.5 px-2 z-30 border-0 shadow-none transition-colors ${
             activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages'
-               ? "bg-white text-slate-800"
+               ? "bg-white text-slate-900"
                : "bg-black text-white"
           } md:hidden`}
           style={{
-            paddingBottom: 'max(0.35rem, calc(env(safe-area-inset-bottom, 0px) + 0.25rem))'
+            paddingBottom: 'max(0.45rem, calc(env(safe-area-inset-bottom, 0px) + 0.35rem))'
           }}
         >
           <div className="max-w-md mx-auto flex items-center justify-around px-1">
@@ -1259,15 +1300,15 @@ export default function App() {
               onClick={() => { refreshReels(); setActiveTab('reels'); }}
               className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all ${
                 activeTab === 'reels'
-                  ? "text-amber-500 scale-105 font-extrabold"
+                  ? "text-amber-500 scale-105 font-black"
                   : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
-                  ? "text-slate-500 hover:text-slate-900"
-                  : "text-slate-400 hover:text-white"
+                  ? "text-slate-600 hover:text-slate-950 font-black"
+                  : "text-slate-400 hover:text-white font-black"
               }`}
               id="tab-reels-btn"
             >
-              <Play className={`w-4 h-4 ${activeTab === 'reels' ? "fill-amber-500/10" : ""}`} />
-              <span className="text-[9px] font-bold tracking-tight leading-none">Reels</span>
+              <Play strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'reels' ? "fill-amber-500/10" : ""}`} />
+              <span className="text-[9.5px] sm:text-[10px] font-black tracking-tight leading-none">Reels</span>
             </button>
    
             {/* Tab 2: Shop */}
@@ -1275,15 +1316,15 @@ export default function App() {
               onClick={() => { refreshProducts(); setActiveTab('shop'); }}
               className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all ${
                 activeTab === 'shop'
-                  ? "text-amber-600 scale-105 font-extrabold"
+                  ? "text-amber-600 scale-105 font-black"
                   : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
-                  ? "text-slate-500 hover:text-slate-900"
-                  : "text-slate-400 hover:text-white"
+                  ? "text-slate-600 hover:text-slate-950 font-black"
+                  : "text-slate-400 hover:text-white font-black"
               }`}
               id="tab-shop-btn"
             >
-              <ShoppingBag className={`w-4 h-4 ${activeTab === 'shop' ? "fill-amber-500/10" : ""}`} />
-              <span className="text-[9px] font-bold tracking-tight leading-none">Market</span>
+              <ShoppingBag strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'shop' ? "fill-amber-500/10" : ""}`} />
+              <span className="text-[9.5px] sm:text-[10px] font-black tracking-tight leading-none">Market</span>
             </button>
    
             {/* Tab: Messages (between Market and Directos) */}
@@ -1291,22 +1332,22 @@ export default function App() {
               onClick={() => setActiveTab('messages')}
               className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all relative ${
                 activeTab === 'messages'
-                  ? "text-amber-600 scale-105 font-extrabold"
+                  ? "text-amber-600 scale-105 font-black"
                   : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
-                  ? "text-slate-500 hover:text-slate-900"
-                  : "text-slate-400 hover:text-white"
+                  ? "text-slate-600 hover:text-slate-950 font-black"
+                  : "text-slate-400 hover:text-white font-black"
               }`}
               id="tab-messages-btn"
             >
               <div className="relative">
-                <MessageSquare className={`w-4 h-4 ${activeTab === 'messages' ? "fill-amber-500/10" : ""}`} />
+                <MessageSquare strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'messages' ? "fill-amber-500/10" : ""}`} />
                 {totalUnreads > 0 && (
-                  <span className="absolute -top-1 -right-2 bg-rose-500 text-white text-[7.5px] font-bold font-mono w-3.5 h-3.5 rounded-full flex items-center justify-center border border-white">
+                  <span className="absolute -top-1 -right-2 bg-rose-500 text-white text-[8px] font-black font-mono w-4 h-4 rounded-full flex items-center justify-center border border-white">
                     {totalUnreads}
                   </span>
                 )}
               </div>
-              <span className="text-[9px] font-bold tracking-tight leading-none">Mensajes</span>
+              <span className="text-[9.5px] sm:text-[10px] font-black tracking-tight leading-none">Mensajes</span>
             </button>
    
             {/* Tab: Profile / Dashboard */}
@@ -1314,15 +1355,15 @@ export default function App() {
               onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
               className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all ${
                 activeTab === 'profile' && selectedCreatorProfileId === null
-                  ? "text-amber-600 scale-105 font-extrabold"
+                  ? "text-amber-600 scale-105 font-black"
                   : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
-                  ? "text-slate-500 hover:text-slate-900"
-                  : "text-slate-400 hover:text-white"
+                  ? "text-slate-600 hover:text-slate-950 font-black"
+                  : "text-slate-400 hover:text-white font-black"
               }`}
               id="tab-profile-btn"
             >
-              <UserIcon className="w-4 h-4" />
-              <span className="text-[9px] font-bold tracking-tight leading-none">
+              <UserIcon strokeWidth={2.6} className="w-5 h-5" />
+              <span className="text-[9.5px] sm:text-[10px] font-black tracking-tight leading-none">
                 {currentUser.username === "invitado" ? "Registro" : "Dashboard"}
               </span>
             </button>

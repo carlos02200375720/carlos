@@ -78,19 +78,19 @@ function PublicationCover({ reel }: { reel: Reel }) {
         src={thumbUrl}
         alt={reel.description || "Publicación"}
         onError={() => setHasError(true)}
-        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
+        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none bg-black"
         referrerPolicy="no-referrer"
       />
     );
   }
 
   return (
-    <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950 flex flex-col items-center justify-center p-3 text-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
-      <div className="w-9 h-9 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mb-1.5 shadow-md">
-        <Play className="w-4 h-4 fill-amber-400 translate-x-0.5" />
+    <div className="w-full h-full bg-black flex flex-col items-center justify-center p-3 text-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+      <div className="w-9 h-9 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white mb-2 shadow-md">
+        <Play className="w-4 h-4 fill-white translate-x-0.5" />
       </div>
-      <p className="text-[10px] text-slate-300 font-bold line-clamp-2 leading-tight">
-        {reel.description || (reel.type === "video" ? "Video Reel" : "Publicación")}
+      <p className="text-[10px] text-white/80 font-bold line-clamp-2 leading-tight">
+        {reel.description || (reel.type === "video" ? "Video" : "Publicación")}
       </p>
     </div>
   );
@@ -143,6 +143,7 @@ export default function ProfileView({
   const [savedReels, setSavedReels] = useState<Reel[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeSubTab, setActiveSubTab] = useState<"publications" | "saved" | "orders" | "performance" | "edit" | "publish">("publications");
+  const [publicTab, setPublicTab] = useState<"publications" | "products">("publications");
 
   // Profile edit states
   const [editName, setEditName] = useState(currentUser.name);
@@ -396,7 +397,7 @@ export default function ProfileView({
 
   if (isGuestMode) {
     return (
-      <div className="w-full max-w-4xl mx-auto" id="guest-profile-login-wrapper">
+      <div className="w-full max-w-4xl mx-auto pb-32 sm:pb-36" id="guest-profile-login-wrapper" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         <LoginView
           users={users}
           onRefreshUsers={onRefreshUsers || (() => {})}
@@ -413,7 +414,7 @@ export default function ProfileView({
 
   if (loading) {
     return (
-      <div className="w-full max-w-4xl mx-auto h-[550px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500">
+      <div className="w-full max-w-4xl mx-auto h-[550px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500 pb-32">
         <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
         <p className="text-xs font-semibold mt-4">Sincronizando perfil...</p>
       </div>
@@ -422,7 +423,7 @@ export default function ProfileView({
 
   if (!profileUser) {
     return (
-      <div className="w-full max-w-4xl mx-auto h-[450px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
+      <div className="w-full max-w-4xl mx-auto h-[450px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500 p-6 text-center pb-32">
         <p className="font-bold text-slate-700">Perfil no disponible</p>
         <button onClick={onBackToSelf} className="mt-4 px-4 py-2 bg-amber-500 text-slate-950 font-bold rounded-xl text-xs">
           Regresar a mi perfil
@@ -432,7 +433,7 @@ export default function ProfileView({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto min-h-[600px] bg-white rounded-none sm:rounded-t-none sm:rounded-b-2xl border-0 sm:border sm:border-slate-200 shadow-none sm:shadow-xl overflow-hidden flex flex-col no-scrollbar" id="profile-panel">
+    <div className="w-full max-w-4xl mx-auto min-h-[600px] bg-white rounded-none sm:rounded-t-none sm:rounded-b-2xl border-0 sm:border sm:border-slate-200 shadow-none sm:shadow-xl overflow-hidden flex flex-col no-scrollbar pb-32 sm:pb-36 md:pb-20" id="profile-panel" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
       {/* Profile Header Image Backbanner */}
       <div className="h-40 bg-slate-900 relative overflow-hidden rounded-t-none">
         {profileUser.coverPhoto ? (
@@ -446,21 +447,6 @@ export default function ProfileView({
           <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900" />
         )}
         <div className="absolute inset-0 bg-slate-950/20" />
-        {!isSelf && (
-          <button
-            onClick={onBackToSelf}
-            className="absolute left-4 text-xs px-3 py-1.5 bg-slate-950/60 backdrop-blur-sm text-white hover:bg-slate-950/80 rounded-full border border-white/10 font-bold transition-all cursor-pointer z-10"
-            style={{ top: "max(1rem, calc(env(safe-area-inset-top, 0px) + 0.625rem))" }}
-          >
-            ← Mi Dashboard Privado
-          </button>
-        )}
-        <div
-          className="absolute right-4 bg-slate-950/60 backdrop-blur-sm text-white text-[9px] font-bold font-mono px-2.5 py-1 rounded-md border border-white/10 uppercase z-10"
-          style={{ top: "max(1rem, calc(env(safe-area-inset-top, 0px) + 0.625rem))" }}
-        >
-          {isSelf ? "ADMINISTRATIVO" : "Vista Pública de Creador"}
-        </div>
       </div>
 
       {/* Profile Info Details Overlay row */}
@@ -517,7 +503,7 @@ export default function ProfileView({
         {/* Biography summary (Max 50 chars) */}
         {profileUser.bio && (
           <div className="mt-3">
-            <p className="text-xs text-slate-800 leading-relaxed font-medium max-w-sm break-words bg-white/90 border border-slate-200/80 rounded-xl px-3.5 py-2 shadow-xs">
+            <p className="text-xs text-slate-800 leading-relaxed font-medium max-w-sm break-words bg-transparent rounded-none px-0 py-0.5 shadow-none border-0">
               {profileUser.bio.length > 50 ? profileUser.bio.slice(0, 50) + "..." : profileUser.bio}
             </p>
           </div>
@@ -526,10 +512,10 @@ export default function ProfileView({
         {/* Horizontal Menu with Icons Only */}
         {isSelf && (
           <div className="mt-6 pt-4 border-t border-slate-200/60 flex justify-center">
-            <div className="flex bg-slate-100 p-1.5 rounded-full space-x-4 shadow-inner">
+            <div className="flex bg-slate-100 p-1.5 sm:p-2 rounded-full space-x-3 sm:space-x-4 shadow-inner">
               <button
                 onClick={() => setActiveSubTab("publications")}
-                className={`p-3 rounded-full transition-all cursor-pointer flex items-center justify-center relative ${
+                className={`p-3.5 sm:p-4 rounded-full transition-all cursor-pointer flex items-center justify-center relative ${
                   activeSubTab === "publications"
                     ? "bg-white text-amber-500 shadow-md scale-105"
                     : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
@@ -537,12 +523,12 @@ export default function ProfileView({
                 title="Mis Publicaciones"
                 id="profile-subtab-publications"
               >
-                <Play className="w-5 h-5 fill-current" />
+                <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current stroke-[2.3]" />
               </button>
 
               <button
                 onClick={() => setActiveSubTab("saved")}
-                className={`p-3 rounded-full transition-all cursor-pointer flex items-center justify-center relative ${
+                className={`p-3.5 sm:p-4 rounded-full transition-all cursor-pointer flex items-center justify-center relative ${
                   activeSubTab === "saved"
                     ? "bg-white text-amber-500 shadow-md scale-105"
                     : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
@@ -550,12 +536,12 @@ export default function ProfileView({
                 title="Publicaciones Guardadas"
                 id="profile-subtab-saved"
               >
-                <Bookmark className="w-5 h-5" />
+                <Bookmark className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.3]" />
               </button>
 
               <button
                 onClick={() => setActiveSubTab("orders")}
-                className={`p-3 rounded-full transition-all cursor-pointer flex items-center justify-center relative ${
+                className={`p-3.5 sm:p-4 rounded-full transition-all cursor-pointer flex items-center justify-center relative ${
                   activeSubTab === "orders"
                     ? "bg-white text-amber-500 shadow-md scale-105"
                     : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
@@ -563,12 +549,12 @@ export default function ProfileView({
                 title="Historial de Compras"
                 id="profile-subtab-orders"
               >
-                <ShoppingBag className="w-5 h-5" />
+                <ShoppingBag className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.3]" />
               </button>
 
               <button
                 onClick={() => setActiveSubTab("performance")}
-                className={`p-3 rounded-full transition-all cursor-pointer flex items-center justify-center relative ${
+                className={`p-3.5 sm:p-4 rounded-full transition-all cursor-pointer flex items-center justify-center relative ${
                   activeSubTab === "performance"
                     ? "bg-white text-amber-500 shadow-md scale-105"
                     : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
@@ -576,12 +562,12 @@ export default function ProfileView({
                 title="Rendimiento"
                 id="profile-subtab-performance"
               >
-                <BarChart3 className="w-5 h-5" />
+                <BarChart3 className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.3]" />
               </button>
 
               <button
                 onClick={() => setActiveSubTab("edit")}
-                className={`p-3 rounded-full transition-all cursor-pointer flex items-center justify-center relative ${
+                className={`p-3.5 sm:p-4 rounded-full transition-all cursor-pointer flex items-center justify-center relative ${
                   activeSubTab === "edit"
                     ? "bg-white text-amber-500 shadow-md scale-105"
                     : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
@@ -589,7 +575,7 @@ export default function ProfileView({
                 title="Editar Perfil"
                 id="profile-subtab-edit"
               >
-                <Settings className="w-5 h-5" />
+                <Settings className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.3]" />
               </button>
             </div>
           </div>
@@ -597,7 +583,7 @@ export default function ProfileView({
       </div>
 
       {/* Profile Inner Section tabs */}
-      <div className="flex-1 p-6">
+      <div className="flex-1 p-4 sm:p-6 pb-28 sm:pb-32 md:pb-20">
         <AnimatePresence mode="wait">
           {isSelf ? (
             /* --- 1. ADMINISTRATIVE DASHBOARD VIEWS --- */
@@ -1126,7 +1112,7 @@ export default function ProfileView({
                                   <span>Guardando...</span>
                                 </>
                               ) : (
-                                <span>Guardar y Aplicar Cambios</span>
+                                <span>Guardar</span>
                               )}
                             </button>
                           </div>
@@ -1430,99 +1416,130 @@ export default function ProfileView({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="space-y-8"
+              className="space-y-6"
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Creator's Video Reels listing */}
-                <div>
-                  <h3 className="font-display font-extrabold text-sm text-slate-900 mb-4 flex items-center space-x-2">
-                    <Play className="w-4 h-4 text-rose-500" />
-                    <span>Publicaciones de {profileUser.name}</span>
-                  </h3>
+              {/* Horizontal Navigation Menu for Public Profile */}
+              <div className="flex justify-center border-b border-slate-200/80 pb-2.5">
+                <div className="flex bg-slate-100 p-1 rounded-full space-x-1.5 shadow-inner">
+                  <button
+                    onClick={() => setPublicTab("publications")}
+                    className={`flex items-center space-x-1.5 px-3.5 sm:px-4 py-1.5 rounded-full text-xs font-black transition-all cursor-pointer ${
+                      publicTab === "publications"
+                        ? "bg-white text-amber-500 shadow-sm scale-[1.02]"
+                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+                    }`}
+                    id="public-tab-publications"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current stroke-[2.3]" />
+                    <span>Publicaciones ({userReels.length})</span>
+                  </button>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    {userReels.map((reel, index) => (
-                      <div
-                        key={`${reel.id}-${index}`}
-                        onClick={() => onSelectReel(reel.id)}
-                        className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900"
-                        id={`profile-reel-${reel.id}`}
-                      >
-                        <PublicationCover reel={reel} />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
-                        
-                        {isSelf && (
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteReel(reel.id, e)}
-                            title="Eliminar publicación de MongoDB y Cloud Storage"
-                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/75 hover:bg-rose-600 text-white flex items-center justify-center opacity-85 group-hover:opacity-100 transition-all z-20 shadow-md border border-white/20"
-                          >
-                            <X className="w-4 h-4 stroke-[2.5]" />
-                          </button>
-                        )}
-
-                        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[10px] font-mono font-bold">
-                          <span className="flex items-center space-x-0.5">
-                            <Eye className="w-3 h-3 text-slate-200" />
-                            <span>{reel.views}</span>
-                          </span>
-                          <span className="flex items-center space-x-0.5">
-                            <Heart className="w-3 h-3 text-rose-400 fill-rose-400/20" />
-                            <span>{reel.likes}</span>
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-
-                    {userReels.length === 0 && (
-                      <div className="col-span-2 py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                        No hay videos compartidos por este creador.
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Creator's Products list */}
-                <div>
-                  <h3 className="font-display font-extrabold text-sm text-slate-900 mb-4 flex items-center space-x-2">
-                    <ShoppingBag className="w-4 h-4 text-amber-500" />
-                    <span>Catálogo de Productos en Venta</span>
-                  </h3>
-
-                  <div className="space-y-3">
-                    {userProducts.map((prod, index) => (
-                      <div
-                        key={`${prod.id}-${index}`}
-                        onClick={() => onSelectProduct(prod)}
-                        className="flex items-center space-x-3 p-2.5 rounded-xl border border-slate-150 hover:border-amber-500/30 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-all"
-                        id={`profile-prod-${prod.id}`}
-                      >
-                        <img
-                          src={prod.imageUrl}
-                          alt={prod.name}
-                          referrerPolicy="no-referrer"
-                          className="w-12 h-12 object-cover rounded-lg border border-slate-200"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-xs font-bold text-slate-900 truncate">{prod.name}</h4>
-                          <p className="text-[10px] text-slate-500 truncate">{prod.description}</p>
-                          <div className="flex items-center space-x-2 mt-1">
-                            <span className="text-xs font-extrabold font-mono text-emerald-600">${prod.price.toFixed(2)}</span>
-                            <span className="text-[9px] text-amber-600 font-bold">Ver detalles →</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-
-                    {userProducts.length === 0 && (
-                      <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                        Este creador no tiene productos a la venta actualmente.
-                      </div>
-                    )}
-                  </div>
+                  <button
+                    onClick={() => setPublicTab("products")}
+                    className={`flex items-center space-x-1.5 px-3.5 sm:px-4 py-1.5 rounded-full text-xs font-black transition-all cursor-pointer ${
+                      publicTab === "products"
+                        ? "bg-white text-amber-500 shadow-sm scale-[1.02]"
+                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+                    }`}
+                    id="public-tab-products"
+                  >
+                    <ShoppingBag className="w-3.5 h-3.5 stroke-[2.3]" />
+                    <span>Catálogo ({userProducts.length})</span>
+                  </button>
                 </div>
               </div>
+
+              {/* Dynamic Sub-tab Section Content */}
+              <AnimatePresence mode="wait">
+                {publicTab === "publications" ? (
+                  <motion.div
+                    key="public-reels"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      {userReels.map((reel, index) => (
+                        <div
+                          key={`${reel.id}-${index}`}
+                          onClick={() => onSelectReel(reel.id)}
+                          className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
+                          id={`profile-reel-${reel.id}`}
+                        >
+                          <PublicationCover reel={reel} />
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
+
+                          <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[10px] font-mono font-bold">
+                            <span className="flex items-center space-x-0.5">
+                              <Eye className="w-3 h-3 text-slate-200" />
+                              <span>{reel.views}</span>
+                            </span>
+                            <span className="flex items-center space-x-0.5">
+                              <Heart className="w-3 h-3 text-rose-400 fill-rose-400/20" />
+                              <span>{reel.likes}</span>
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {userReels.length === 0 && (
+                        <div className="col-span-full py-12 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-2xl">
+                          <Play className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                          <p className="font-bold text-slate-500">No hay publicaciones disponibles</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Este creador no ha compartido videos todavía.</p>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="public-products"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      {userProducts.map((prod, index) => (
+                        <div
+                          key={`${prod.id}-${index}`}
+                          onClick={() => onSelectProduct(prod)}
+                          className="flex flex-row items-stretch rounded-2xl border border-slate-200 hover:border-amber-500/40 bg-white hover:bg-slate-50/80 shadow-xs hover:shadow-md cursor-pointer transition-all overflow-hidden group min-h-[115px] sm:min-h-[125px]"
+                          id={`profile-prod-${prod.id}`}
+                        >
+                          <div className="w-28 sm:w-32 self-stretch shrink-0 relative bg-slate-100 overflow-hidden">
+                            <img
+                              src={prod.imageUrl}
+                              alt={prod.name}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0 p-3 sm:p-3.5 flex flex-col justify-between">
+                            <div>
+                              <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate">{prod.name}</h4>
+                              <p className="text-[10px] sm:text-xs text-slate-500 line-clamp-2 mt-0.5 leading-relaxed">{prod.description}</p>
+                            </div>
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
+                              <span className="text-xs sm:text-sm font-black font-mono text-emerald-600">${prod.price.toFixed(2)}</span>
+                              <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-md">Ver detalles →</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {userProducts.length === 0 && (
+                        <div className="col-span-full py-12 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-2xl">
+                          <ShoppingBag className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                          <p className="font-bold text-slate-500">Sin productos en venta</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Este creador no tiene productos en su catálogo en este momento.</p>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>

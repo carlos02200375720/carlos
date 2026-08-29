@@ -26,24 +26,38 @@
   background: rgba(255, 255, 255, 0.15);
 }
 
-/* Hide scrollbar utility & Shop and Profile panel scrollbar removal */
+/* Hide scrollbar utility & Shop, Profile, Auth and Cart drawer scrollbar removal */
 #shop-panel::-webkit-scrollbar,
 #shop-panel *::-webkit-scrollbar,
+#cart-drawer-panel::-webkit-scrollbar,
+#cart-drawer-panel *::-webkit-scrollbar,
 #profile-panel::-webkit-scrollbar,
 #profile-panel *::-webkit-scrollbar,
 #guest-profile-login-wrapper::-webkit-scrollbar,
 #guest-profile-login-wrapper *::-webkit-scrollbar,
+#auth-root-view::-webkit-scrollbar,
+#auth-root-view *::-webkit-scrollbar,
+.shop-container::-webkit-scrollbar,
+.shop-container *::-webkit-scrollbar,
 .no-scrollbar::-webkit-scrollbar {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
+  background: transparent !important;
 }
+
 #shop-panel,
 #shop-panel *,
+#cart-drawer-panel,
+#cart-drawer-panel *,
 #profile-panel,
 #profile-panel *,
 #guest-profile-login-wrapper,
 #guest-profile-login-wrapper *,
+#auth-root-view,
+#auth-root-view *,
+.shop-container,
+.shop-container *,
 .no-scrollbar {
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
@@ -54,7 +68,9 @@ html:has(#shop-panel)::-webkit-scrollbar,
 body:has(#profile-panel)::-webkit-scrollbar,
 html:has(#profile-panel)::-webkit-scrollbar,
 body:has(#guest-profile-login-wrapper)::-webkit-scrollbar,
-html:has(#guest-profile-login-wrapper)::-webkit-scrollbar {
+html:has(#guest-profile-login-wrapper)::-webkit-scrollbar,
+body:has(#auth-root-view)::-webkit-scrollbar,
+html:has(#auth-root-view)::-webkit-scrollbar {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
@@ -65,7 +81,9 @@ html:has(#shop-panel),
 body:has(#profile-panel),
 html:has(#profile-panel),
 body:has(#guest-profile-login-wrapper),
-html:has(#guest-profile-login-wrapper) {
+html:has(#guest-profile-login-wrapper),
+body:has(#auth-root-view),
+html:has(#auth-root-view) {
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
 }
