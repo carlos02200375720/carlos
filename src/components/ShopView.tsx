@@ -511,7 +511,7 @@ export default function ShopView({
   // Success Order State
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
 
-  // Scroll Header Auto-Hide / Auto-Show states
+  // Scroll Header Auto-Hide / Auto-Show states: Hide header only after passing the first 2 product cards
   const [showHeader, setShowHeader] = useState(true);
   const lastScrollY = useRef(0);
 
@@ -519,19 +519,32 @@ export default function ShopView({
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
 
+      // Calculate dynamic threshold based on first 2 product cards (approx height on mobile/desktop)
+      // On mobile grid (2 columns), first 2 cards are row 1 (~240-280px tall)
+      let hideThreshold = 220;
+      const secondProductCard = document.getElementById("prod-card-1") || document.querySelector("[id^='prod-card-']");
+      if (secondProductCard) {
+        const rect = secondProductCard.getBoundingClientRect();
+        const cardBottom = rect.bottom + window.scrollY;
+        if (cardBottom > 100) {
+          hideThreshold = Math.max(180, cardBottom - 80);
+        }
+      }
+
       // Avoid triggering on tiny adjustments
-      if (Math.abs(currentScrollY - lastScrollY.current) < 5) {
+      if (Math.abs(currentScrollY - lastScrollY.current) < 6) {
         return;
       }
 
-      if (currentScrollY <= 10) {
-        // Always show header at the top
+      // Only hide header when user has scrolled DOWN past the first 2 product cards
+      if (currentScrollY <= hideThreshold) {
+        // While within or above the first 2 cards, always show header
         setShowHeader(true);
       } else if (currentScrollY > lastScrollY.current) {
-        // Scroll para abajo (scroll down): cabecera se agacha (oculta)
+        // Scrolled down and past first 2 product cards: hide header
         setShowHeader(false);
       } else {
-        // Scroll para arriba (scroll up): cabecera aparece
+        // Scrolling up: show header
         setShowHeader(true);
       }
 

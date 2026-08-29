@@ -397,7 +397,7 @@ export default function ProfileView({
 
   if (isGuestMode) {
     return (
-      <div className="w-full max-w-4xl mx-auto pb-32 sm:pb-36" id="guest-profile-login-wrapper" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <div className="w-full max-w-4xl mx-auto pb-20 sm:pb-24" id="guest-profile-login-wrapper" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         <LoginView
           users={users}
           onRefreshUsers={onRefreshUsers || (() => {})}
@@ -414,7 +414,7 @@ export default function ProfileView({
 
   if (loading) {
     return (
-      <div className="w-full max-w-4xl mx-auto h-[550px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500 pb-32">
+      <div className="w-full max-w-4xl mx-auto h-[550px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500 pb-20">
         <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
         <p className="text-xs font-semibold mt-4">Sincronizando perfil...</p>
       </div>
@@ -423,7 +423,7 @@ export default function ProfileView({
 
   if (!profileUser) {
     return (
-      <div className="w-full max-w-4xl mx-auto h-[450px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500 p-6 text-center pb-32">
+      <div className="w-full max-w-4xl mx-auto h-[450px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500 p-6 text-center pb-20">
         <p className="font-bold text-slate-700">Perfil no disponible</p>
         <button onClick={onBackToSelf} className="mt-4 px-4 py-2 bg-amber-500 text-slate-950 font-bold rounded-xl text-xs">
           Regresar a mi perfil
@@ -433,7 +433,7 @@ export default function ProfileView({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto min-h-[600px] bg-white rounded-none sm:rounded-t-none sm:rounded-b-2xl border-0 sm:border sm:border-slate-200 shadow-none sm:shadow-xl overflow-hidden flex flex-col no-scrollbar pb-32 sm:pb-36 md:pb-20" id="profile-panel" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+    <div className="w-full max-w-4xl mx-auto min-h-[600px] bg-white rounded-none sm:rounded-t-none sm:rounded-b-2xl border-0 sm:border sm:border-slate-200 shadow-none sm:shadow-xl overflow-hidden flex flex-col no-scrollbar pb-20 sm:pb-24 md:pb-16" id="profile-panel" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
       {/* Profile Header Image Backbanner */}
       <div className="h-40 bg-slate-900 relative overflow-hidden rounded-t-none">
         {profileUser.coverPhoto ? (

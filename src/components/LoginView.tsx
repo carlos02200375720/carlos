@@ -156,7 +156,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
   const displayUsers = users.filter(u => u.id !== "current_user" && u.username !== "invitado");
 
   return (
-    <div className="w-full min-h-screen bg-slate-950 flex flex-col justify-start md:justify-center items-center p-4 sm:p-6 pb-32 sm:pb-36 md:py-12 md:pb-20 relative overflow-y-auto no-scrollbar" id="auth-root-view" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+    <div className="w-full min-h-screen bg-slate-950 flex flex-col justify-start md:justify-center items-center p-4 sm:p-6 pb-20 sm:pb-24 md:py-12 md:pb-16 relative overflow-y-auto no-scrollbar" id="auth-root-view" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
       {/* Dynamic Background Gradients */}
       <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 via-rose-500/5 to-slate-950 opacity-90 z-0" />
       <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-amber-500/10 blur-3xl z-0" />
