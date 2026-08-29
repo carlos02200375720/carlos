@@ -736,12 +736,18 @@ async function startServer() {
     let user: any = null;
 
     // Dynamic current_user resolver to preserve user session
-    if (rawParam === "current_user" || cleanParam === "current_user") {
+    if (
+      rawParam === "current_user" ||
+      cleanParam === "current_user" ||
+      cleanParam === "invitado" ||
+      cleanParam === "user_guest" ||
+      cleanParam === "guest"
+    ) {
       let activeUser: any = null;
       const targetIdentifier = headerUsername || queryUsername || headerUserId || queryUserId;
 
       if (mongoose.connection.readyState === 1) {
-        if (targetIdentifier && targetIdentifier !== "invitado" && targetIdentifier !== "user_guest" && targetIdentifier !== "current_user") {
+        if (targetIdentifier && targetIdentifier !== "invitado" && targetIdentifier !== "user_guest" && targetIdentifier !== "current_user" && targetIdentifier !== "guest") {
           activeUser = await MongoUser.findOne({
             $or: [
               { username: targetIdentifier.toLowerCase() },
@@ -751,12 +757,12 @@ async function startServer() {
           });
         }
 
-        if (!activeUser && activeOriginalUserId && activeOriginalUserId !== "user_guest" && activeOriginalUserId !== "current_user") {
+        if (!activeUser && activeOriginalUserId && activeOriginalUserId !== "user_guest" && activeOriginalUserId !== "current_user" && activeOriginalUserId !== "invitado") {
           activeUser = await MongoUser.findOne({ id: activeOriginalUserId });
         }
       }
 
-      if (!activeUser && targetIdentifier && targetIdentifier !== "invitado" && targetIdentifier !== "user_guest") {
+      if (!activeUser && targetIdentifier && targetIdentifier !== "invitado" && targetIdentifier !== "user_guest" && targetIdentifier !== "guest") {
         activeUser = dbUsers.find(u =>
           u.username?.toLowerCase() === targetIdentifier.toLowerCase() ||
           u.id === targetIdentifier ||
@@ -764,7 +770,7 @@ async function startServer() {
         );
       }
 
-      if (activeUser) {
+      if (activeUser && activeUser.username !== "invitado" && !activeUser.isGuest) {
         user = {
           id: "current_user",
           originalId: activeUser.id,
@@ -783,7 +789,7 @@ async function startServer() {
           email: activeUser.email || ""
         };
       } else {
-        // Fallback to transient memory guest user if no session is found
+        // Safe guest user representation
         user = {
           id: "current_user",
           username: "invitado",
@@ -793,6 +799,7 @@ async function startServer() {
           isOnline: false,
           followers: 0,
           following: 0,
+          followingUserIds: [],
           savedReelIds: [],
           coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
           isGuest: true,

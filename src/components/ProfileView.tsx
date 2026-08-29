@@ -293,18 +293,30 @@ export default function ProfileView({
   };
 
   useEffect(() => {
-    if (isSelf && currentUser && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest) {
-      setProfileUser(currentUser);
-      setEditName(currentUser.name || "");
-      setEditUsername(currentUser.username || "");
-      setEditBio(currentUser.bio || "");
-      setEditAvatar(currentUser.avatar || "");
-      setEditCoverPhoto(currentUser.coverPhoto || "");
+    if (isSelf) {
+      if (currentUser && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest) {
+        setProfileUser(currentUser);
+        setEditName(currentUser.name || "");
+        setEditUsername(currentUser.username || "");
+        setEditBio(currentUser.bio || "");
+        setEditAvatar(currentUser.avatar || "");
+        setEditCoverPhoto(currentUser.coverPhoto || "");
+      } else {
+        setProfileUser(currentUser);
+      }
     }
   }, [currentUser, isSelf]);
 
   useEffect(() => {
     if (!activeUserId) return;
+
+    // If viewing own guest profile, don't trigger unnecessary network fetch
+    if (isSelf && (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || !currentUser.username)) {
+      setProfileUser(currentUser);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     
     const targetEndpoint = isSelf && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest
@@ -335,19 +347,19 @@ export default function ProfileView({
           setUserReels(deduplicateById(data.reels || []));
           setUserOrders(deduplicateById(data.orders || []));
           setSavedReels(deduplicateById(data.savedReels || []));
-        } else if (isSelf && currentUser && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest) {
+        } else if (isSelf) {
           setProfileUser(currentUser);
         }
         setLoading(false);
       })
       .catch((err) => {
-        console.error("Error loading profile:", err);
-        if (isSelf && currentUser && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest) {
+        console.warn("Could not fetch remote user details, using client state:", err);
+        if (isSelf) {
           setProfileUser(currentUser);
         }
         setLoading(false);
       });
-  }, [activeUserId, currentUser.username, currentUser.avatar, currentUser.isGuest, currentUser.originalId, isSelf]);
+  }, [activeUserId, currentUser, isSelf]);
 
   // Calculate Creator Dashboard metrics (sum likes, views, comments)
   const totalViews = userReels.reduce((acc, r) => acc + r.views, 0);
@@ -378,30 +390,9 @@ export default function ProfileView({
     }
   };
 
-  if (loading) {
-    return (
-      <div className="w-full max-w-4xl mx-auto h-[550px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500">
-        <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-xs font-semibold mt-4">Sincronizando perfil...</p>
-      </div>
-    );
-  }
-
-  if (!profileUser) {
-    return (
-      <div className="w-full max-w-4xl mx-auto h-[450px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
-        <p className="font-bold text-slate-700">Error al cargar perfil</p>
-        <button onClick={onBackToSelf} className="mt-4 px-4 py-2 bg-amber-500 text-slate-950 font-bold rounded-xl text-xs">
-          Regresar a mi perfil
-        </button>
-      </div>
-    );
-  }
-
   const isGuestMode =
     isSelf &&
-    (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || !currentUser.username) &&
-    (!profileUser || profileUser.isGuest || profileUser.username === "invitado" || !profileUser.username);
+    (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || !currentUser.username);
 
   if (isGuestMode) {
     return (
@@ -416,6 +407,26 @@ export default function ProfileView({
             }
           }}
         />
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="w-full max-w-4xl mx-auto h-[550px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500">
+        <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-xs font-semibold mt-4">Sincronizando perfil...</p>
+      </div>
+    );
+  }
+
+  if (!profileUser) {
+    return (
+      <div className="w-full max-w-4xl mx-auto h-[450px] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
+        <p className="font-bold text-slate-700">Perfil no disponible</p>
+        <button onClick={onBackToSelf} className="mt-4 px-4 py-2 bg-amber-500 text-slate-950 font-bold rounded-xl text-xs">
+          Regresar a mi perfil
+        </button>
       </div>
     );
   }

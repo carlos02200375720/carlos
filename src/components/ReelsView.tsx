@@ -90,7 +90,11 @@ export default function ReelsView({
             const playPromise = video.play();
             if (playPromise !== undefined) {
               playPromise.catch((err) => {
-                console.log("Autoplay notification:", err);
+                // If browser blocks unmuted autoplay without user interaction, mute and retry silently
+                if (err?.name === "NotAllowedError" && !video.muted) {
+                  video.muted = true;
+                  video.play().catch(() => {});
+                }
               });
             }
           } else {

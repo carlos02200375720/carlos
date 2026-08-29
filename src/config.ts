@@ -7,6 +7,22 @@ export const BACKEND_URL: string =
   (import.meta as any).env?.VITE_BACKEND_URL || CLOUD_RUN_BACKEND_URL;
 
 /**
+ * Helper to determine if we are running on an external static frontend host (Vercel, Netlify, GitHub Pages, etc.)
+ */
+export const isExternalStaticHost = (): boolean => {
+  if (typeof window === "undefined" || !window.location) return false;
+  const host = window.location.hostname.toLowerCase();
+  return (
+    host.includes("vercel.app") ||
+    host.includes("netlify.app") ||
+    host.includes("pages.dev") ||
+    host.includes("github.io") ||
+    host.includes("surge.sh") ||
+    host.includes("render.com")
+  );
+};
+
+/**
  * Helper to determine if we are running in a native mobile wrapper (Capacitor / Cordova / Ionic on Android/iOS)
  */
 export const isNativeMobileWrapper = (): boolean => {
@@ -39,22 +55,18 @@ export const isNativeMobileWrapper = (): boolean => {
  * Helper to get the correct API endpoint URL.
  * In web browsers (Dev, Preview, Production web hosting), relative paths (`/api/...`) connect directly
  * to the container's active server without CORS or cross-origin issues.
- * In native wrappers (Capacitor / Cordova on Android & iOS), it prefixes with the remote backend URL.
+ * In native wrappers (Capacitor / Cordova on Android & iOS) or static hosting (Vercel), it prefixes with the remote Cloud Run backend URL.
  */
 export const getApiUrl = (path: string): string => {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
 
-  // In any standard browser environment (web app, dev, preview, shared build), use relative URLs
-  if (typeof window !== "undefined" && !isNativeMobileWrapper()) {
-    return cleanPath;
-  }
-
-  // In native Android / iOS wrappers, connect to the Cloud Run backend
-  if (BACKEND_URL) {
-    const trimmedBackend = BACKEND_URL.replace(/\/$/, "");
+  // In native Android/iOS wrappers or static hosts like Vercel, connect to the Cloud Run backend
+  if (isNativeMobileWrapper() || isExternalStaticHost()) {
+    const trimmedBackend = (BACKEND_URL || CLOUD_RUN_BACKEND_URL).replace(/\/$/, "");
     return `${trimmedBackend}${cleanPath}`;
   }
 
+  // In standard container dev/preview/production servers, use relative URLs
   return cleanPath;
 };
 
@@ -62,11 +74,19 @@ export const getApiUrl = (path: string): string => {
  * Helper to get the correct WebSocket server URL.
  */
 export const getWebSocketUrl = (): string => {
-  if (typeof window !== "undefined" && !isNativeMobileWrapper()) {
-    if (window.location.protocol.startsWith("http")) {
-      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const host = window.location.host;
-      return `${wsProtocol}//${host}`;
+  if (typeof window !== "undefined") {
+    // If not native mobile and not external static host (i.e. running on local dev or Cloud Run directly)
+    if (!isNativeMobileWrapper() && !isExternalStaticHost()) {
+      const isLocalOrContainer =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.hostname.includes("run.app");
+
+      if (isLocalOrContainer && window.location.protocol.startsWith("http")) {
+        const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const host = window.location.host;
+        return `${wsProtocol}//${host}`;
+      }
     }
   }
 
