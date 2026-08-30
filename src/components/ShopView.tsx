@@ -2045,7 +2045,7 @@ export default function ShopView({
                       ) : null}
                     </div>
                     <span className="text-[10.5px]">
-                      {isAllCartSelected ? "Deseleccionar" : "Todo"} ({selectedCartIndices.length}/{cart.length})
+                      {isAllCartSelected ? "Quitar" : "Todo"} ({selectedCartIndices.length}/{cart.length})
                     </span>
                   </button>
                 )}

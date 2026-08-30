@@ -1099,7 +1099,12 @@ export default function ReelsView({
               id="cart-drawer-panel"
             >
               {/* Drawer Header */}
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+              <div 
+                className="px-4 pb-3 border-b border-slate-100 flex items-center justify-between bg-white shrink-0"
+                style={{
+                  paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 0.85rem))"
+                }}
+              >
                 <div className="flex items-center space-x-2.5">
                   <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600">
                     <ShoppingBag className="w-4 h-4" />
@@ -1133,7 +1138,7 @@ export default function ReelsView({
                         ) : null}
                       </div>
                       <span className="text-[10.5px]">
-                        {isAllCartSelected ? "Deseleccionar" : "Todo"} ({selectedCartIndices.length}/{cart.length})
+                        {isAllCartSelected ? "Quitar" : "Todo"} ({selectedCartIndices.length}/{cart.length})
                       </span>
                     </button>
                   )}
