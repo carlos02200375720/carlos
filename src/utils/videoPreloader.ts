@@ -1,167 +1,105 @@
 /**
- * Video Preload & Local Memory Buffer Cache Engine
- * Keeps a continuous sliding window of up to 10 upcoming videos pre-downloaded
- * into device memory (RAM / Blob URLs) so Reels playback is completely instant and smooth.
+ * Video Preload & Smooth Buffer Cache Engine
+ * Preloads upcoming videos in the background to ensure instant playback.
  */
 
 class VideoPreloader {
-  private cache = new Map<string, { blobUrl: string; timestamp: number }>();
-  private activeControllers = new Map<string, AbortController>();
-  private inFlight = new Set<string>();
-  private listeners = new Set<() => void>();
-  private maxCacheSize = 15; // Keep active window of up to 15 video blobs in RAM
-  private isProcessing = false;
+  private preloadedUrls = new Set<string>();
+  private prefetchElements = new Map<string, HTMLVideoElement>();
+  private maxPrefetchPool = 4;
   private queue: string[] = [];
+  private isProcessing = false;
 
-  // Subscribe to cache updates (triggers React re-render when a video finishes downloading to RAM)
-  public subscribe(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+  public subscribe(_listener: () => void): () => void {
+    return () => {};
   }
 
-  private notify() {
-    this.listeners.forEach((listener) => {
-      try {
-        listener();
-      } catch (err) {
-        console.error("Error in video cache listener:", err);
-      }
-    });
-  }
-
-  // Get cached blob: URL from device RAM, or fallback to original URL
   public getVideoSrc(url?: string): string {
-    if (!url) return "";
-    const cached = this.cache.get(url);
-    if (cached) {
-      return cached.blobUrl;
-    }
-    return url;
+    return url || "";
   }
 
   public isCached(url?: string): boolean {
     if (!url) return false;
-    return this.cache.has(url);
+    return this.preloadedUrls.has(url);
   }
 
-  // Update target queue for next 10 videos from the current active reel index
   public updateQueue(videoUrls: string[], currentIndex: number) {
     if (!videoUrls || videoUrls.length === 0) return;
+    if (typeof window === "undefined" || typeof document === "undefined") return;
 
-    // Filter valid URLs
-    const validUrls = videoUrls.filter((u) => u && typeof u === "string" && (u.startsWith("http") || u.startsWith("blob:")));
+    const validUrls = videoUrls.filter(
+      (u) => u && typeof u === "string" && (u.startsWith("http") || u.startsWith("blob:") || u.startsWith("/"))
+    );
 
-    // Select the current video + next 9 videos (total 10 in priority window)
+    // Target the next 2 videos ahead and 1 behind for swipe readiness
     const targetUrls: string[] = [];
-    const count = Math.min(10, validUrls.length);
-
-    for (let i = 0; i < count; i++) {
-      const idx = (currentIndex + i) % validUrls.length;
+    const windowOffsets = [0, 1, 2, -1];
+    
+    windowOffsets.forEach((offset) => {
+      const idx = (currentIndex + offset + validUrls.length) % validUrls.length;
       const url = validUrls[idx];
       if (url && !targetUrls.includes(url)) {
         targetUrls.push(url);
       }
-    }
+    });
 
     this.queue = targetUrls;
-    this.cleanupOld(targetUrls);
     this.processQueue();
   }
 
-  // Clean up videos that are no longer in the priority window to free RAM
-  private cleanupOld(keepUrls: string[]) {
-    if (this.cache.size <= this.maxCacheSize) return;
-
-    const keepSet = new Set(keepUrls);
-    for (const [url, item] of this.cache.entries()) {
-      if (!keepSet.has(url)) {
-        try {
-          URL.revokeObjectURL(item.blobUrl);
-        } catch {
-          // ignore
-        }
-        this.cache.delete(url);
-      }
-      if (this.cache.size <= this.maxCacheSize) break;
-    }
-  }
-
-  // Sequentially or in small batches download videos to local memory
-  private async processQueue() {
+  private processQueue() {
     if (this.isProcessing) return;
     this.isProcessing = true;
 
     try {
-      while (this.queue.length > 0) {
-        // Grab the next URL that isn't cached or in flight
-        const nextUrl = this.queue.shift();
-        if (!nextUrl || this.cache.has(nextUrl) || this.inFlight.has(nextUrl) || nextUrl.startsWith("blob:")) {
-          continue;
-        }
+      this.queue.forEach((url) => {
+        if (this.preloadedUrls.has(url)) return;
 
-        await this.downloadVideoToMemory(nextUrl);
-      }
+        // Pre-warm media decoder buffer using pool of background video elements
+        if (!this.prefetchElements.has(url)) {
+          try {
+            if (this.prefetchElements.size >= this.maxPrefetchPool) {
+              const oldestKey = this.prefetchElements.keys().next().value;
+              if (oldestKey) {
+                const oldEl = this.prefetchElements.get(oldestKey);
+                if (oldEl) {
+                  oldEl.src = "";
+                  oldEl.load();
+                }
+                this.prefetchElements.delete(oldestKey);
+              }
+            }
+
+            const bgVideo = document.createElement("video");
+            bgVideo.preload = "auto";
+            bgVideo.muted = true;
+            bgVideo.playsInline = true;
+            bgVideo.src = url;
+            bgVideo.load();
+
+            this.prefetchElements.set(url, bgVideo);
+            this.preloadedUrls.add(url);
+          } catch {
+            // ignore
+          }
+        }
+      });
     } finally {
       this.isProcessing = false;
     }
   }
 
-  private async downloadVideoToMemory(url: string): Promise<void> {
-    this.inFlight.add(url);
-    const controller = new AbortController();
-    this.activeControllers.set(url, controller);
-
-    try {
-      const response = await fetch(url, {
-        signal: controller.signal,
-        mode: "cors",
-        credentials: "omit",
-      });
-
-      if (!response.ok) {
-        // If HTTP status is not 2xx, fallback to standard streaming
-        return;
-      }
-
-      const blob = await response.blob();
-      // Ensure it is typed as video/mp4 blob
-      const videoBlob = blob.type.startsWith("video/") 
-        ? blob 
-        : new Blob([blob], { type: "video/mp4" });
-
-      const blobUrl = URL.createObjectURL(videoBlob);
-      this.cache.set(url, {
-        blobUrl,
-        timestamp: Date.now(),
-      });
-
-      // Notify components that this video is now instantly ready in RAM
-      this.notify();
-    } catch (err: any) {
-      if (err.name !== "AbortError") {
-        // Silent fallback to direct URL
-      }
-    } finally {
-      this.inFlight.delete(url);
-      this.activeControllers.delete(url);
-    }
-  }
-
-  // Clear all cached memory blobs (e.g. on unmount or logout)
   public clearAll() {
-    this.activeControllers.forEach((ctrl) => ctrl.abort());
-    this.activeControllers.clear();
-    this.inFlight.clear();
-    this.cache.forEach((item) => {
+    this.prefetchElements.forEach((el) => {
       try {
-        URL.revokeObjectURL(item.blobUrl);
+        el.src = "";
+        el.load();
       } catch {
         // ignore
       }
     });
-    this.cache.clear();
+    this.prefetchElements.clear();
+    this.preloadedUrls.clear();
     this.queue = [];
   }
 }

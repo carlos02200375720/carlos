@@ -42,7 +42,7 @@ export default function ReelsView({
 }: ReelsViewProps) {
   const [activeReelIndex, setActiveReelIndex] = useState(0);
   const [displayCount, setDisplayCount] = useState<number>(() => Math.max(reels.length * 2, 8));
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [, setPreloaderRevision] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -155,42 +155,64 @@ export default function ReelsView({
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
 
+  const playVideoSafely = (video: HTMLVideoElement) => {
+    video.muted = isMuted;
+    video.defaultMuted = isMuted;
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(() => {
+        // If autoplay with sound is blocked by browser policy before user interaction, fallback to muted
+        video.muted = true;
+        video.play().catch(() => {});
+      });
+    }
+  };
+
+  // Play active video smoothly, pause others, and buffer adjacent video elements
   useEffect(() => {
-    // Play active video smoothly, pause others, and buffer adjacent video elements
     displayedReels.forEach((reel, idx) => {
       const video = videoRefs.current[idx];
       if (video) {
+        const dist = Math.abs(idx - activeReelIndex);
         if (idx === activeReelIndex) {
           if (isPlaying) {
-            video.muted = isMuted;
-            video.defaultMuted = isMuted;
-            const playPromise = video.play();
-            if (playPromise !== undefined) {
-              playPromise.catch((err) => {
-                // If browser blocks unmuted autoplay before user interaction, mute safely and continue
-                if (!video.muted) {
-                  video.muted = true;
-                  video.play().catch(() => {});
-                }
-              });
-            }
+            playVideoSafely(video);
           } else {
             video.pause();
           }
         } else {
           video.pause();
-          const dist = Math.abs(idx - activeReelIndex);
-          if (dist <= 10) {
-            // Buffer up to 10 upcoming video elements in the background
+          if (dist <= 2) {
+            // Buffer adjacent videos
             video.preload = "auto";
-          } else {
-            // Far away reels: release GPU texture memory
+          } else if (dist > 5) {
             video.currentTime = 0;
           }
         }
       }
     });
   }, [activeReelIndex, displayedReels, isPlaying, isMuted]);
+
+  // Ensure unmuted playback unlocks seamlessly upon first user touch/click
+  useEffect(() => {
+    const handleFirstGesture = () => {
+      const activeVideo = videoRefs.current[activeReelIndex];
+      if (activeVideo) {
+        if (!isMuted && activeVideo.muted) {
+          activeVideo.muted = false;
+        }
+        if (isPlaying && activeVideo.paused) {
+          playVideoSafely(activeVideo);
+        }
+      }
+    };
+    window.addEventListener('touchstart', handleFirstGesture, { passive: true });
+    window.addEventListener('click', handleFirstGesture);
+    return () => {
+      window.removeEventListener('touchstart', handleFirstGesture);
+      window.removeEventListener('click', handleFirstGesture);
+    };
+  }, [activeReelIndex, isMuted, isPlaying]);
 
   // Handle scroll detection for snap scroll & continuous infinite expansion
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -540,8 +562,8 @@ export default function ReelsView({
                   <div
                     className="relative w-full h-full rounded-none overflow-hidden flex items-center justify-center bg-black"
                   >
-                    {/* Media Element: 100% width and height */}
-                    {reel.type === "image" ? (
+                    {/* Media Element: Smart detection by videoUrl & type */}
+                    {(reel.type === "image" && (!reel.videoUrl || reel.videoUrl.trim() === "")) ? (
                       <img
                         src={(reel.images?.[0] && !reel.images[0].includes("1618005182384")) ? reel.images[0] : (reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") ? reel.thumbnailUrl : "")}
                         alt={reel.description}
@@ -566,7 +588,7 @@ export default function ReelsView({
                         style={{ touchAction: "pan-y" }}
                         referrerPolicy="no-referrer"
                       />
-                    ) : reel.type === "carousel" ? (
+                    ) : (reel.type === "carousel" && (!reel.videoUrl || reel.videoUrl.trim() === "")) ? (
                       <div className="w-full h-full flex items-center justify-center bg-black">
                         <ReelCarousel 
                           images={(reel.images || [reel.thumbnailUrl]).filter((img): img is string => !!img && !img.includes("1618005182384"))} 
@@ -575,92 +597,92 @@ export default function ReelsView({
                         />
                       </div>
                     ) : (
-                      <video
-                        ref={(el) => {
-                          videoRefs.current[index] = el;
-                          if (el) {
-                            el.muted = isMuted;
-                            el.defaultMuted = isMuted;
-                          }
-                        }}
-                        src={videoPreloader.getVideoSrc(reel.videoUrl)}
-                        poster={(reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".mp4")) ? reel.thumbnailUrl : undefined}
-                        loop
-                        autoPlay={isCurrent}
-                        muted={isMuted}
-                        playsInline
-                        // @ts-ignore
-                        webkit-playsinline="true"
-                        // @ts-ignore
-                        x5-playsinline="true"
-                        // @ts-ignore
-                        x5-video-player-type="h5-page"
-                        disablePictureInPicture
-                        disableRemotePlayback
-                        controls={false}
-                        preload={Math.abs(index - activeReelIndex) <= 10 ? "auto" : "metadata"}
-                        onClick={() => handleVideoClick(index)}
-                        onDoubleClick={() => handleDoubleTap(reel.id)}
-                        onLoadStart={() => {
-                          if (isCurrent) {
-                            setMediaLoading((prev) => ({ ...prev, [reel.id]: true }));
-                          }
-                        }}
-                        onWaiting={() => {
-                          if (isCurrent) {
-                            setMediaLoading((prev) => ({ ...prev, [reel.id]: true }));
-                          }
-                        }}
-                        onPlaying={() => {
-                          setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                        }}
-                        onCanPlay={(e) => {
-                          setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                          if (isCurrent && isPlaying) {
-                            const p = e.currentTarget.play();
-                            if (p !== undefined) {
-                              p.catch(() => {});
+                        <video
+                          ref={(el) => {
+                            videoRefs.current[index] = el;
+                            if (el) {
+                              el.muted = isMuted;
+                              el.defaultMuted = isMuted;
+                              if (isCurrent && isPlaying && el.paused) {
+                                playVideoSafely(el);
+                              }
                             }
-                          }
-                        }}
-                        onLoadedData={() => {
-                          setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                        }}
-                        onError={() => {
-                          setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                        }}
-                        onTimeUpdate={(e) => {
-                          if (isCurrent) {
-                            if (mediaLoading[reel.id]) {
-                              setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                          }}
+                          src={videoPreloader.getVideoSrc(reel.videoUrl || (reel.thumbnailUrl?.endsWith(".mp4") ? reel.thumbnailUrl : ""))}
+                          poster={(reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".mp4")) ? reel.thumbnailUrl : undefined}
+                          loop
+                          autoPlay={isCurrent}
+                          muted={isMuted}
+                          playsInline
+                          // @ts-ignore
+                          webkit-playsinline="true"
+                          // @ts-ignore
+                          x5-playsinline="true"
+                          // @ts-ignore
+                          x5-video-player-type="h5-page"
+                          disablePictureInPicture
+                          disableRemotePlayback
+                          controls={false}
+                          preload={Math.abs(index - activeReelIndex) <= 2 ? "auto" : "metadata"}
+                          onClick={() => handleVideoClick(index)}
+                          onDoubleClick={() => handleDoubleTap(reel.id)}
+                          onWaiting={() => {
+                            if (isCurrent) {
+                              setMediaLoading((prev) => ({ ...prev, [reel.id]: true }));
                             }
-                            setCurrentTime(e.currentTarget.currentTime);
-                            setDuration(e.currentTarget.duration || 0);
-                          }
-                        }}
-                        onLoadedMetadata={(e) => {
-                          if (isCurrent) {
-                            setDuration(e.currentTarget.duration || 0);
-                          }
-                          const isVert = e.currentTarget.videoHeight > e.currentTarget.videoWidth * 1.08;
-                          setMediaAspectRatios((prev) => ({
-                            ...prev,
-                            [reel.id]: isVert ? "vertical" : "horizontal_or_square",
-                          }));
-                        }}
-                        className={`w-full h-full cursor-pointer block bg-black ${
-                          mediaAspectRatios[reel.id] === "horizontal_or_square"
-                            ? "object-contain"
-                            : "object-cover"
-                        }`}
-                      />
+                          }}
+                          onPlaying={() => {
+                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                          }}
+                          onCanPlay={(e) => {
+                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                            if (isCurrent && isPlaying) {
+                              playVideoSafely(e.currentTarget);
+                            }
+                          }}
+                          onLoadedData={(e) => {
+                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                            if (isCurrent && isPlaying) {
+                              playVideoSafely(e.currentTarget);
+                            }
+                          }}
+                          onError={() => {
+                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                          }}
+                          onTimeUpdate={(e) => {
+                            if (isCurrent) {
+                              if (mediaLoading[reel.id]) {
+                                setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                              }
+                              setCurrentTime(e.currentTarget.currentTime);
+                              setDuration(e.currentTarget.duration || 0);
+                            }
+                          }}
+                          onLoadedMetadata={(e) => {
+                            if (isCurrent) {
+                              setDuration(e.currentTarget.duration || 0);
+                            }
+                            const isVert = e.currentTarget.videoHeight > e.currentTarget.videoWidth * 1.08;
+                            setMediaAspectRatios((prev) => ({
+                              ...prev,
+                              [reel.id]: isVert ? "vertical" : "horizontal_or_square",
+                            }));
+                          }}
+                          className={`w-full h-full cursor-pointer block bg-black ${
+                            mediaAspectRatios[reel.id] === "horizontal_or_square"
+                              ? "object-contain"
+                              : "object-cover"
+                          }`}
+                        />
                     )}
 
-                    {/* Black Loading Spinner Overlay for Media Buffering */}
+                    {/* Subtle Translucent Buffer Spinner (Never obscures video with solid black) */}
                     {isCurrent && mediaLoading[reel.id] && (
-                      <div className="absolute inset-0 z-15 bg-black flex flex-col items-center justify-center pointer-events-none transition-opacity duration-300">
-                        <div className="w-10 h-10 border-2 border-white/20 border-t-amber-500 rounded-full animate-spin" />
-                        <span className="text-[11px] text-white/60 font-semibold tracking-wider mt-3">Cargando publicación...</span>
+                      <div className="absolute inset-0 z-15 flex flex-col items-center justify-center pointer-events-none transition-opacity duration-200">
+                        <div className="p-3 bg-black/40 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center space-y-2 border border-white/10 shadow-lg">
+                          <div className="w-7 h-7 border-2 border-white/30 border-t-amber-400 rounded-full animate-spin" />
+                          <span className="text-[10px] text-white/80 font-medium tracking-wide">Cargando...</span>
+                        </div>
                       </div>
                     )}
 
@@ -981,7 +1003,7 @@ export default function ReelsView({
               </div>
 
               {/* Comments List */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {reels.find((r) => r.id === showComments)?.comments.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-slate-600 text-center font-bold">
                     <MessageCircle className="w-8 h-8 text-slate-400 mb-2" />

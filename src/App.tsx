@@ -1130,7 +1130,7 @@ export default function App() {
             />
           </div>
 
-          <div className="flex md:hidden flex-1 w-full min-h-screen" id="app-web-mobile-container">
+          <div className="flex md:hidden flex-1 w-full min-h-screen no-scrollbar" id="app-web-mobile-container" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             <MobileApp
               activeTab={activeTab}
               setActiveTab={setActiveTab}

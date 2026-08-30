@@ -156,17 +156,28 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
   const displayUsers = users.filter(u => u.id !== "current_user" && u.username !== "invitado");
 
   return (
-    <div className="w-full min-h-screen bg-slate-950 flex flex-col justify-start md:justify-center items-center p-4 sm:p-6 pb-20 sm:pb-24 md:py-12 md:pb-16 relative overflow-y-auto no-scrollbar" id="auth-root-view" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-      {/* Dynamic Background Gradients */}
-      <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 via-rose-500/5 to-slate-950 opacity-90 z-0" />
-      <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-amber-500/10 blur-3xl z-0" />
-      <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-rose-500/10 blur-3xl z-0" />
+    <div
+      className="w-full max-w-full min-h-screen bg-slate-950 flex flex-col justify-start md:justify-center items-center px-3 sm:px-6 relative overflow-x-hidden overflow-y-auto no-scrollbar"
+      id="auth-root-view"
+      style={{
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 3px)',
+        paddingBottom: 'calc(44px + env(safe-area-inset-bottom, 0px) + 5px)'
+      }}
+    >
+      {/* Dynamic Background Gradients (clipped to prevent horizontal scroll) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 via-rose-500/5 to-slate-950 opacity-90" />
+        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-amber-500/10 blur-3xl" />
+        <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-rose-500/10 blur-3xl" />
+      </div>
 
       {/* Main Authentication Card */}
-      <div className="w-full max-w-4xl bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row z-10 min-h-[580px] mb-8 md:mb-0">
+      <div className="w-full max-w-4xl bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row z-10 min-h-[500px] mb-0">
         
         {/* Left Side: Brand Promo Panel */}
-        <div className="md:w-5/12 bg-slate-950 p-8 flex flex-col justify-between text-white relative overflow-hidden shrink-0 border-b md:border-b-0 md:border-r border-slate-800">
+        <div className="md:w-5/12 bg-slate-950 p-6 sm:p-8 flex flex-col justify-between text-white relative overflow-hidden shrink-0 border-b md:border-b-0 md:border-r border-slate-800">
           <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/20 via-rose-500/5 to-slate-950 opacity-80 z-0" />
           
           <div className="relative z-10">

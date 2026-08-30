@@ -184,7 +184,7 @@ export default function SocialPanel({
       <div className="flex-1 overflow-hidden flex flex-col">
         {!activeChatUser ? (
           /* USERS LIST VIEW */
-          <div className="flex-1 overflow-y-auto p-4 max-w-md mx-auto w-full">
+          <div className="flex-1 overflow-y-auto p-4 max-w-md mx-auto w-full no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {/* TABS HEADER */}
             <div className="flex border-b border-slate-200 mb-6 w-full">
               <button
@@ -365,7 +365,7 @@ export default function SocialPanel({
             </div>
 
             {/* Message log */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/60">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/60 no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               {messages.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center text-center text-slate-600 p-4">
                   <MessageSquare className="w-8 h-8 text-slate-300 mb-2" />

@@ -112,11 +112,13 @@ export default function MobileApp({
   const isDarkNavActive = activeTab === 'reels';
 
   return (
-    <div className="w-full flex-1 flex flex-col relative" id="mobile-app-layout">
+    <div className="w-full flex-1 flex flex-col relative no-scrollbar" id="mobile-app-layout" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
       {/* Mobile Views Router Container */}
       <main
-        className={`flex-1 w-full ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
+        className={`flex-1 w-full no-scrollbar ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
         style={{
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
           marginBottom: (activeTab === 'messages' && activeChatUser) || isLiveViewerOpen || activeTab === 'reels'
             ? 0
             : undefined
@@ -182,31 +184,39 @@ export default function MobileApp({
             )}
 
             {activeTab === 'profile' && (
-              <ProfileView
-                currentUser={currentUser}
-                selectedCreatorId={selectedCreatorProfileId}
-                users={users}
-                onBackToSelf={() => setSelectedCreatorProfileId(null)}
-                onOpenDirectChat={openPrivateChatDirectly}
-                onSelectProduct={handleProductDetailsLink}
-                onSelectReel={handleReelLink}
-                onProfileUpdate={(updatedUser) => {
-                  setCurrentUser(updatedUser);
-                  localStorage.setItem("currentUserData", JSON.stringify(updatedUser));
-                  setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-                  if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
-                    setIsLoggedIn(true);
-                    localStorage.setItem("isLoggedIn", "true");
-                    localStorage.setItem("loggedInUsername", updatedUser.username);
-                    setSelectedCreatorProfileId(null);
-                    setActiveTab('profile');
-                  }
+              <div
+                className="w-full"
+                style={{
+                  paddingBottom: "calc(50px + env(safe-area-inset-bottom, 0px) + 5px)",
+                  marginBottom: "5px"
                 }}
-                onRefreshUsers={refreshAllData}
-                onPublishSuccess={refreshAllData}
-                onLogout={handleLogout}
-                socket={socket}
-              />
+              >
+                <ProfileView
+                  currentUser={currentUser}
+                  selectedCreatorId={selectedCreatorProfileId}
+                  users={users}
+                  onBackToSelf={() => setSelectedCreatorProfileId(null)}
+                  onOpenDirectChat={openPrivateChatDirectly}
+                  onSelectProduct={handleProductDetailsLink}
+                  onSelectReel={handleReelLink}
+                  onProfileUpdate={(updatedUser) => {
+                    setCurrentUser(updatedUser);
+                    localStorage.setItem("currentUserData", JSON.stringify(updatedUser));
+                    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+                    if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
+                      setIsLoggedIn(true);
+                      localStorage.setItem("isLoggedIn", "true");
+                      localStorage.setItem("loggedInUsername", updatedUser.username);
+                      setSelectedCreatorProfileId(null);
+                      setActiveTab('profile');
+                    }
+                  }}
+                  onRefreshUsers={refreshAllData}
+                  onPublishSuccess={refreshAllData}
+                  onLogout={handleLogout}
+                  socket={socket}
+                />
+              </div>
             )}
 
             {activeTab === 'messages' && (
@@ -230,45 +240,45 @@ export default function MobileApp({
       {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && (
         <div
           id="bottom-nav-bar"
-          className={`fixed bottom-0 inset-x-0 pt-1.5 px-2 z-30 border-0 shadow-none transition-colors ${
+          className={`fixed bottom-0 inset-x-0 pt-1 px-1 z-30 border-0 shadow-none transition-colors ${
             activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages'
                ? "bg-white text-slate-900"
                : "bg-black text-white"
           } md:hidden`}
           style={{
-            paddingBottom: 'max(0.45rem, calc(env(safe-area-inset-bottom, 0px) + 0.35rem))'
+            paddingBottom: 'max(0.2rem, calc(env(safe-area-inset-bottom, 0px) + 0.1rem))'
           }}
         >
-          <div className="max-w-md mx-auto flex items-center justify-around px-1">
+          <div className="max-w-md mx-auto flex items-center justify-around">
             
             {/* Tab 1: Reels */}
             <button
               onClick={() => { refreshReels(); setActiveTab('reels'); }}
-              className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer ${
+              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
                 activeTab === 'reels'
                   ? "text-amber-500 scale-105"
                   : "text-slate-400 hover:text-white"
               }`}
               id="nav-reels"
             >
-              <Play className={`w-6 h-6 transition-all ${activeTab === 'reels' ? "fill-amber-500 stroke-amber-500" : ""}`} />
-              <span className="text-[10px] font-bold mt-1 tracking-tight">Reels</span>
+              <Play className={`w-5 h-5 transition-all ${activeTab === 'reels' ? "fill-amber-500 stroke-amber-500" : ""}`} />
+              <span className="text-[9px] font-semibold mt-0.5 tracking-tight">Reels</span>
             </button>
 
             {/* Tab 2: Shop */}
             <button
               onClick={() => setActiveTab('shop')}
-              className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer relative ${
+              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer relative ${
                 activeTab === 'shop'
                   ? "text-amber-600 scale-105"
                   : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
               }`}
               id="nav-shop"
             >
-              <ShoppingBag className={`w-6 h-6 transition-all ${activeTab === 'shop' ? "fill-amber-600 stroke-amber-600" : ""}`} />
-              <span className="text-[10px] font-bold mt-1 tracking-tight">Tienda</span>
+              <ShoppingBag className={`w-5 h-5 transition-all ${activeTab === 'shop' ? "fill-amber-600 stroke-amber-600" : ""}`} />
+              <span className="text-[9px] font-semibold mt-0.5 tracking-tight">Tienda</span>
               {cart.length > 0 && (
-                <span className="absolute top-1 right-2 w-4 h-4 bg-amber-500 text-slate-950 font-mono font-black text-[9px] rounded-full flex items-center justify-center border-2 border-black">
+                <span className="absolute top-0.5 right-1.5 w-3.5 h-3.5 bg-amber-500 text-slate-950 font-mono font-black text-[8px] rounded-full flex items-center justify-center border border-black">
                   {cart.reduce((s, i) => s + (i.quantity || 1), 0)}
                 </span>
               )}
@@ -277,17 +287,17 @@ export default function MobileApp({
             {/* Tab 3: Messages */}
             <button
               onClick={() => setActiveTab('messages')}
-              className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer relative ${
+              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer relative ${
                 activeTab === 'messages'
                   ? "text-amber-600 scale-105"
                   : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
               }`}
               id="nav-messages"
             >
-              <MessageSquare className={`w-6 h-6 transition-all ${activeTab === 'messages' ? "fill-amber-600 stroke-amber-600" : ""}`} />
-              <span className="text-[10px] font-bold mt-1 tracking-tight">Mensajes</span>
+              <MessageSquare className={`w-5 h-5 transition-all ${activeTab === 'messages' ? "fill-amber-600 stroke-amber-600" : ""}`} />
+              <span className="text-[9px] font-semibold mt-0.5 tracking-tight">Mensajes</span>
               {totalUnreads > 0 && (
-                <span className="absolute top-1 right-2 w-4 h-4 bg-rose-500 text-white font-mono font-black text-[9px] rounded-full flex items-center justify-center border-2 border-black animate-pulse">
+                <span className="absolute top-0.5 right-1.5 w-3.5 h-3.5 bg-rose-500 text-white font-mono font-black text-[8px] rounded-full flex items-center justify-center border border-black animate-pulse">
                   {totalUnreads}
                 </span>
               )}
@@ -299,15 +309,15 @@ export default function MobileApp({
                 setSelectedCreatorProfileId(null);
                 setActiveTab('profile');
               }}
-              className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer ${
+              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
                 activeTab === 'profile'
                   ? "text-amber-600 scale-105"
                   : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
               }`}
               id="nav-profile"
             >
-              <UserIcon className={`w-6 h-6 transition-all ${activeTab === 'profile' ? "fill-amber-600 stroke-amber-600" : ""}`} />
-              <span className="text-[10px] font-bold mt-1 tracking-tight">
+              <UserIcon className={`w-5 h-5 transition-all ${activeTab === 'profile' ? "fill-amber-600 stroke-amber-600" : ""}`} />
+              <span className="text-[9px] font-semibold mt-0.5 tracking-tight">
                 {currentUser.username === "invitado" ? "Cuenta" : "Perfil"}
               </span>
             </button>

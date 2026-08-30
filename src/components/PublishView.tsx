@@ -1255,7 +1255,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                       </span>
                       <span className="text-[9px] bg-amber-500/20 text-amber-700 font-mono font-bold px-1.5 py-0.5 rounded border border-amber-500/30">CJ API</span>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-y-auto p-1 bg-white/70 rounded-xl border border-slate-200/80">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-y-auto p-1 bg-white/70 rounded-xl border border-slate-200/80 no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                       {uniquePreviewList.map((vItem, idx) => (
                         <div key={idx} className="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200 shadow-2xs hover:border-amber-400 transition-colors">
                           {vItem.imageUrl ? (

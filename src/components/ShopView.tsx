@@ -911,12 +911,12 @@ export default function ShopView({
 
           {/* Sticky Category Carousel directly anchored below search bar */}
           {activeStep === 'catalog' && (
-            <div className="w-full relative group/categories border-t border-slate-50/80 pt-1 pb-2">
+            <div className="w-full relative group/categories border-t border-slate-50/80 pt-0.5 pb-1">
               {selectedCategory !== "todos" && (
-                <div className="flex items-center justify-end mb-1 px-3 sm:px-5">
+                <div className="flex items-center justify-end mb-0.5 px-3 sm:px-5">
                   <button 
                     onClick={() => setSelectedCategory("todos")} 
-                    className="text-[10px] font-bold text-amber-500 hover:text-amber-600 transition-colors cursor-pointer"
+                    className="text-[9.5px] font-bold text-amber-500 hover:text-amber-600 transition-colors cursor-pointer"
                   >
                     Limpiar filtro ({CATEGORIES.find(c => c.id === selectedCategory)?.name})
                   </button>
@@ -934,13 +934,13 @@ export default function ShopView({
                 onWheel={handleCategoryWheel}
                 onTouchStart={handleCategoryTouchStart}
                 onTouchEnd={handleCategoryTouchEnd}
-                className={`flex items-center space-x-3.5 sm:space-x-4 overflow-x-auto pb-1.5 pt-0.5 px-3 sm:px-5 select-none no-scrollbar ${isCategoryDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                className={`flex items-center space-x-2.5 sm:space-x-3.5 overflow-x-auto pb-0.5 pt-0.5 px-3 sm:px-5 select-none no-scrollbar ${isCategoryDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                 style={{ 
                   scrollbarWidth: 'none', 
                   msOverflowStyle: 'none',
                   WebkitOverflowScrolling: 'touch',
                   touchAction: 'pan-x',
-                  height: '78px'
+                  height: '56px'
                 }}
               >
                 {infiniteCategories.map((cat, idx) => {
@@ -953,10 +953,10 @@ export default function ShopView({
                         if (categoryHasMovedRef.current) return;
                         setSelectedCategory(cat.id);
                       }}
-                      className="flex flex-col items-center space-y-1.5 shrink-0 outline-none group focus:outline-none cursor-pointer select-none"
-                      style={{ width: '66px' }}
+                      className="flex flex-col items-center space-y-1 shrink-0 outline-none group focus:outline-none cursor-pointer select-none"
+                      style={{ width: '52px' }}
                     >
-                      <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 transition-all relative flex items-center justify-center bg-white ${isSelected ? "border-amber-500 ring-4 ring-amber-500/10 scale-105 shadow-sm" : "border-slate-100 group-hover:border-slate-300"}`}>
+                      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden border-[1.5px] transition-all relative flex items-center justify-center bg-white ${isSelected ? "border-amber-500 ring-2 ring-amber-500/20 scale-105 shadow-xs" : "border-slate-100 group-hover:border-slate-300"}`}>
                         <img
                           src={cat.imageUrl}
                           alt={cat.name}
@@ -964,7 +964,7 @@ export default function ShopView({
                           className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-500 group-hover:scale-110"
                         />
                       </div>
-                      <span className={`text-[9.5px] sm:text-[10.5px] text-center font-bold tracking-tight line-clamp-1 w-full transition-colors ${isSelected ? "text-amber-600 font-extrabold" : "text-slate-500 group-hover:text-slate-800"}`}>
+                      <span className={`text-[8.5px] sm:text-[9.5px] leading-tight text-center font-bold tracking-tight line-clamp-1 w-full transition-colors ${isSelected ? "text-amber-600 font-extrabold" : "text-slate-500 group-hover:text-slate-800"}`}>
                         {cat.name}
                       </span>
                     </button>
@@ -1098,7 +1098,7 @@ export default function ShopView({
                 exit={{ opacity: 0, x: -20 }}
                 className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 p-0 md:p-6"
                 style={{
-                  paddingBottom: "max(9rem, calc(7.5rem + env(safe-area-inset-bottom, 0px)))"
+                  paddingBottom: "max(4.75rem, calc(4rem + env(safe-area-inset-bottom, 0px)))"
                 }}
               >
                 {/* Image & Showcase */}
@@ -1582,10 +1582,10 @@ export default function ShopView({
 
               {/* Fixed Bottom Action Bar for Product Details (Replaces main navigation bar) */}
               <div 
-                className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-100 py-2.5 sm:py-3 px-4 sm:px-6 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]"
-                style={{ paddingBottom: 'max(1.75rem, calc(env(safe-area-inset-bottom, 0px) + 0.85rem))' }}
+                className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-100 py-1.5 sm:py-2 px-3 sm:px-5 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]"
+                style={{ paddingBottom: 'max(0.4rem, calc(env(safe-area-inset-bottom, 0px) + 0.25rem))' }}
               >
-                <div className="max-w-md mx-auto w-full flex items-center justify-center min-h-[46px]">
+                <div className="max-w-md mx-auto w-full flex items-center justify-center min-h-[38px]">
                   {(() => {
                     const missingOpts = getMissingOptions(selectedProduct, selectedVariants);
                     const hasMissingOpts = missingOpts.length > 0;
@@ -1628,7 +1628,7 @@ export default function ShopView({
                           }
                         }}
                         disabled={selectedProduct.stock <= 0}
-                        className={`w-full py-3.5 sm:py-4 px-6 rounded-2xl font-black text-sm sm:text-base transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-98 text-center ${
+                        className={`w-full py-2.5 sm:py-3 px-4 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-98 text-center ${
                           selectedProduct.stock <= 0
                             ? "bg-slate-100 text-slate-400 cursor-not-allowed"
                             : hasMissingOpts
@@ -1643,19 +1643,19 @@ export default function ShopView({
                           <span>Agotado</span>
                         ) : hasMissingOpts ? (
                           <>
-                            <AlertCircle className="w-4.5 h-4.5 shrink-0 text-slate-950" />
+                            <AlertCircle className="w-4 h-4 shrink-0 text-slate-950" />
                             <span className="whitespace-nowrap">
                               {missingOpts.length === 1 ? `Elegir ${missingOpts[0]}` : "Elegir opciones"}
                             </span>
                           </>
                         ) : !selectedShippingOption ? (
                           <>
-                            <Truck className="w-4.5 h-4.5 shrink-0 text-slate-950" />
+                            <Truck className="w-4 h-4 shrink-0 text-slate-950" />
                             <span className="whitespace-nowrap">Calcular envío</span>
                           </>
                         ) : (
                           <>
-                            <ShoppingCart className="w-4.5 h-4.5 shrink-0 text-slate-950" />
+                            <ShoppingCart className="w-4 h-4 shrink-0 text-slate-950" />
                             <span className="whitespace-nowrap">Añadir al Carrito</span>
                           </>
                         )}
@@ -1674,7 +1674,10 @@ export default function ShopView({
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
-              className="grid grid-cols-1 md:grid-cols-5 gap-8 pb-28 sm:pb-32 max-w-5xl mx-auto px-2 sm:px-4 py-2"
+              className="grid grid-cols-1 md:grid-cols-5 gap-8 max-w-5xl mx-auto px-2 sm:px-4 py-2"
+              style={{
+                paddingBottom: 'calc(68px + env(safe-area-inset-bottom, 0px) + 5px)'
+              }}
             >
               {/* Left Column: Checkout Inputs (3 cols) */}
               <div className="md:col-span-3 space-y-6">
@@ -1835,7 +1838,7 @@ export default function ShopView({
                     </span>
                   </div>
 
-                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1 divide-y divide-slate-100">
+                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1 divide-y divide-slate-100 no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {effectiveCheckoutItems.map((item, idx) => (
                       <div key={`${item.product.id}-${idx}`} className="flex items-center justify-between text-xs pt-2.5 first:pt-0">
                         <div className="flex items-center space-x-3 truncate flex-1 pr-2">
@@ -1883,8 +1886,8 @@ export default function ShopView({
 
               {/* Fixed Bottom Payment Bar */}
               <div 
-                className="fixed bottom-0 inset-x-0 z-40 bg-white border-0 pt-2.5 px-4 sm:px-6 sm:pt-3.5 shadow-none"
-                style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+                className="fixed bottom-0 inset-x-0 z-40 bg-white border-0 pt-2 px-4 sm:px-6 shadow-none"
+                style={{ paddingBottom: 'calc(0.4rem + env(safe-area-inset-bottom, 0px))' }}
               >
                 <div className="max-w-md mx-auto flex flex-col items-center justify-center">
                   {!isFormValid && (
@@ -1894,7 +1897,7 @@ export default function ShopView({
                   )}
                   <button
                     onClick={executePayment}
-                    className="w-full sm:w-auto min-w-[240px] bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold px-8 py-3.5 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-amber-500/25 border border-amber-400"
+                    className="w-full sm:w-auto min-w-[240px] bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold px-8 py-3 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-amber-500/25 border border-amber-400"
                     id="pay-now-btn"
                   >
                     <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -2168,22 +2171,22 @@ export default function ShopView({
               {/* Drawer Footer summary */}
               {cart.length > 0 && (
                 <div 
-                  className="p-4 border-t border-slate-100 bg-white space-y-2.5 shrink-0"
+                  className="px-4 py-2 border-t border-slate-100 bg-white space-y-1.5 shrink-0"
                   style={{ 
-                    paddingBottom: 'max(2.25rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem))'
+                    paddingBottom: 'max(0.5rem, calc(env(safe-area-inset-bottom, 0px) + 0.35rem))'
                   }}
                 >
-                  <div className="flex justify-between text-xs text-slate-500 font-medium">
+                  <div className="flex justify-between text-[11px] text-slate-500 font-medium leading-tight">
                     <span>Subtotal ({selectedCartItems.length} de {cart.length} selec.):</span>
                     <span className="font-mono text-slate-800 font-semibold">${cartSubtotal.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between text-xs text-slate-500 font-medium">
+                  <div className="flex justify-between text-[11px] text-slate-500 font-medium leading-tight">
                     <span>Costo de Envío:</span>
                     <span className="font-mono font-bold text-slate-900">
                       {cartShippingTotal === 0 ? "GRATIS" : `$${cartShippingTotal.toFixed(2)}`}
                     </span>
                   </div>
-                  <div className="flex justify-between text-xs font-bold text-slate-900 border-t border-slate-100 pt-2">
+                  <div className="flex justify-between text-xs font-bold text-slate-900 border-t border-slate-100 pt-1.5">
                     <span>Total a Pagar:</span>
                     <span className="font-mono text-slate-950 font-black text-sm">${cartTotal.toFixed(2)}</span>
                   </div>
@@ -2191,9 +2194,9 @@ export default function ShopView({
                   <button
                     onClick={startCheckout}
                     disabled={selectedCartItems.length === 0}
-                    className={`w-full font-black py-3 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-1 shadow-lg ${
+                    className={`w-full font-extrabold py-2.5 sm:py-3 px-4 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-1 shadow-md ${
                       selectedCartItems.length > 0
-                        ? "bg-amber-500 hover:bg-amber-600 active:scale-98 text-slate-950 shadow-amber-500/25"
+                        ? "bg-amber-500 hover:bg-amber-600 active:scale-98 text-slate-950 shadow-amber-500/20"
                         : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
                     }`}
                     id="checkout-btn"
@@ -2251,7 +2254,7 @@ export default function ShopView({
               </div>
 
               {/* Modal Body */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              <div className="flex-1 overflow-y-auto p-5 space-y-5 no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {/* Country Selector Field */}
                 <div className="space-y-2">
                   <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
@@ -2368,8 +2371,8 @@ export default function ShopView({
 
               {/* Modal Footer with Safe-Area bottom inset */}
               <div 
-                className="p-4 border-t border-slate-200 bg-slate-50/95 flex items-center justify-end shrink-0"
-                style={{ paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom, 0px) + 1.25rem))' }}
+                className="py-2 px-4 border-t border-slate-200 bg-slate-50/95 flex items-center justify-end shrink-0"
+                style={{ paddingBottom: 'max(0.5rem, calc(env(safe-area-inset-bottom, 0px) + 0.35rem))' }}
               >
                 <button
                   onClick={() => {
@@ -2397,7 +2400,7 @@ export default function ShopView({
                       setShowShippingModal(false);
                     }
                   }}
-                  className={`w-full py-3.5 rounded-2xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md text-center ${
+                  className={`w-full py-2.5 sm:py-3 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm text-center ${
                     selectedShippingOption
                       ? "bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20 active:scale-95"
                       : "bg-slate-200 hover:bg-slate-300 text-slate-700"

@@ -397,7 +397,7 @@ export default function ProfileView({
 
   if (isGuestMode) {
     return (
-      <div className="w-full max-w-4xl mx-auto pb-20 sm:pb-24" id="guest-profile-login-wrapper" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <div className="w-full max-w-4xl mx-auto pb-0 overflow-x-hidden" id="guest-profile-login-wrapper" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         <LoginView
           users={users}
           onRefreshUsers={onRefreshUsers || (() => {})}

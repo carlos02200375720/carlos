@@ -16,6 +16,37 @@
     <meta name="apple-mobile-web-app-title" content="MallSocial" />
     <meta name="color-scheme" content="dark" />
     <style>
+      /* Completely eliminate all scrollbars across all browsers, containers, and webviews */
+      *, *::before, *::after, html, body, #root, div, main, section, nav, aside, ul, ol, textarea {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+      }
+      *::-webkit-scrollbar,
+      ::-webkit-scrollbar,
+      html::-webkit-scrollbar,
+      body::-webkit-scrollbar,
+      div::-webkit-scrollbar,
+      main::-webkit-scrollbar,
+      section::-webkit-scrollbar,
+      nav::-webkit-scrollbar,
+      aside::-webkit-scrollbar,
+      ul::-webkit-scrollbar,
+      ol::-webkit-scrollbar,
+      textarea::-webkit-scrollbar {
+        display: none !important;
+        width: 0px !important;
+        height: 0px !important;
+        background: transparent !important;
+        -webkit-appearance: none !important;
+        opacity: 0 !important;
+      }
+      *::-webkit-scrollbar-thumb,
+      *::-webkit-scrollbar-track,
+      ::-webkit-scrollbar-thumb,
+      ::-webkit-scrollbar-track {
+        display: none !important;
+        background: transparent !important;
+      }
       body {
         margin: 0;
         padding: 0;
