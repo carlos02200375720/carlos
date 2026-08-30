@@ -192,9 +192,15 @@ const uploadToGCS = (file: Express.Multer.File, folder: string = "publicaciones"
     const mimeType = file.mimetype.toLowerCase();
 
     // Enforce correct extensions on upload as requested
-    if (mimeType.startsWith("video/")) {
+    const isVideo = mimeType.startsWith("video/") || originalName.toLowerCase().endsWith(".mp4");
+    if (isVideo) {
       if (!originalName.toLowerCase().endsWith(".mp4")) {
-        originalName += ".mp4";
+        const dotIdx = originalName.lastIndexOf(".");
+        if (dotIdx !== -1) {
+          originalName = originalName.substring(0, dotIdx) + ".mp4";
+        } else {
+          originalName += ".mp4";
+        }
       }
     } else if (mimeType.startsWith("image/")) {
       const lowerName = originalName.toLowerCase();
@@ -229,7 +235,8 @@ const uploadToGCS = (file: Express.Multer.File, folder: string = "publicaciones"
     const blobStream = blob.createWriteStream({
       resumable: false,
       metadata: {
-        contentType: file.mimetype,
+        contentType: isVideo ? "video/mp4" : file.mimetype,
+        cacheControl: isVideo ? "public, max-age=31536000, immutable" : "public, max-age=86400",
       },
     });
 

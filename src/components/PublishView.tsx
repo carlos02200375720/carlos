@@ -201,10 +201,21 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     });
   };
 
+  const ensureCorrectVideoExtension = (file: File): File => {
+    if (file.name.toLowerCase().endsWith(".mp4")) {
+      return file;
+    }
+    const cleanName = file.name.replace(/\.[^/.]+$/, "") + ".mp4";
+    return new File([file], cleanName, { type: "video/mp4" });
+  };
+
   const uploadFileToGCS = async (file: File): Promise<string> => {
+    const isVideo = file.type.startsWith("video/") || file.name.toLowerCase().endsWith(".mp4");
+    const fileToUpload = isVideo ? ensureCorrectVideoExtension(file) : file;
+
     const formData = new FormData();
-    formData.append("file", file);
-    formData.append("title", file.name);
+    formData.append("file", fileToUpload);
+    formData.append("title", fileToUpload.name);
     formData.append("description", "Uploaded via publishing portal");
     formData.append("creatorId", currentUser.id);
 
@@ -214,7 +225,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     });
 
     if (!response.ok) {
-      throw new Error(`Error subiendo archivo: ${file.name}`);
+      throw new Error(`Error subiendo archivo: ${fileToUpload.name}`);
     }
 
     const data = await response.json();

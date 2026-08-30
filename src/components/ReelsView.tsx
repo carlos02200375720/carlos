@@ -3,6 +3,7 @@ import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, Volum
 import { Reel, Product, Comment, User, CartItem } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../config";
+import { videoPreloader } from "../utils/videoPreloader";
 
 interface ReelsViewProps {
   reels: Reel[];
@@ -41,7 +42,9 @@ export default function ReelsView({
 }: ReelsViewProps) {
   const [activeReelIndex, setActiveReelIndex] = useState(0);
   const [displayCount, setDisplayCount] = useState<number>(() => Math.max(reels.length * 2, 8));
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const [hasUserInteracted, setHasUserInteracted] = useState(false);
+  const [, setPreloaderRevision] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [showComments, setShowComments] = useState<string | null>(null);
   const [commentText, setCommentText] = useState("");
@@ -52,6 +55,27 @@ export default function ReelsView({
   const [mediaLoading, setMediaLoading] = useState<{ [key: string]: boolean }>({});
   const [carouselIndices, setCarouselIndices] = useState<{ [key: string]: number }>({});
   const [mediaAspectRatios, setMediaAspectRatios] = useState<{ [key: string]: 'vertical' | 'horizontal_or_square' }>({});
+
+  // Subscribe to video preloader updates to trigger re-renders when memory Blobs are ready
+  useEffect(() => {
+    const unsubscribe = videoPreloader.subscribe(() => {
+      setPreloaderRevision((prev) => prev + 1);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Listen for user interaction to allow unmuting seamlessly according to browser policy
+  useEffect(() => {
+    const handleFirstGesture = () => {
+      setHasUserInteracted(true);
+    };
+    window.addEventListener("pointerdown", handleFirstGesture, { once: true });
+    window.addEventListener("keydown", handleFirstGesture, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", handleFirstGesture);
+      window.removeEventListener("keydown", handleFirstGesture);
+    };
+  }, []);
 
   // Reset or extend displayCount when reels source changes
   useEffect(() => {
@@ -69,6 +93,16 @@ export default function ReelsView({
     }
     return list;
   }, [reels, displayCount]);
+
+  // Proactively buffer the sliding window of 10 videos ahead into local memory
+  useEffect(() => {
+    const urls = displayedReels
+      .map((r) => r.videoUrl)
+      .filter((u): u is string => Boolean(u));
+    if (urls.length > 0) {
+      videoPreloader.updateQueue(urls, activeReelIndex);
+    }
+  }, [displayedReels, activeReelIndex]);
 
   const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>([]);
 
@@ -122,7 +156,7 @@ export default function ReelsView({
   const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
 
   useEffect(() => {
-    // Play active video immediately, pause others, and proactively preload/buffer adjacent reels
+    // Play active video smoothly, pause others, and buffer adjacent video elements
     displayedReels.forEach((reel, idx) => {
       const video = videoRefs.current[idx];
       if (video) {
@@ -133,8 +167,8 @@ export default function ReelsView({
             const playPromise = video.play();
             if (playPromise !== undefined) {
               playPromise.catch((err) => {
-                // If browser blocks unmuted autoplay without user interaction, mute and retry immediately
-                if (err?.name === "NotAllowedError" && !video.muted) {
+                // If browser blocks unmuted autoplay before user interaction, mute safely and continue
+                if (!video.muted) {
                   video.muted = true;
                   video.play().catch(() => {});
                 }
@@ -145,36 +179,14 @@ export default function ReelsView({
           }
         } else {
           video.pause();
-          // For adjacent reels (next 2 and previous 1), set preload to auto and load buffer ahead of time
           const dist = Math.abs(idx - activeReelIndex);
-          if (dist <= 2) {
+          if (dist <= 10) {
+            // Buffer up to 10 upcoming video elements in the background
             video.preload = "auto";
-            if (video.readyState === 0 && reel.videoUrl) {
-              video.load();
-            }
-          } else if (dist > 3) {
-            // Far away reels: pause and reset time to release GPU memory
+          } else {
+            // Far away reels: release GPU texture memory
             video.currentTime = 0;
           }
-        }
-      }
-    });
-
-    // Proactively pre-fetch next upcoming video URLs in the network cache
-    const nextReels = [
-      displayedReels[activeReelIndex + 1]?.videoUrl,
-      displayedReels[activeReelIndex + 2]?.videoUrl
-    ].filter(Boolean);
-
-    nextReels.forEach((url) => {
-      if (url && typeof document !== "undefined") {
-        const existing = document.querySelector(`link[href="${url}"]`);
-        if (!existing) {
-          const link = document.createElement("link");
-          link.rel = "prefetch";
-          link.as = "video";
-          link.href = url;
-          document.head.appendChild(link);
         }
       }
     });
@@ -571,7 +583,7 @@ export default function ReelsView({
                             el.defaultMuted = isMuted;
                           }
                         }}
-                        src={reel.videoUrl}
+                        src={videoPreloader.getVideoSrc(reel.videoUrl)}
                         poster={(reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".mp4")) ? reel.thumbnailUrl : undefined}
                         loop
                         autoPlay={isCurrent}
@@ -586,7 +598,7 @@ export default function ReelsView({
                         disablePictureInPicture
                         disableRemotePlayback
                         controls={false}
-                        preload={Math.abs(index - activeReelIndex) <= 2 ? "auto" : "metadata"}
+                        preload={Math.abs(index - activeReelIndex) <= 10 ? "auto" : "metadata"}
                         onClick={() => handleVideoClick(index)}
                         onDoubleClick={() => handleDoubleTap(reel.id)}
                         onLoadStart={() => {
