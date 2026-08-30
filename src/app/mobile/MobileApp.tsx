@@ -1,0 +1,320 @@
+import React from "react";
+import { Play, ShoppingBag, User as UserIcon, MessageSquare } from "lucide-react";
+import { User, Reel, Product, CartItem, Order, ChatMessage } from "../../types";
+import ReelsView from "../../components/ReelsView";
+import ShopView from "../../components/ShopView";
+import SocialPanel from "../../components/SocialPanel";
+import ProfileView from "../../components/ProfileView";
+import { motion, AnimatePresence } from "motion/react";
+
+export interface MobileAppProps {
+  activeTab: 'reels' | 'shop' | 'messages' | 'profile';
+  setActiveTab: React.Dispatch<React.SetStateAction<'reels' | 'shop' | 'messages' | 'profile'>>;
+  users: User[];
+  reels: Reel[];
+  products: Product[];
+  cart: CartItem[];
+  currentUser: User;
+  directSelectedProduct: Product | null;
+  setDirectSelectedProduct: (product: Product | null) => void;
+  selectedCreatorProfileId: string | null;
+  setSelectedCreatorProfileId: (creatorId: string | null) => void;
+  isProductDetailOpen: boolean;
+  setIsProductDetailOpen: (open: boolean) => void;
+  shopInitialStep: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou';
+  setShopInitialStep: (step: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou') => void;
+  shopInitialSelectedIndices: number[];
+  setShopInitialSelectedIndices: (indices: number[]) => void;
+  activeChatUser: User | null;
+  setActiveChatUser: (user: User | null) => void;
+  privateMessages: ChatMessage[];
+  unreadCounts: Record<string, number>;
+  savedReelIds: string[];
+  isLiveViewerOpen: boolean;
+  totalUnreads: number;
+  handleAddToCart: (product: Product, quantity?: number, selectedOptions?: Record<string, string>, selectedVariantVid?: string) => void;
+  handleRemoveFromCart: (productId: string, idx?: number) => void;
+  handleUpdateCartQuantity: (productId: string, qty: number, idx?: number) => void;
+  handleCheckoutCart: (
+    address: string,
+    shippingCost: number,
+    onComplete: (newOrder: Order) => void,
+    itemsToCheckout?: CartItem[]
+  ) => void;
+  handleCreatorProfileLink: (creatorId: string) => void;
+  handleProductDetailsLink: (product: Product) => void;
+  handleReelLink: (reelId: string) => void;
+  handleLikeReel: (reelId: string) => void;
+  handleAddComment: (reelId: string, text: string) => void;
+  handleToggleSaveReel: (reelId: string) => void;
+  handleToggleFollowUser: (creatorId: string) => void;
+  handleSendPrivateMessage: (text: string) => void;
+  handleClearUnreads: (userId: string) => void;
+  refreshReels: () => void;
+  refreshAllData: () => void;
+  setCurrentUser: React.Dispatch<React.SetStateAction<User>>;
+  setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+  setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
+  handleLogout: () => void;
+  setGuestInteractionAlert: (alert: string | null) => void;
+  openPrivateChatDirectly: (targetUser: User) => void;
+  socket: WebSocket | null;
+}
+
+export default function MobileApp({
+  activeTab,
+  setActiveTab,
+  users,
+  reels,
+  products,
+  cart,
+  currentUser,
+  directSelectedProduct,
+  setDirectSelectedProduct,
+  selectedCreatorProfileId,
+  setSelectedCreatorProfileId,
+  isProductDetailOpen,
+  setIsProductDetailOpen,
+  shopInitialStep,
+  setShopInitialStep,
+  shopInitialSelectedIndices,
+  setShopInitialSelectedIndices,
+  activeChatUser,
+  setActiveChatUser,
+  privateMessages,
+  unreadCounts,
+  savedReelIds,
+  isLiveViewerOpen,
+  totalUnreads,
+  handleAddToCart,
+  handleRemoveFromCart,
+  handleUpdateCartQuantity,
+  handleCheckoutCart,
+  handleCreatorProfileLink,
+  handleProductDetailsLink,
+  handleReelLink,
+  handleLikeReel,
+  handleAddComment,
+  handleToggleSaveReel,
+  handleToggleFollowUser,
+  handleSendPrivateMessage,
+  handleClearUnreads,
+  refreshReels,
+  refreshAllData,
+  setCurrentUser,
+  setUsers,
+  setIsLoggedIn,
+  handleLogout,
+  setGuestInteractionAlert,
+  openPrivateChatDirectly,
+  socket,
+}: MobileAppProps) {
+  const isDarkNavActive = activeTab === 'reels';
+
+  return (
+    <div className="w-full flex-1 flex flex-col relative" id="mobile-app-layout">
+      {/* Mobile Views Router Container */}
+      <main
+        className={`flex-1 w-full ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
+        style={{
+          marginBottom: (activeTab === 'messages' && activeChatUser) || isLiveViewerOpen || activeTab === 'reels'
+            ? 0
+            : undefined
+        }}
+      >
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.15 }}
+            className={`w-full ${activeTab === 'reels' ? 'h-full' : ''}`}
+          >
+            {activeTab === 'reels' && (
+              <ReelsView
+                reels={reels}
+                currentUser={currentUser}
+                cart={cart}
+                onRemoveFromCart={handleRemoveFromCart}
+                onUpdateCartQuantity={handleUpdateCartQuantity}
+                onNavigateToShop={() => setActiveTab('shop')}
+                onNavigateToCheckout={(selectedIndices) => {
+                  setShopInitialStep('checkout');
+                  setShopInitialSelectedIndices(selectedIndices || []);
+                  setActiveTab('shop');
+                }}
+                onProductClick={handleProductDetailsLink}
+                onCreatorClick={handleCreatorProfileLink}
+                onLikeReel={handleLikeReel}
+                onAddComment={handleAddComment}
+                savedReelIds={savedReelIds}
+                onToggleSaveReel={handleToggleSaveReel}
+                onToggleFollowUser={handleToggleFollowUser}
+                onGuestInteraction={(action) => {
+                  setGuestInteractionAlert(`Para ${action} en este reel, por favor inicia sesión o crea una cuenta de creador.`);
+                }}
+              />
+            )}
+
+            {activeTab === 'shop' && (
+              <ShopView
+                products={products}
+                cart={cart}
+                users={users}
+                currentUser={currentUser}
+                onAddToCart={handleAddToCart}
+                onRemoveFromCart={handleRemoveFromCart}
+                onUpdateCartQuantity={handleUpdateCartQuantity}
+                onCheckout={handleCheckoutCart}
+                onCreatorClick={handleCreatorProfileLink}
+                selectedProductDirectly={directSelectedProduct}
+                clearDirectProduct={() => setDirectSelectedProduct(null)}
+                onNavigateToHistory={() => { setSelectedCreatorProfileId(currentUser.id); setActiveTab('profile'); }}
+                onToggleDetailView={setIsProductDetailOpen}
+                initialStep={shopInitialStep}
+                initialSelectedCartIndices={shopInitialSelectedIndices}
+                onClearInitialStep={() => {
+                  setShopInitialStep('catalog');
+                  setShopInitialSelectedIndices([]);
+                }}
+              />
+            )}
+
+            {activeTab === 'profile' && (
+              <ProfileView
+                currentUser={currentUser}
+                selectedCreatorId={selectedCreatorProfileId}
+                users={users}
+                onBackToSelf={() => setSelectedCreatorProfileId(null)}
+                onOpenDirectChat={openPrivateChatDirectly}
+                onSelectProduct={handleProductDetailsLink}
+                onSelectReel={handleReelLink}
+                onProfileUpdate={(updatedUser) => {
+                  setCurrentUser(updatedUser);
+                  localStorage.setItem("currentUserData", JSON.stringify(updatedUser));
+                  setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+                  if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
+                    setIsLoggedIn(true);
+                    localStorage.setItem("isLoggedIn", "true");
+                    localStorage.setItem("loggedInUsername", updatedUser.username);
+                    setSelectedCreatorProfileId(null);
+                    setActiveTab('profile');
+                  }
+                }}
+                onRefreshUsers={refreshAllData}
+                onPublishSuccess={refreshAllData}
+                onLogout={handleLogout}
+                socket={socket}
+              />
+            )}
+
+            {activeTab === 'messages' && (
+              <SocialPanel
+                users={users}
+                currentUser={currentUser}
+                messages={privateMessages}
+                activeChatUser={activeChatUser}
+                onSelectChatUser={setActiveChatUser}
+                onSendPrivateMessage={handleSendPrivateMessage}
+                unreadCounts={unreadCounts}
+                clearUnreads={handleClearUnreads}
+                onClose={() => setActiveTab('reels')}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </main>
+
+      {/* Mobile Bottom Floating Navigation Bar */}
+      {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && (
+        <div
+          id="bottom-nav-bar"
+          className={`fixed bottom-0 inset-x-0 pt-1.5 px-2 z-30 border-0 shadow-none transition-colors ${
+            activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages'
+               ? "bg-white text-slate-900"
+               : "bg-black text-white"
+          } md:hidden`}
+          style={{
+            paddingBottom: 'max(0.45rem, calc(env(safe-area-inset-bottom, 0px) + 0.35rem))'
+          }}
+        >
+          <div className="max-w-md mx-auto flex items-center justify-around px-1">
+            
+            {/* Tab 1: Reels */}
+            <button
+              onClick={() => { refreshReels(); setActiveTab('reels'); }}
+              className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer ${
+                activeTab === 'reels'
+                  ? "text-amber-500 scale-105"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              id="nav-reels"
+            >
+              <Play className={`w-6 h-6 transition-all ${activeTab === 'reels' ? "fill-amber-500 stroke-amber-500" : ""}`} />
+              <span className="text-[10px] font-bold mt-1 tracking-tight">Reels</span>
+            </button>
+
+            {/* Tab 2: Shop */}
+            <button
+              onClick={() => setActiveTab('shop')}
+              className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer relative ${
+                activeTab === 'shop'
+                  ? "text-amber-600 scale-105"
+                  : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
+              }`}
+              id="nav-shop"
+            >
+              <ShoppingBag className={`w-6 h-6 transition-all ${activeTab === 'shop' ? "fill-amber-600 stroke-amber-600" : ""}`} />
+              <span className="text-[10px] font-bold mt-1 tracking-tight">Tienda</span>
+              {cart.length > 0 && (
+                <span className="absolute top-1 right-2 w-4 h-4 bg-amber-500 text-slate-950 font-mono font-black text-[9px] rounded-full flex items-center justify-center border-2 border-black">
+                  {cart.reduce((s, i) => s + (i.quantity || 1), 0)}
+                </span>
+              )}
+            </button>
+
+            {/* Tab 3: Messages */}
+            <button
+              onClick={() => setActiveTab('messages')}
+              className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer relative ${
+                activeTab === 'messages'
+                  ? "text-amber-600 scale-105"
+                  : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
+              }`}
+              id="nav-messages"
+            >
+              <MessageSquare className={`w-6 h-6 transition-all ${activeTab === 'messages' ? "fill-amber-600 stroke-amber-600" : ""}`} />
+              <span className="text-[10px] font-bold mt-1 tracking-tight">Mensajes</span>
+              {totalUnreads > 0 && (
+                <span className="absolute top-1 right-2 w-4 h-4 bg-rose-500 text-white font-mono font-black text-[9px] rounded-full flex items-center justify-center border-2 border-black animate-pulse">
+                  {totalUnreads}
+                </span>
+              )}
+            </button>
+
+            {/* Tab 4: Profile */}
+            <button
+              onClick={() => {
+                setSelectedCreatorProfileId(null);
+                setActiveTab('profile');
+              }}
+              className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer ${
+                activeTab === 'profile'
+                  ? "text-amber-600 scale-105"
+                  : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
+              }`}
+              id="nav-profile"
+            >
+              <UserIcon className={`w-6 h-6 transition-all ${activeTab === 'profile' ? "fill-amber-600 stroke-amber-600" : ""}`} />
+              <span className="text-[10px] font-bold mt-1 tracking-tight">
+                {currentUser.username === "invitado" ? "Cuenta" : "Perfil"}
+              </span>
+            </button>
+
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

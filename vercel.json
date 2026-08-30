@@ -1,4 +1,6 @@
 {
+  "buildCommand": "vite build --mode web",
+  "outputDirectory": "dist",
   "rewrites": [
     {
       "source": "/api/:match*",

@@ -1,6 +1,6 @@
 {
   "appId": "com.mall.app",
-  "appName": "MiApp",
+  "appName": "Mall",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "android": {

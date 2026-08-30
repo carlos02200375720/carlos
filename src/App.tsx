@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Play, ShoppingBag, User as UserIcon, MessageSquare, Bell, Heart, ShieldCheck, Camera, Upload, LogOut, AlertTriangle } from "lucide-react";
+import { User as UserIcon, Camera, Upload, AlertTriangle } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession } from "./types";
-import ReelsView from "./components/ReelsView";
-import ShopView from "./components/ShopView";
-import SocialPanel from "./components/SocialPanel";
-import ProfileView from "./components/ProfileView";
-import LoginView from "./components/LoginView";
+import { WebApp } from "./app/web";
+import { MobileApp } from "./app/mobile";
 import SplashScreen from "./components/SplashScreen";
-import { motion, AnimatePresence } from "motion/react";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 
 const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
@@ -1028,348 +1025,162 @@ export default function App() {
         onContinueAnyway={() => setIsInitialLoading(false)}
       />
 
-      {/* Desktop Left Sidebar Navigation (visible on md/lg desktop screens) */}
-      <aside
-        id="desktop-sidebar-nav"
-        className={`hidden md:flex flex-col fixed top-0 left-0 bottom-0 md:w-60 lg:w-64 ${
-          isDarkNavActive
-            ? "bg-slate-950 border-r border-slate-800 text-white"
-            : "bg-white border-r border-slate-200 text-slate-900"
-        } z-40 p-5 justify-between select-none shadow-2xl transition-colors`}
-      >
-        <div>
-          {/* App Brand Header */}
-          <div className={`flex items-center space-x-3 px-2 py-3 mb-6 border-b ${
-            isDarkNavActive ? "border-slate-800/80" : "border-slate-200"
-          }`}>
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/20 shrink-0">
-              <Play className="w-5 h-5 fill-slate-950" />
-            </div>
-            <div className="min-w-0">
-              <h1 className={`font-display font-extrabold text-lg tracking-tight leading-none ${
-                isDarkNavActive ? "text-white" : "text-slate-900"
-              }`}>
-                Mall<span className="text-amber-500">Social</span>
-              </h1>
-              <p className={`text-[10px] font-medium mt-1 ${
-                isDarkNavActive ? "text-slate-400" : "text-slate-500"
-              }`}>Reels & Commerce</p>
-            </div>
-          </div>
-
-          {/* Navigation Menu */}
-          <nav className="space-y-1.5">
-            <button
-              onClick={() => { refreshReels(); setActiveTab('reels'); }}
-              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
-                activeTab === 'reels'
-                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : isDarkNavActive
-                  ? "text-slate-400 hover:text-white hover:bg-slate-900"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-              }`}
-              id="desktop-nav-reels"
-            >
-              <Play strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'reels' ? "fill-slate-950" : ""}`} />
-              <span className="font-black tracking-wide">Reels & Videos</span>
-            </button>
-
-            <button
-              onClick={() => { refreshProducts(); setActiveTab('shop'); }}
-              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
-                activeTab === 'shop'
-                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : isDarkNavActive
-                  ? "text-slate-400 hover:text-white hover:bg-slate-900"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-              }`}
-              id="desktop-nav-shop"
-            >
-              <ShoppingBag strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'shop' ? "fill-slate-950" : ""}`} />
-              <span className="font-black tracking-wide">Mercado</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('messages')}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
-                activeTab === 'messages'
-                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : isDarkNavActive
-                  ? "text-slate-400 hover:text-white hover:bg-slate-900"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-              }`}
-              id="desktop-nav-messages"
-            >
-              <div className="flex items-center space-x-3.5">
-                <MessageSquare strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'messages' ? "fill-slate-950" : ""}`} />
-                <span className="font-black tracking-wide">Mensajes</span>
-              </div>
-              {totalUnreads > 0 && (
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
-                  activeTab === 'messages' ? "bg-slate-950 text-amber-400" : "bg-rose-500 text-white"
-                }`}>
-                  {totalUnreads}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
-              className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
-                activeTab === 'profile' && selectedCreatorProfileId === null
-                  ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
-                  : isDarkNavActive
-                  ? "text-slate-400 hover:text-white hover:bg-slate-900"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-              }`}
-              id="desktop-nav-profile"
-            >
-              <UserIcon strokeWidth={2.6} className="w-5 h-5" />
-              <span className="font-black tracking-wide">{currentUser.username === "invitado" ? "Registro / Cuenta" : "Dashboard / Perfil"}</span>
-            </button>
-          </nav>
+      {/* Main Target Routing: Pure Mobile (Capacitor/Mobile build) vs Web (Vercel/Web build) vs Hybrid Responsive */}
+      {(import.meta.env.VITE_APP_TARGET === "mobile" || (typeof window !== "undefined" && Capacitor.isNativePlatform())) ? (
+        <div className="flex flex-1 w-full min-h-screen" id="app-mobile-container">
+          <MobileApp
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            users={users}
+            reels={reels}
+            products={products}
+            cart={cart}
+            currentUser={currentUser}
+            directSelectedProduct={directSelectedProduct}
+            setDirectSelectedProduct={setDirectSelectedProduct}
+            selectedCreatorProfileId={selectedCreatorProfileId}
+            setSelectedCreatorProfileId={setSelectedCreatorProfileId}
+            isProductDetailOpen={isProductDetailOpen}
+            setIsProductDetailOpen={setIsProductDetailOpen}
+            shopInitialStep={shopInitialStep}
+            setShopInitialStep={setShopInitialStep}
+            shopInitialSelectedIndices={shopInitialSelectedIndices}
+            setShopInitialSelectedIndices={setShopInitialSelectedIndices}
+            activeChatUser={activeChatUser}
+            setActiveChatUser={setActiveChatUser}
+            privateMessages={privateMessages}
+            unreadCounts={unreadCounts}
+            savedReelIds={savedReelIds}
+            isLiveViewerOpen={isLiveViewerOpen}
+            totalUnreads={totalUnreads}
+            handleAddToCart={handleAddToCart}
+            handleRemoveFromCart={handleRemoveFromCart}
+            handleUpdateCartQuantity={handleUpdateCartQuantity}
+            handleCheckoutCart={handleCheckoutCart}
+            handleCreatorProfileLink={handleCreatorProfileLink}
+            handleProductDetailsLink={handleProductDetailsLink}
+            handleReelLink={handleReelLink}
+            handleLikeReel={handleLikeReel}
+            handleAddComment={handleAddComment}
+            handleToggleSaveReel={handleToggleSaveReel}
+            handleToggleFollowUser={handleToggleFollowUser}
+            handleSendPrivateMessage={handleSendPrivateMessage}
+            handleClearUnreads={handleClearUnreads}
+            refreshReels={refreshReels}
+            refreshAllData={refreshAllData}
+            setCurrentUser={setCurrentUser}
+            setUsers={setUsers}
+            setIsLoggedIn={setIsLoggedIn}
+            handleLogout={handleLogout}
+            setGuestInteractionAlert={setGuestInteractionAlert}
+            openPrivateChatDirectly={openPrivateChatDirectly}
+            socket={socketRef.current}
+          />
         </div>
-
-        {/* Desktop Footer Profile Card */}
-        <div className={`pt-4 border-t ${isDarkNavActive ? "border-slate-800/80" : "border-slate-200"}`}>
-          <div
-            onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
-            className={`flex items-center space-x-3 p-2.5 rounded-2xl border transition-all cursor-pointer group ${
-              isDarkNavActive
-                ? "bg-slate-900/80 hover:bg-slate-900 border-slate-800/80"
-                : "bg-slate-50 hover:bg-slate-100 border-slate-200"
-            }`}
-          >
-            <img
-              src={currentUser.avatar}
-              alt={currentUser.name}
-              referrerPolicy="no-referrer"
-              className="w-9 h-9 rounded-full object-cover border border-amber-500/40 shrink-0"
+      ) : (
+        <>
+          <div className="hidden md:flex flex-1 w-full min-h-screen" id="app-web-desktop-container">
+            <WebApp
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              users={users}
+              reels={reels}
+              products={products}
+              cart={cart}
+              currentUser={currentUser}
+              directSelectedProduct={directSelectedProduct}
+              setDirectSelectedProduct={setDirectSelectedProduct}
+              selectedCreatorProfileId={selectedCreatorProfileId}
+              setSelectedCreatorProfileId={setSelectedCreatorProfileId}
+              isProductDetailOpen={isProductDetailOpen}
+              setIsProductDetailOpen={setIsProductDetailOpen}
+              shopInitialStep={shopInitialStep}
+              setShopInitialStep={setShopInitialStep}
+              shopInitialSelectedIndices={shopInitialSelectedIndices}
+              setShopInitialSelectedIndices={setShopInitialSelectedIndices}
+              activeChatUser={activeChatUser}
+              setActiveChatUser={setActiveChatUser}
+              privateMessages={privateMessages}
+              unreadCounts={unreadCounts}
+              savedReelIds={savedReelIds}
+              isLiveViewerOpen={isLiveViewerOpen}
+              totalUnreads={totalUnreads}
+              handleAddToCart={handleAddToCart}
+              handleRemoveFromCart={handleRemoveFromCart}
+              handleUpdateCartQuantity={handleUpdateCartQuantity}
+              handleCheckoutCart={handleCheckoutCart}
+              handleCreatorProfileLink={handleCreatorProfileLink}
+              handleProductDetailsLink={handleProductDetailsLink}
+              handleReelLink={handleReelLink}
+              handleLikeReel={handleLikeReel}
+              handleAddComment={handleAddComment}
+              handleToggleSaveReel={handleToggleSaveReel}
+              handleToggleFollowUser={handleToggleFollowUser}
+              handleSendPrivateMessage={handleSendPrivateMessage}
+              handleClearUnreads={handleClearUnreads}
+              refreshReels={refreshReels}
+              refreshAllData={refreshAllData}
+              setCurrentUser={setCurrentUser}
+              setUsers={setUsers}
+              setIsLoggedIn={setIsLoggedIn}
+              handleLogout={handleLogout}
+              setGuestInteractionAlert={setGuestInteractionAlert}
+              openPrivateChatDirectly={openPrivateChatDirectly}
+              socket={socketRef.current}
             />
-            <div className="min-w-0 flex-1">
-              <p className={`text-xs font-bold truncate group-hover:text-amber-500 transition-colors ${
-                isDarkNavActive ? "text-white" : "text-slate-900"
-              }`}>
-                {currentUser.name}
-              </p>
-              <p className={`text-[10px] truncate font-mono ${
-                isDarkNavActive ? "text-slate-400" : "text-slate-500"
-              }`}>
-                @{currentUser.username || "invitado"}
-              </p>
-            </div>
           </div>
-        </div>
-      </aside>
 
-      {/* Main Container */}
-      <main
-        className={`flex-1 w-full md:pl-60 lg:pl-64 ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
-        style={{
-          marginBottom: (activeTab === 'messages' && activeChatUser) || isLiveViewerOpen || activeTab === 'reels'
-            ? 0
-            : undefined
-        }}
-      >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.15 }}
-            className={`w-full ${activeTab === 'reels' ? 'h-full' : ''}`}
-          >
-            {activeTab === 'reels' && (
-              <ReelsView
-                reels={reels}
-                currentUser={currentUser}
-                cart={cart}
-                onRemoveFromCart={handleRemoveFromCart}
-                onUpdateCartQuantity={handleUpdateCartQuantity}
-                onNavigateToShop={() => setActiveTab('shop')}
-                onNavigateToCheckout={(selectedIndices) => {
-                  setShopInitialStep('checkout');
-                  setShopInitialSelectedIndices(selectedIndices);
-                  setActiveTab('shop');
-                }}
-                onProductClick={handleProductDetailsLink}
-                onCreatorClick={handleCreatorProfileLink}
-                onLikeReel={handleLikeReel}
-                onAddComment={handleAddComment}
-                savedReelIds={savedReelIds}
-                onToggleSaveReel={handleToggleSaveReel}
-                onToggleFollowUser={handleToggleFollowUser}
-                onGuestInteraction={(action) => {
-                  setGuestInteractionAlert(`Para ${action} en este reel, por favor inicia sesión o crea una cuenta de creador.`);
-                }}
-              />
-            )}
-
-            {activeTab === 'shop' && (
-              <ShopView
-                products={products}
-                cart={cart}
-                users={users}
-                currentUser={currentUser}
-                onAddToCart={handleAddToCart}
-                onRemoveFromCart={handleRemoveFromCart}
-                onUpdateCartQuantity={handleUpdateCartQuantity}
-                onCheckout={handleCheckoutCart}
-                onCreatorClick={handleCreatorProfileLink}
-                selectedProductDirectly={directSelectedProduct}
-                clearDirectProduct={() => setDirectSelectedProduct(null)}
-                onNavigateToHistory={() => { setSelectedCreatorProfileId(currentUser.id); setActiveTab('profile'); }}
-                onToggleDetailView={setIsProductDetailOpen}
-                initialStep={shopInitialStep}
-                initialSelectedCartIndices={shopInitialSelectedIndices}
-                onClearInitialStep={() => {
-                  setShopInitialStep('catalog');
-                  setShopInitialSelectedIndices([]);
-                }}
-              />
-            )}
-
-            {activeTab === 'profile' && (
-              <ProfileView
-                currentUser={currentUser}
-                selectedCreatorId={selectedCreatorProfileId}
-                users={users}
-                onBackToSelf={() => setSelectedCreatorProfileId(null)}
-                onOpenDirectChat={openPrivateChatDirectly}
-                onSelectProduct={handleProductDetailsLink}
-                onSelectReel={handleReelLink}
-                onProfileUpdate={(updatedUser) => {
-                  setCurrentUser(updatedUser);
-                  localStorage.setItem("currentUserData", JSON.stringify(updatedUser));
-                  setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-                  if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
-                    setIsLoggedIn(true);
-                    localStorage.setItem("isLoggedIn", "true");
-                    localStorage.setItem("loggedInUsername", updatedUser.username);
-                    setSelectedCreatorProfileId(null);
-                    setActiveTab('profile');
-                  }
-                }}
-                onRefreshUsers={() => {
-                  apiFetch("/api/users")
-                    .then((res) => res.json())
-                    .then((data) => setUsers(data))
-                    .catch((err) => console.error("Error refreshing users:", err));
-                }}
-                onPublishSuccess={refreshAllData}
-                onLogout={handleLogout}
-                socket={socketRef.current}
-              />
-            )}
-
-            {activeTab === 'messages' && (
-              <SocialPanel
-                users={users}
-                currentUser={currentUser}
-                messages={privateMessages}
-                activeChatUser={activeChatUser}
-                onSelectChatUser={setActiveChatUser}
-                onSendPrivateMessage={handleSendPrivateMessage}
-                unreadCounts={unreadCounts}
-                clearUnreads={handleClearUnreads}
-                onClose={() => setActiveTab('reels')}
-              />
-            )}
-          </motion.div>
-        </AnimatePresence>
-      </main>
-
-      {/* Bottom Floating Navigation Bar (hidden on desktop md/lg screens or when in active chat/live stream viewer/product detail view) */}
-      {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && (
-        <div
-          id="bottom-nav-bar"
-          className={`fixed bottom-0 inset-x-0 pt-1.5 px-2 z-30 border-0 shadow-none transition-colors ${
-            activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages'
-               ? "bg-white text-slate-900"
-               : "bg-black text-white"
-          } md:hidden`}
-          style={{
-            paddingBottom: 'max(0.45rem, calc(env(safe-area-inset-bottom, 0px) + 0.35rem))'
-          }}
-        >
-          <div className="max-w-md mx-auto flex items-center justify-around px-1">
-            
-            {/* Tab 1: Reels */}
-            <button
-              onClick={() => { refreshReels(); setActiveTab('reels'); }}
-              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all ${
-                activeTab === 'reels'
-                  ? "text-amber-500 scale-105 font-black"
-                  : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
-                  ? "text-slate-600 hover:text-slate-950 font-black"
-                  : "text-slate-400 hover:text-white font-black"
-              }`}
-              id="tab-reels-btn"
-            >
-              <Play strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'reels' ? "fill-amber-500/10" : ""}`} />
-              <span className="text-[9.5px] sm:text-[10px] font-black tracking-tight leading-none">Reels</span>
-            </button>
-   
-            {/* Tab 2: Shop */}
-            <button
-              onClick={() => { refreshProducts(); setActiveTab('shop'); }}
-              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all ${
-                activeTab === 'shop'
-                  ? "text-amber-600 scale-105 font-black"
-                  : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
-                  ? "text-slate-600 hover:text-slate-950 font-black"
-                  : "text-slate-400 hover:text-white font-black"
-              }`}
-              id="tab-shop-btn"
-            >
-              <ShoppingBag strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'shop' ? "fill-amber-500/10" : ""}`} />
-              <span className="text-[9.5px] sm:text-[10px] font-black tracking-tight leading-none">Market</span>
-            </button>
-   
-            {/* Tab: Messages (between Market and Directos) */}
-            <button
-              onClick={() => setActiveTab('messages')}
-              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all relative ${
-                activeTab === 'messages'
-                  ? "text-amber-600 scale-105 font-black"
-                  : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
-                  ? "text-slate-600 hover:text-slate-950 font-black"
-                  : "text-slate-400 hover:text-white font-black"
-              }`}
-              id="tab-messages-btn"
-            >
-              <div className="relative">
-                <MessageSquare strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'messages' ? "fill-amber-500/10" : ""}`} />
-                {totalUnreads > 0 && (
-                  <span className="absolute -top-1 -right-2 bg-rose-500 text-white text-[8px] font-black font-mono w-4 h-4 rounded-full flex items-center justify-center border border-white">
-                    {totalUnreads}
-                  </span>
-                )}
-              </div>
-              <span className="text-[9.5px] sm:text-[10px] font-black tracking-tight leading-none">Mensajes</span>
-            </button>
-   
-            {/* Tab: Profile / Dashboard */}
-            <button
-              onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
-              className={`flex flex-col items-center justify-center space-y-0.5 py-0.5 px-2 rounded-lg cursor-pointer transition-all ${
-                activeTab === 'profile' && selectedCreatorProfileId === null
-                  ? "text-amber-600 scale-105 font-black"
-                  : (activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages')
-                  ? "text-slate-600 hover:text-slate-950 font-black"
-                  : "text-slate-400 hover:text-white font-black"
-              }`}
-              id="tab-profile-btn"
-            >
-              <UserIcon strokeWidth={2.6} className="w-5 h-5" />
-              <span className="text-[9.5px] sm:text-[10px] font-black tracking-tight leading-none">
-                {currentUser.username === "invitado" ? "Registro" : "Dashboard"}
-              </span>
-            </button>
-   
+          <div className="flex md:hidden flex-1 w-full min-h-screen" id="app-web-mobile-container">
+            <MobileApp
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              users={users}
+              reels={reels}
+              products={products}
+              cart={cart}
+              currentUser={currentUser}
+              directSelectedProduct={directSelectedProduct}
+              setDirectSelectedProduct={setDirectSelectedProduct}
+              selectedCreatorProfileId={selectedCreatorProfileId}
+              setSelectedCreatorProfileId={setSelectedCreatorProfileId}
+              isProductDetailOpen={isProductDetailOpen}
+              setIsProductDetailOpen={setIsProductDetailOpen}
+              shopInitialStep={shopInitialStep}
+              setShopInitialStep={setShopInitialStep}
+              shopInitialSelectedIndices={shopInitialSelectedIndices}
+              setShopInitialSelectedIndices={setShopInitialSelectedIndices}
+              activeChatUser={activeChatUser}
+              setActiveChatUser={setActiveChatUser}
+              privateMessages={privateMessages}
+              unreadCounts={unreadCounts}
+              savedReelIds={savedReelIds}
+              isLiveViewerOpen={isLiveViewerOpen}
+              totalUnreads={totalUnreads}
+              handleAddToCart={handleAddToCart}
+              handleRemoveFromCart={handleRemoveFromCart}
+              handleUpdateCartQuantity={handleUpdateCartQuantity}
+              handleCheckoutCart={handleCheckoutCart}
+              handleCreatorProfileLink={handleCreatorProfileLink}
+              handleProductDetailsLink={handleProductDetailsLink}
+              handleReelLink={handleReelLink}
+              handleLikeReel={handleLikeReel}
+              handleAddComment={handleAddComment}
+              handleToggleSaveReel={handleToggleSaveReel}
+              handleToggleFollowUser={handleToggleFollowUser}
+              handleSendPrivateMessage={handleSendPrivateMessage}
+              handleClearUnreads={handleClearUnreads}
+              refreshReels={refreshReels}
+              refreshAllData={refreshAllData}
+              setCurrentUser={setCurrentUser}
+              setUsers={setUsers}
+              setIsLoggedIn={setIsLoggedIn}
+              handleLogout={handleLogout}
+              setGuestInteractionAlert={setGuestInteractionAlert}
+              openPrivateChatDirectly={openPrivateChatDirectly}
+              socket={socketRef.current}
+            />
           </div>
-        </div>
+        </>
       )}
 
       {/* Forced Avatar Upload Modal */}
