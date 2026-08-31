@@ -219,12 +219,13 @@ export async function transcodeVideoToHLS(
     const playlistPath = path.join(outputDir, "index.m3u8");
     const segmentPattern = path.join(outputDir, "segment_%03d.ts");
 
-    // Highly optimized ffmpeg command for fast conversion
+    // Highly optimized ffmpeg command for fast conversion with robust video & audio mapping
     const ffmpegCmd = [
       "ffmpeg -y -i",
       `"${inputFilePath}"`,
+      "-map 0:v:0 -map 0:a?",
       "-c:v libx264 -preset ultrafast -crf 26 -g 60 -keyint_min 60 -sc_threshold 0",
-      "-c:a aac -b:a 128k -ac 2",
+      "-c:a aac -b:a 192k -ar 44100 -ac 2",
       `-f hls -hls_time ${segmentDuration} -hls_playlist_type vod -hls_list_size 0`,
       `-hls_segment_filename "${segmentPattern}"`,
       `"${playlistPath}"`

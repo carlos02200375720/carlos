@@ -4,7 +4,7 @@ import { Reel, Product, Comment, User, CartItem } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../config";
 import { videoPreloader } from "../utils/videoPreloader";
-import { VLCVideoPlayer, VLCConeIcon, VLCVideoPlayerHandle } from "./VLCPlayer";
+import { NativeVideoPlayer, NativeVideoPlayerHandle } from "./VideoPlayer";
 
 interface ReelsViewProps {
   reels: Reel[];
@@ -158,7 +158,7 @@ export default function ReelsView({
 
   const playVideoSafely = (video: HTMLVideoElement) => {
     video.muted = isMuted;
-    video.defaultMuted = isMuted;
+    video.volume = isMuted ? 0 : 1.0;
     const playPromise = video.play();
     if (playPromise !== undefined) {
       playPromise.catch(() => {
@@ -176,6 +176,8 @@ export default function ReelsView({
       if (video) {
         const dist = Math.abs(idx - activeReelIndex);
         if (idx === activeReelIndex) {
+          video.muted = isMuted;
+          video.volume = isMuted ? 0 : 1.0;
           if (isPlaying) {
             playVideoSafely(video);
           } else {
@@ -183,6 +185,7 @@ export default function ReelsView({
           }
         } else {
           video.pause();
+          video.muted = true;
           if (dist <= 2) {
             // Buffer adjacent videos
             video.preload = "auto";
@@ -194,24 +197,28 @@ export default function ReelsView({
     });
   }, [activeReelIndex, displayedReels, isPlaying, isMuted]);
 
-  // Ensure unmuted playback unlocks seamlessly upon first user touch/click
+  // Ensure unmuted playback unlocks seamlessly upon first user touch/click/gesture
   useEffect(() => {
     const handleFirstGesture = () => {
+      setHasUserInteracted(true);
       const activeVideo = videoRefs.current[activeReelIndex];
       if (activeVideo) {
-        if (!isMuted && activeVideo.muted) {
-          activeVideo.muted = false;
-        }
+        activeVideo.muted = isMuted;
+        activeVideo.volume = isMuted ? 0 : 1.0;
         if (isPlaying && activeVideo.paused) {
-          playVideoSafely(activeVideo);
+          activeVideo.play().catch(() => {});
         }
       }
     };
     window.addEventListener('touchstart', handleFirstGesture, { passive: true });
+    window.addEventListener('pointerdown', handleFirstGesture, { passive: true });
     window.addEventListener('click', handleFirstGesture);
+    window.addEventListener('keydown', handleFirstGesture);
     return () => {
       window.removeEventListener('touchstart', handleFirstGesture);
+      window.removeEventListener('pointerdown', handleFirstGesture);
       window.removeEventListener('click', handleFirstGesture);
+      window.removeEventListener('keydown', handleFirstGesture);
     };
   }, [activeReelIndex, isMuted, isPlaying]);
 
@@ -233,6 +240,23 @@ export default function ReelsView({
     }
   };
 
+  const handleToggleMute = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    const activeVideo = videoRefs.current[activeReelIndex];
+    if (activeVideo) {
+      activeVideo.muted = nextMuted;
+      activeVideo.volume = nextMuted ? 0 : 1.0;
+      if (!nextMuted && isPlaying && activeVideo.paused) {
+        activeVideo.play().catch(() => {});
+      }
+    }
+  };
+
   const handleVideoClick = (index: number) => {
     const video = videoRefs.current[index];
     if (video) {
@@ -240,6 +264,8 @@ export default function ReelsView({
         video.pause();
         setIsPlaying(false);
       } else {
+        video.muted = isMuted;
+        video.volume = isMuted ? 0 : 1.0;
         video.play().catch(() => {});
         setIsPlaying(true);
       }
@@ -506,15 +532,9 @@ export default function ReelsView({
             </div>
           )}
 
-          {/* VLC Mobile Badge & Controls */}
-          <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-black/40 backdrop-blur-md rounded-full border border-[#ff8800]/40 shadow-md">
-            <VLCConeIcon size={16} />
-            <span className="text-[10px] font-mono font-bold text-[#ff8800] tracking-wide">VLC</span>
-          </div>
-
           {/* Botón de Sonido (Activar / Silenciar) */}
           <button
-            onClick={() => setIsMuted(!isMuted)}
+            onClick={handleToggleMute}
             className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto"
             id="reels-header-mute-btn"
             title={isMuted ? "Activar sonido" : "Silenciar video"}
@@ -570,41 +590,43 @@ export default function ReelsView({
                     className="relative w-full h-full rounded-none overflow-hidden flex items-center justify-center bg-black"
                   >
                     {/* Media Element: Smart detection by videoUrl & type */}
-                    {(reel.type === "image" && (!reel.videoUrl || reel.videoUrl.trim() === "")) ? (
-                      <img
-                        src={(reel.images?.[0] && !reel.images[0].includes("1618005182384")) ? reel.images[0] : (reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") ? reel.thumbnailUrl : "")}
-                        alt={reel.description}
-                        draggable={false}
-                        onClick={() => setIsPlaying(!isPlaying)}
-                        onDoubleClick={() => handleDoubleTap(reel.id)}
-                        onLoadStart={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: true }))}
-                        onLoad={(e) => {
-                          setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                          const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.08;
-                          setMediaAspectRatios((prev) => ({
-                            ...prev,
-                            [reel.id]: isVert ? "vertical" : "horizontal_or_square",
-                          }));
-                        }}
-                        onError={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: false }))}
-                        className={`w-full h-full cursor-pointer select-none block touch-auto ${
-                          mediaAspectRatios[reel.id] === "horizontal_or_square"
-                            ? "object-contain"
-                            : "object-cover"
-                        }`}
-                        style={{ touchAction: "pan-y" }}
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (reel.type === "carousel" && (!reel.videoUrl || reel.videoUrl.trim() === "")) ? (
-                      <div className="w-full h-full flex items-center justify-center bg-black">
-                        <ReelCarousel 
-                          images={(reel.images || [reel.thumbnailUrl]).filter((img): img is string => !!img && !img.includes("1618005182384"))} 
+                    {(!reel.videoUrl || reel.videoUrl.trim() === "") && (!reel.thumbnailUrl || !reel.thumbnailUrl.endsWith(".mp4")) ? (
+                      ((reel.images && reel.images.length > 1) || reel.type === "carousel") ? (
+                        <div className="w-full h-full flex items-center justify-center bg-black">
+                          <ReelCarousel 
+                            images={(reel.images && reel.images.length > 0 ? reel.images : [reel.thumbnailUrl]).filter((img): img is string => !!img && !img.includes("1618005182384"))} 
+                            onDoubleClick={() => handleDoubleTap(reel.id)}
+                            onIndexChange={(idx) => setCarouselIndices((prev) => ({ ...prev, [`${reel.id}_${index}`]: idx }))}
+                          />
+                        </div>
+                      ) : (
+                        <img
+                          src={(reel.images?.[0] && !reel.images[0].includes("1618005182384")) ? reel.images[0] : (reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") ? reel.thumbnailUrl : "")}
+                          alt={reel.description}
+                          draggable={false}
+                          onClick={() => setIsPlaying(!isPlaying)}
                           onDoubleClick={() => handleDoubleTap(reel.id)}
-                          onIndexChange={(idx) => setCarouselIndices((prev) => ({ ...prev, [`${reel.id}_${index}`]: idx }))}
+                          onLoadStart={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: true }))}
+                          onLoad={(e) => {
+                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                            const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.08;
+                            setMediaAspectRatios((prev) => ({
+                              ...prev,
+                              [reel.id]: isVert ? "vertical" : "horizontal_or_square",
+                            }));
+                          }}
+                          onError={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: false }))}
+                          className={`w-full h-full cursor-pointer select-none block touch-auto ${
+                            mediaAspectRatios[reel.id] === "horizontal_or_square"
+                              ? "object-contain"
+                              : "object-cover"
+                          }`}
+                          style={{ touchAction: "pan-y" }}
+                          referrerPolicy="no-referrer"
                         />
-                      </div>
+                      )
                     ) : (
-                        <VLCVideoPlayer
+                        <NativeVideoPlayer
                           ref={(handle) => {
                             if (handle) {
                               videoRefs.current[index] = handle.getVideoElement();
@@ -633,7 +655,17 @@ export default function ReelsView({
                           onPlaying={() => {
                             setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
                           }}
+                          onCanPlay={() => {
+                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                          }}
+                          onLoadedData={() => {
+                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                          }}
+                          onError={() => {
+                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                          }}
                           onLoadedMetadata={(dur) => {
+                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
                             if (isCurrent) {
                               setDuration(dur);
                             }
@@ -648,9 +680,7 @@ export default function ReelsView({
                           }}
                           onTimeUpdate={(curr, dur) => {
                             if (isCurrent) {
-                              if (mediaLoading[reel.id]) {
-                                setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                              }
+                              setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
                               setCurrentTime(curr);
                               setDuration(dur);
                             }

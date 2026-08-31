@@ -3,7 +3,7 @@ import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, 
 import { Product, CartItem, Order, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../config";
-import { VLCVideoPlayer } from "./VLCPlayer";
+import { NativeVideoPlayer } from "./VideoPlayer";
 
 const CJ_DEST_COUNTRIES = [
   { code: "US", name: "Estados Unidos 🇺🇸" },
@@ -1127,7 +1127,7 @@ export default function ShopView({
                           >
                             {isVideo ? (
                               <div className="w-full h-full relative flex items-center justify-center bg-black">
-                                <VLCVideoPlayer
+                                <NativeVideoPlayer
                                   ref={(handle) => {
                                     galleryVideoRefs.current[idx] = handle ? handle.getVideoElement() : null;
                                   }}
