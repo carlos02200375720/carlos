@@ -4,6 +4,7 @@ import { Reel, Product, Comment, User, CartItem } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../config";
 import { videoPreloader } from "../utils/videoPreloader";
+import { VLCVideoPlayer, VLCConeIcon, VLCVideoPlayerHandle } from "./VLCPlayer";
 
 interface ReelsViewProps {
   reels: Reel[];
@@ -97,7 +98,7 @@ export default function ReelsView({
   // Proactively buffer the sliding window of 10 videos ahead into local memory
   useEffect(() => {
     const urls = displayedReels
-      .map((r) => r.videoUrl)
+      .map((r) => r.hlsUrl || r.videoUrl)
       .filter((u): u is string => Boolean(u));
     if (urls.length > 0) {
       videoPreloader.updateQueue(urls, activeReelIndex);
@@ -505,6 +506,12 @@ export default function ReelsView({
             </div>
           )}
 
+          {/* VLC Mobile Badge & Controls */}
+          <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-black/40 backdrop-blur-md rounded-full border border-[#ff8800]/40 shadow-md">
+            <VLCConeIcon size={16} />
+            <span className="text-[10px] font-mono font-bold text-[#ff8800] tracking-wide">VLC</span>
+          </div>
+
           {/* Botón de Sonido (Activar / Silenciar) */}
           <button
             onClick={() => setIsMuted(!isMuted)}
@@ -597,35 +604,27 @@ export default function ReelsView({
                         />
                       </div>
                     ) : (
-                        <video
-                          ref={(el) => {
-                            videoRefs.current[index] = el;
-                            if (el) {
-                              el.muted = isMuted;
-                              el.defaultMuted = isMuted;
-                              if (isCurrent && isPlaying && el.paused) {
-                                playVideoSafely(el);
-                              }
+                        <VLCVideoPlayer
+                          ref={(handle) => {
+                            if (handle) {
+                              videoRefs.current[index] = handle.getVideoElement();
+                            } else {
+                              videoRefs.current[index] = null;
                             }
                           }}
                           src={videoPreloader.getVideoSrc(reel.videoUrl || (reel.thumbnailUrl?.endsWith(".mp4") ? reel.thumbnailUrl : ""))}
+                          hlsUrl={reel.hlsUrl && reel.hlsUrl.includes(".m3u8") ? reel.hlsUrl : undefined}
                           poster={(reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".mp4")) ? reel.thumbnailUrl : undefined}
-                          loop
                           autoPlay={isCurrent}
+                          loop
                           muted={isMuted}
-                          playsInline
-                          // @ts-ignore
-                          webkit-playsinline="true"
-                          // @ts-ignore
-                          x5-playsinline="true"
-                          // @ts-ignore
-                          x5-video-player-type="h5-page"
-                          disablePictureInPicture
-                          disableRemotePlayback
-                          controls={false}
                           preload={Math.abs(index - activeReelIndex) <= 2 ? "auto" : "metadata"}
+                          isCurrent={isCurrent}
+                          isFeedMode={true}
+                          title={reel.description}
+                          creatorName={reel.creatorUsername || reel.creatorName}
+                          onDoubleClickCenter={() => handleDoubleTap(reel.id)}
                           onClick={() => handleVideoClick(index)}
-                          onDoubleClick={() => handleDoubleTap(reel.id)}
                           onWaiting={() => {
                             if (isCurrent) {
                               setMediaLoading((prev) => ({ ...prev, [reel.id]: true }));
@@ -634,45 +633,30 @@ export default function ReelsView({
                           onPlaying={() => {
                             setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
                           }}
-                          onCanPlay={(e) => {
-                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                            if (isCurrent && isPlaying) {
-                              playVideoSafely(e.currentTarget);
+                          onLoadedMetadata={(dur) => {
+                            if (isCurrent) {
+                              setDuration(dur);
+                            }
+                            const video = videoRefs.current[index];
+                            if (video) {
+                              const isVert = video.videoHeight > video.videoWidth * 1.08;
+                              setMediaAspectRatios((prev) => ({
+                                ...prev,
+                                [reel.id]: isVert ? "vertical" : "horizontal_or_square",
+                              }));
                             }
                           }}
-                          onLoadedData={(e) => {
-                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                            if (isCurrent && isPlaying) {
-                              playVideoSafely(e.currentTarget);
-                            }
-                          }}
-                          onError={() => {
-                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                          }}
-                          onTimeUpdate={(e) => {
+                          onTimeUpdate={(curr, dur) => {
                             if (isCurrent) {
                               if (mediaLoading[reel.id]) {
                                 setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
                               }
-                              setCurrentTime(e.currentTarget.currentTime);
-                              setDuration(e.currentTarget.duration || 0);
+                              setCurrentTime(curr);
+                              setDuration(dur);
                             }
                           }}
-                          onLoadedMetadata={(e) => {
-                            if (isCurrent) {
-                              setDuration(e.currentTarget.duration || 0);
-                            }
-                            const isVert = e.currentTarget.videoHeight > e.currentTarget.videoWidth * 1.08;
-                            setMediaAspectRatios((prev) => ({
-                              ...prev,
-                              [reel.id]: isVert ? "vertical" : "horizontal_or_square",
-                            }));
-                          }}
-                          className={`w-full h-full cursor-pointer block bg-black ${
-                            mediaAspectRatios[reel.id] === "horizontal_or_square"
-                              ? "object-contain"
-                              : "object-cover"
-                          }`}
+                          defaultAspectRatio={mediaAspectRatios[reel.id] === "horizontal_or_square" ? "fit" : "fill"}
+                          className="w-full h-full"
                         />
                     )}
 

@@ -427,6 +427,26 @@ export default function App() {
             break;
           }
 
+          case "reel_deleted": {
+            if (payload.reelId) {
+              setReels((prev) => prev.filter((r) => r.id !== payload.reelId));
+            }
+            break;
+          }
+
+          case "hls_job_completed": {
+            if (payload.hlsManifestUrl) {
+              setReels((prev) =>
+                prev.map((r) =>
+                  r.videoUrl === payload.originalUrl || r.id === payload.jobId
+                    ? { ...r, videoUrl: payload.hlsManifestUrl, hlsUrl: payload.hlsManifestUrl }
+                    : r
+                )
+              );
+            }
+            break;
+          }
+
           case "product_created": {
             if (payload.product) {
               setProducts((prev) => {

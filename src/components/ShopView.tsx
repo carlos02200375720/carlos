@@ -3,6 +3,7 @@ import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, 
 import { Product, CartItem, Order, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../config";
+import { VLCVideoPlayer } from "./VLCPlayer";
 
 const CJ_DEST_COUNTRIES = [
   { code: "US", name: "Estados Unidos 🇺🇸" },
@@ -1126,36 +1127,23 @@ export default function ShopView({
                           >
                             {isVideo ? (
                               <div className="w-full h-full relative flex items-center justify-center bg-black">
-                                <video
-                                  ref={(el) => { galleryVideoRefs.current[idx] = el; }}
+                                <VLCVideoPlayer
+                                  ref={(handle) => {
+                                    galleryVideoRefs.current[idx] = handle ? handle.getVideoElement() : null;
+                                  }}
                                   src={mediaUrl}
-                                  controls
-                                  loop
-                                  playsInline
-                                  // @ts-ignore
-                                  webkit-playsinline="true"
-                                  // @ts-ignore
-                                  x5-playsinline="true"
-                                  disablePictureInPicture
-                                  disableRemotePlayback
                                   poster={selectedProduct.imageUrl || selectedProduct.images?.[0]}
-                                  preload="auto"
+                                  autoPlay={idx === activeGalleryIndex}
+                                  loop
                                   muted={isGalleryVideoMuted}
+                                  preload="auto"
+                                  isCurrent={idx === activeGalleryIndex}
+                                  isFeedMode={false}
+                                  title={selectedProduct.name}
                                   onPlay={() => setIsGalleryVideoPlaying(true)}
                                   onPause={() => setIsGalleryVideoPlaying(false)}
-                                  onClick={() => {
-                                    const videoEl = galleryVideoRefs.current[idx];
-                                    if (videoEl) {
-                                      if (videoEl.paused) {
-                                        videoEl.play().catch(() => {});
-                                        setIsGalleryVideoPlaying(true);
-                                      } else {
-                                        videoEl.pause();
-                                        setIsGalleryVideoPlaying(false);
-                                      }
-                                    }
-                                  }}
-                                  className="w-full h-full object-contain bg-black relative z-10 cursor-pointer"
+                                  defaultAspectRatio="fit"
+                                  className="w-full h-full"
                                 />
 
                                 {/* Floating Play Button Overlay when paused */}

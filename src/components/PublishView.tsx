@@ -209,7 +209,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     return new File([file], cleanName, { type: "video/mp4" });
   };
 
-  const uploadFileToGCS = async (file: File): Promise<string> => {
+  const uploadFileToGCS = async (file: File): Promise<{ url: string; hlsUrl?: string }> => {
     const isVideo = file.type.startsWith("video/") || file.name.toLowerCase().endsWith(".mp4");
     const fileToUpload = isVideo ? ensureCorrectVideoExtension(file) : file;
 
@@ -233,7 +233,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
       throw new Error(data.error || "No se recibió URL del archivo subido");
     }
 
-    return data.url;
+    return { url: data.url, hlsUrl: data.hlsUrl };
   };
 
   // Add custom variant
@@ -337,13 +337,14 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         }
 
         // 1. Upload video
-        const videoUrl = await uploadFileToGCS(singleVideoFile);
+        const { url: videoUrl, hlsUrl } = await uploadFileToGCS(singleVideoFile);
 
         // Determine real cover thumbnail: custom image or auto-extracted video frame
         let thumbnailUrl = "";
         if (videoCoverFile) {
           try {
-            thumbnailUrl = await uploadFileToGCS(videoCoverFile);
+            const coverRes = await uploadFileToGCS(videoCoverFile);
+            thumbnailUrl = coverRes.url;
           } catch (coverErr) {
             console.error("Error subiendo portada personalizada:", coverErr);
           }
@@ -353,7 +354,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
           try {
             const frameBlob = await generateVideoThumbnail(singleVideoFile);
             const frameFile = new File([frameBlob], `thumb_${Date.now()}.jpg`, { type: "image/jpeg" });
-            thumbnailUrl = await uploadFileToGCS(frameFile);
+            const frameRes = await uploadFileToGCS(frameFile);
+            thumbnailUrl = frameRes.url;
           } catch (frameErr) {
             console.warn("No se pudo extraer miniatura del video:", frameErr);
             thumbnailUrl = videoUrl;
@@ -366,6 +368,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             videoUrl,
+            hlsUrl,
             thumbnailUrl,
             description,
             creatorId: currentUser.id,
@@ -392,7 +395,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         }
 
         // 1. Upload image
-        const imageUrl = await uploadFileToGCS(singleImageFile);
+        const { url: imageUrl } = await uploadFileToGCS(singleImageFile);
 
         // 2. Register Reel/Publication of type 'image'
         const response = await apiFetch("/api/reels", {
@@ -431,7 +434,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         }
 
         // 1. Upload all carousel images in parallel
-        const imageUrls = await Promise.all(carouselImageFiles.map(file => uploadFileToGCS(file)));
+        const uploadedImages = await Promise.all(carouselImageFiles.map(file => uploadFileToGCS(file)));
+        const imageUrls = uploadedImages.map(img => img.url);
 
         // 2. Register publication of type 'carousel'
         const response = await apiFetch("/api/reels", {
@@ -475,7 +479,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         }
 
         // 1. Upload new product photos and combine with imported CJ photos
-        const uploadedPhotoUrls = await Promise.all(productPhotoFiles.map(file => uploadFileToGCS(file)));
+        const uploadedPhotoObjs = await Promise.all(productPhotoFiles.map(file => uploadFileToGCS(file)));
+        const uploadedPhotoUrls = uploadedPhotoObjs.map(p => p.url);
         const photoUrls = [...importedPhotoUrls, ...uploadedPhotoUrls];
 
         if (photoUrls.length === 0) {
@@ -485,7 +490,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         // 2. Upload product video if present
         let videoUrl = "";
         if (productVideoFile) {
-          videoUrl = await uploadFileToGCS(productVideoFile);
+          const videoRes = await uploadFileToGCS(productVideoFile);
+          videoUrl = videoRes.url;
         }
 
         // 3. Register Product

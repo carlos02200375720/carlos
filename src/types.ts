@@ -27,6 +27,7 @@ export interface Comment {
 export interface Reel {
   id: string;
   videoUrl: string;
+  hlsUrl?: string; // Adaptive HLS Master Playlist (.m3u8) URL for smooth streaming
   thumbnailUrl: string;
   description: string;
   creatorId: string;

@@ -9,6 +9,7 @@ import mongoose from "mongoose";
 import { Storage } from "@google-cloud/storage";
 import multer from "multer";
 import fs from "fs";
+import { transcodeVideoToHLS, hlsQueue, deleteHlsStreamBatch } from "./src/server/hlsTranscoder";
 
 // Configure dotenv to read environment variables first
 dotenv.config();
@@ -105,7 +106,8 @@ const ReelSchema = new mongoose.Schema({
   views: { type: Number, default: 0 },
   productId: { type: String },
   type: { type: String, default: "video" },
-  images: { type: [String], default: [] }
+  images: { type: [String], default: [] },
+  hlsUrl: { type: String }
 });
 
 const MongoReel = (mongoose.models.Reel || mongoose.model("Reel", ReelSchema)) as any;
@@ -585,6 +587,7 @@ async function startServer() {
   });
 
   // Upload file to Google Cloud Storage & register in MongoDB
+  // Upload file to Google Cloud Storage & register in MongoDB with background HLS transcode
   app.post("/api/upload", upload.single("file"), async (req: any, res: any) => {
     try {
       if (!req.file) {
@@ -593,18 +596,22 @@ async function startServer() {
       }
 
       const { title, description, creatorId } = req.body;
+      const mimeType = req.file.mimetype.toLowerCase();
+      const isVideo = mimeType.startsWith("video/") || req.file.originalname.toLowerCase().endsWith(".mp4");
       
-      console.log(`🚀 Iniciando subida de archivo a GCS: ${req.file.originalname}`);
+      console.log(`🚀 Iniciando subida inmediata a GCS: ${req.file.originalname}`);
       const publicUrl = await uploadToGCS(req.file, "publicaciones");
-      console.log(`✅ Archivo subido con éxito a GCS: ${publicUrl}`);
+      console.log(`✅ Archivo base subido con éxito a GCS: ${publicUrl}`);
 
-      // Crear registro en MongoDB
+      const pubId = "pub_" + generateId();
+      const provisionalHlsUrl = undefined;
+
+      // Crear registro en MongoDB inmediatamente
       let savedPublicacionObj = null;
       if (mongoose.connection.readyState === 1) {
         try {
-          const id = "pub_" + generateId();
           const newPublicacion = new MongoPublicacion({
-            id,
+            id: pubId,
             url: publicUrl,
             title: title || req.file.originalname,
             description: description || "",
@@ -613,18 +620,74 @@ async function startServer() {
           });
 
           savedPublicacionObj = await newPublicacion.save();
-          console.log(`💾 Publicación guardada en MongoDB Atlas con id: ${id}`);
+          console.log(`💾 Publicación registrada en MongoDB con id: ${pubId}`);
         } catch (dbErr) {
-          console.error("❌ Error al guardar la publicación en MongoDB:", dbErr);
+          console.error("❌ Error al guardar publicación en MongoDB:", dbErr);
         }
-      } else {
-        console.log("⚠️ MongoDB no está conectado. No se guardó el registro en base de datos.");
       }
 
+      let jobId: string | undefined = undefined;
+
+      // Asynchronous non-blocking background queue for HLS multi-bitrate transcoding
+      if (isVideo) {
+        jobId = "hls_" + generateId();
+        console.log(`⚡ [HLS Worker] Encolando trabajo en segundo plano ${jobId} para ${req.file.originalname}...`);
+
+        hlsQueue.enqueue(
+          jobId,
+          req.file.buffer,
+          req.file.originalname,
+          bucket,
+          bucketName,
+          {
+            publicacionId: pubId,
+            onComplete: async (hlsResult) => {
+              console.log(`🎉 [HLS Async] Transcodificación en segundo plano completada para ${pubId}: ${hlsResult.masterM3u8Url}`);
+              
+              // Update MongoPublicacion
+              if (mongoose.connection.readyState === 1) {
+                try {
+                  await MongoPublicacion.updateOne({ id: pubId }, { $set: { hlsUrl: hlsResult.masterM3u8Url } });
+                  await MongoReel.updateMany({ videoUrl: publicUrl }, { $set: { hlsUrl: hlsResult.masterM3u8Url } });
+                } catch (updateErr) {
+                  console.error("Error updating MongoDB with completed HLS stream:", updateErr);
+                }
+              }
+
+              // Update in-memory reels if present
+              reels.forEach((r) => {
+                if (r.videoUrl === publicUrl) {
+                  r.hlsUrl = hlsResult.masterM3u8Url;
+                }
+              });
+
+              // Broadcast real-time update to all connected web/mobile clients
+              broadcastToAll({
+                type: "hls_job_completed",
+                jobId,
+                publicacionId: pubId,
+                videoUrl: publicUrl,
+                hlsUrl: hlsResult.masterM3u8Url,
+                stats: {
+                  latencyMs: hlsResult.latencyMs,
+                  totalSegments: hlsResult.totalSegments,
+                },
+              });
+            },
+            onError: (err) => {
+              console.warn(`⚠️ [HLS Async] Trabajo en segundo plano falló para ${pubId}:`, err.message);
+            }
+          }
+        );
+      }
+
+      // Return immediately to client without freezing UI (< 1s upload experience)
       res.json({
         success: true,
-        message: "Archivo subido y registrado exitosamente",
+        message: "Archivo subido exitosamente. Transcodificación HLS en cola en segundo plano.",
         url: publicUrl,
+        hlsUrl: provisionalHlsUrl,
+        jobId,
         publicacion: savedPublicacionObj
       });
     } catch (error: any) {
@@ -633,7 +696,7 @@ async function startServer() {
     }
   });
 
-  // Alias /upload for compliance with generic requests
+  // Alias /upload
   app.post("/upload", upload.single("file"), async (req: any, res: any) => {
     try {
       if (!req.file) {
@@ -642,14 +705,17 @@ async function startServer() {
       }
 
       const { title, description, creatorId } = req.body;
+      const mimeType = req.file.mimetype.toLowerCase();
+      const isVideo = mimeType.startsWith("video/") || req.file.originalname.toLowerCase().endsWith(".mp4");
       const publicUrl = await uploadToGCS(req.file, "publicaciones");
+      const pubId = "pub_" + generateId();
+      const provisionalHlsUrl = undefined;
 
       let savedPublicacionObj = null;
       if (mongoose.connection.readyState === 1) {
         try {
-          const id = "pub_" + generateId();
           const newPublicacion = new MongoPublicacion({
-            id,
+            id: pubId,
             url: publicUrl,
             title: title || req.file.originalname,
             description: description || "",
@@ -659,14 +725,44 @@ async function startServer() {
 
           savedPublicacionObj = await newPublicacion.save();
         } catch (dbErr) {
-          console.error("❌ Error al guardar la publicación en MongoDB:", dbErr);
+          console.error("❌ Error al guardar publicación en MongoDB:", dbErr);
         }
+      }
+
+      if (isVideo) {
+        const jobId = "hls_" + generateId();
+        hlsQueue.enqueue(
+          jobId,
+          req.file.buffer,
+          req.file.originalname,
+          bucket,
+          bucketName,
+          {
+            publicacionId: pubId,
+            onComplete: async (hlsResult) => {
+              if (mongoose.connection.readyState === 1) {
+                await MongoPublicacion.updateOne({ id: pubId }, { $set: { hlsUrl: hlsResult.masterM3u8Url } });
+                await MongoReel.updateMany({ videoUrl: publicUrl }, { $set: { hlsUrl: hlsResult.masterM3u8Url } });
+              }
+              reels.forEach(r => { if (r.videoUrl === publicUrl) r.hlsUrl = hlsResult.masterM3u8Url; });
+              broadcastToAll({
+                type: "hls_job_completed",
+                jobId,
+                publicacionId: pubId,
+                videoUrl: publicUrl,
+                hlsUrl: hlsResult.masterM3u8Url,
+                stats: { latencyMs: hlsResult.latencyMs, totalSegments: hlsResult.totalSegments }
+              });
+            }
+          }
+        );
       }
 
       res.json({
         success: true,
         message: "Archivo subido y registrado exitosamente",
         url: publicUrl,
+        hlsUrl: provisionalHlsUrl,
         publicacion: savedPublicacionObj
       });
     } catch (error: any) {
@@ -674,6 +770,107 @@ async function startServer() {
       res.status(500).json({ error: "Error interno del servidor", details: error.message });
     }
   });
+
+  // HLS Queue Telemetry & Latency Monitoring Endpoint
+  app.get("/api/hls/telemetry", (req: any, res: any) => {
+    try {
+      const telemetry = hlsQueue.getTelemetry();
+      const jobs = hlsQueue.getAllJobs();
+      res.json({
+        success: true,
+        telemetry,
+        jobs: jobs.slice(0, 30),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch HLS telemetry", details: err.message });
+    }
+  });
+
+  // HLS Dynamic Streaming Fallback Endpoint (Redirects directly to avoid CPU overhead)
+  app.get("/api/hls/stream", async (req: any, res: any) => {
+    try {
+      const videoUrl = (req.query.url as string || "").trim();
+      if (!videoUrl) {
+        res.status(400).send("#EXTM3U\n# Error: video url required");
+        return;
+      }
+      // Redirect directly to source video URL for native playback
+      res.redirect(videoUrl);
+    } catch (err: any) {
+      res.status(500).send("#EXTM3U\n# Error streaming video");
+    }
+  });
+
+  // Batch Cleanup & Deletion Endpoint for Reels & HLS segments in GCS
+  app.delete(["/api/reels/:id", "/api/publicaciones/:id"], async (req: any, res: any) => {
+    try {
+      const targetId = req.params.id;
+      if (!targetId) {
+        res.status(400).json({ error: "ID is required" });
+        return;
+      }
+
+      console.log(`🗑️ [Batch Cleanup] Deleting publication / reel ${targetId}...`);
+
+      // Find reel in memory or database
+      const existingReel = reels.find(r => r.id === targetId);
+      const videoUrl = existingReel?.videoUrl || "";
+      const hlsUrl = existingReel?.hlsUrl || "";
+
+      let gcsCleanedFiles = 0;
+
+      // 1. Batch delete all GCS HLS segments & playlists
+      if (hlsUrl && hlsUrl.includes("storage.googleapis.com")) {
+        const cleanupResult = await deleteHlsStreamBatch(bucket, hlsUrl);
+        gcsCleanedFiles += cleanupResult.deletedCount;
+      }
+
+      // 2. Delete source MP4 video file from GCS if applicable
+      if (videoUrl && videoUrl.includes("storage.googleapis.com")) {
+        try {
+          const videoMatch = videoUrl.match(/publicaciones\/([^/?#]+)/);
+          if (videoMatch && videoMatch[0]) {
+            await bucket.file(videoMatch[0]).delete({ ignoreNotFound: true });
+            gcsCleanedFiles++;
+            console.log(`🧹 Deleted source video file: ${videoMatch[0]}`);
+          }
+        } catch (srcDelErr) {
+          console.warn("Could not delete source MP4 file from GCS:", srcDelErr);
+        }
+      }
+
+      // 3. Remove from MongoDB
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoReel.deleteOne({ id: targetId });
+          await MongoPublicacion.deleteOne({ id: targetId });
+          console.log(`💾 Deleted ${targetId} from MongoDB`);
+        } catch (dbErr) {
+          console.error("Error deleting from MongoDB:", dbErr);
+        }
+      }
+
+      // 4. Remove from in-memory reels array
+      reels = reels.filter(r => r.id !== targetId);
+
+      // 5. Broadcast deletion to all clients
+      broadcastToAll({
+        type: "reel_deleted",
+        reelId: targetId
+      });
+
+      res.json({
+        success: true,
+        message: `Publicación eliminada correctamente con limpieza en lote de ${gcsCleanedFiles} archivos en GCS.`,
+        deletedId: targetId,
+        gcsCleanedFiles,
+      });
+    } catch (err: any) {
+      console.error("❌ Error deleting publication with batch cleanup:", err);
+      res.status(500).json({ error: "Failed to delete publication", details: err.message });
+    }
+  });
+
 
   // Subir foto de perfil (avatar)
   app.post(['/api/upload-avatar', '/upload-avatar'], upload.single('avatar'), async (req: any, res: any) => {
@@ -1403,7 +1600,8 @@ async function startServer() {
             views: r.views || 0,
             productId: r.productId || undefined,
             type: r.type || "video",
-            images: r.images || []
+            images: r.images || [],
+            hlsUrl: r.hlsUrl || (r.videoUrl ? `/api/hls/stream?url=${encodeURIComponent(r.videoUrl)}` : undefined)
           };
         });
       } catch (err) {
@@ -2152,7 +2350,7 @@ async function startServer() {
   // Create a new publication (video, image, or carousel)
   app.post("/api/reels", async (req: any, res: any) => {
     try {
-      const { videoUrl, thumbnailUrl, description, creatorId, type, images, productId } = req.body;
+      const { videoUrl, thumbnailUrl, description, creatorId, type, images, productId, hlsUrl } = req.body;
       
       let lookupId = creatorId;
       if (!lookupId || lookupId === "current_user") {
@@ -2168,6 +2366,8 @@ async function startServer() {
         res.status(403).json({ error: "Un usuario no registrado no puede realizar publicaciones." });
         return;
       }
+
+      const resolvedHlsUrl = hlsUrl || (videoUrl ? `/api/hls/stream?url=${encodeURIComponent(videoUrl)}` : undefined);
 
       const newReel: Reel = {
         id: "reel_" + generateId(),
@@ -2185,7 +2385,8 @@ async function startServer() {
         views: 0,
         productId: productId || undefined,
         type: type || "video",
-        images: images || []
+        images: images || [],
+        hlsUrl: resolvedHlsUrl
       };
 
       // Add to memory list
