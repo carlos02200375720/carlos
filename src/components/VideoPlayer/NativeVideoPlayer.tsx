@@ -111,6 +111,35 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       defaultAspectRatio === "contain" || defaultAspectRatio === "fit" ? "contain" : "cover"
     );
 
+    // Sync with defaultAspectRatio prop
+    useEffect(() => {
+      if (defaultAspectRatio === "contain" || defaultAspectRatio === "fit") {
+        setAspectMode("contain");
+      } else if (defaultAspectRatio === "cover" || defaultAspectRatio === "fill") {
+        setAspectMode("cover");
+      }
+    }, [defaultAspectRatio]);
+
+    // Automatic aspect ratio detection based on real video dimensions
+    const detectAndApplyAspect = useCallback(() => {
+      if (videoRef.current) {
+        const vw = videoRef.current.videoWidth;
+        const vh = videoRef.current.videoHeight;
+        if (vw > 0 && vh > 0) {
+          // If video is horizontal (widescreen, 16:9, landscape, or square), set to contain
+          if (vw >= vh) {
+            setAspectMode("contain");
+          } else if (defaultAspectRatio === "cover" || defaultAspectRatio === "fill" || !defaultAspectRatio) {
+            setAspectMode("cover");
+          }
+        }
+      }
+    }, [defaultAspectRatio]);
+
+    useEffect(() => {
+      detectAndApplyAspect();
+    }, [src, hlsUrl, detectAndApplyAspect]);
+
     // Double-click timer for like / fullscreen
     const lastTapRef = useRef<number>(0);
     const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -550,7 +579,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
         <video
           ref={videoRef}
           src={!isM3u8 && targetSource ? targetSource : undefined}
-          className={`w-full h-full block ${isHorizontal ? "object-contain" : "object-cover"}`}
+          className={`w-full h-full block relative z-10 ${isHorizontal ? "object-contain" : "object-cover"}`}
           poster={poster}
           playsInline
           autoPlay={autoPlay}
@@ -565,6 +594,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
           onPlay={() => {
             setIsPlaying(true);
             setIsBuffering(false);
+            detectAndApplyAspect();
             onPlay?.();
           }}
           onPause={() => {
@@ -581,14 +611,17 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
           onPlaying={() => {
             setIsBuffering(false);
             setIsPlaying(true);
+            detectAndApplyAspect();
             onPlaying?.();
           }}
           onCanPlay={() => {
             setIsBuffering(false);
+            detectAndApplyAspect();
             onCanPlay?.();
           }}
           onLoadedData={() => {
             setIsBuffering(false);
+            detectAndApplyAspect();
             onLoadedData?.();
           }}
           onError={(e) => {
@@ -597,6 +630,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
           }}
           onLoadedMetadata={() => {
             setIsBuffering(false);
+            detectAndApplyAspect();
             if (videoRef.current) {
               const dur = videoRef.current.duration;
               setDuration(dur || 0);
@@ -637,20 +671,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/45 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white shadow-2xl transition-transform transform scale-100 hover:scale-110">
               <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-white translate-x-0.5" />
             </div>
-          </div>
-        )}
-
-        {/* Platform Badge (Subtle top right indicator in standard player) */}
-        {!isFeedMode && (
-          <div className="absolute top-3 right-3 z-30 flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-white/80 text-[11px] font-medium shadow-sm pointer-events-none">
-            {deviceInfo.isIOS ? (
-              <Apple className="w-3.5 h-3.5 text-white" />
-            ) : deviceInfo.isAndroid ? (
-              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-            ) : (
-              <Monitor className="w-3.5 h-3.5 text-blue-400" />
-            )}
-            <span>{deviceInfo.platformName}</span>
           </div>
         )}
 

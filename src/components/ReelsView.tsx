@@ -600,30 +600,32 @@ export default function ReelsView({
                           />
                         </div>
                       ) : (
-                        <img
-                          src={(reel.images?.[0] && !reel.images[0].includes("1618005182384")) ? reel.images[0] : (reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") ? reel.thumbnailUrl : "")}
-                          alt={reel.description}
-                          draggable={false}
-                          onClick={() => setIsPlaying(!isPlaying)}
-                          onDoubleClick={() => handleDoubleTap(reel.id)}
-                          onLoadStart={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: true }))}
-                          onLoad={(e) => {
-                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                            const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.08;
-                            setMediaAspectRatios((prev) => ({
-                              ...prev,
-                              [reel.id]: isVert ? "vertical" : "horizontal_or_square",
-                            }));
-                          }}
-                          onError={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: false }))}
-                          className={`w-full h-full cursor-pointer select-none block touch-auto ${
-                            mediaAspectRatios[reel.id] === "horizontal_or_square"
-                              ? "object-contain"
-                              : "object-cover"
-                          }`}
-                          style={{ touchAction: "pan-y" }}
-                          referrerPolicy="no-referrer"
-                        />
+                        <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black">
+                          <img
+                            src={(reel.images?.[0] && !reel.images[0].includes("1618005182384")) ? reel.images[0] : (reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") ? reel.thumbnailUrl : "")}
+                            alt={reel.description}
+                            draggable={false}
+                            onClick={() => setIsPlaying(!isPlaying)}
+                            onDoubleClick={() => handleDoubleTap(reel.id)}
+                            onLoadStart={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: true }))}
+                            onLoad={(e) => {
+                              setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
+                              const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.05;
+                              setMediaAspectRatios((prev) => ({
+                                ...prev,
+                                [reel.id]: isVert ? "vertical" : "horizontal_or_square",
+                              }));
+                            }}
+                            onError={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: false }))}
+                            className={`w-full h-full cursor-pointer select-none block touch-auto ${
+                              mediaAspectRatios[reel.id] === "horizontal_or_square"
+                                ? "object-contain"
+                                : "object-cover"
+                            }`}
+                            style={{ touchAction: "pan-y" }}
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
                       )
                     ) : (
                         <NativeVideoPlayer
@@ -690,16 +692,6 @@ export default function ReelsView({
                         />
                     )}
 
-                    {/* Subtle Translucent Buffer Spinner (Never obscures video with solid black) */}
-                    {isCurrent && mediaLoading[reel.id] && (
-                      <div className="absolute inset-0 z-15 flex flex-col items-center justify-center pointer-events-none transition-opacity duration-200">
-                        <div className="p-3 bg-black/40 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center space-y-2 border border-white/10 shadow-lg">
-                          <div className="w-7 h-7 border-2 border-white/30 border-t-amber-400 rounded-full animate-spin" />
-                          <span className="text-[10px] text-white/80 font-medium tracking-wide">Cargando...</span>
-                        </div>
-                      </div>
-                    )}
-
                     {/* Floating Large Double Tap Heart Animation */}
                     <AnimatePresence>
                       {likedAnim === reel.id && (
@@ -734,7 +726,12 @@ export default function ReelsView({
                         <h3 className="font-display font-bold text-base sm:text-lg tracking-wide flex items-center space-x-2.5">
                           <span
                             className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm"
-                            onClick={() => onCreatorClick(reel.creatorId)}
+                            onClick={() => {
+                              const target = (reel.creatorUsername && reel.creatorUsername !== "invitado")
+                                ? reel.creatorUsername
+                                : (reel.creatorId && reel.creatorId !== "current_user" ? reel.creatorId : (reel.creatorName || "current_user"));
+                              onCreatorClick(target);
+                            }}
                           >
                             @{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}
                           </span>
@@ -854,7 +851,12 @@ export default function ReelsView({
                     {/* Creator Avatar with follow button */}
                     <div className="flex flex-col items-center">
                       <button
-                        onClick={() => onCreatorClick(reel.creatorId)}
+                        onClick={() => {
+                          const target = (reel.creatorUsername && reel.creatorUsername !== "invitado")
+                            ? reel.creatorUsername
+                            : (reel.creatorId && reel.creatorId !== "current_user" ? reel.creatorId : (reel.creatorName || "current_user"));
+                          onCreatorClick(target);
+                        }}
                         className="relative rounded-full transform hover:scale-110 transition-transform cursor-pointer drop-shadow-sm"
                         id={`creator-avatar-btn-${reel.id}`}
                       >
@@ -1481,7 +1483,7 @@ function ReelCarousel({
             alt={`Carousel ${idx + 1}`}
             draggable={false}
             onLoad={(e) => {
-              const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.08;
+              const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.05;
               setSlideAspectRatios((prev) => ({ ...prev, [idx]: isVert }));
             }}
             className={`w-full h-full pointer-events-none select-none block ${

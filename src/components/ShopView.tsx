@@ -1127,63 +1127,19 @@ export default function ShopView({
                           >
                             {isVideo ? (
                               <div className="w-full h-full relative flex items-center justify-center bg-black">
-                                <NativeVideoPlayer
-                                  ref={(handle) => {
-                                    galleryVideoRefs.current[idx] = handle ? handle.getVideoElement() : null;
+                                <video
+                                  ref={(el) => {
+                                    galleryVideoRefs.current[idx] = el;
                                   }}
                                   src={mediaUrl}
                                   poster={selectedProduct.imageUrl || selectedProduct.images?.[0]}
-                                  autoPlay={idx === activeGalleryIndex}
+                                  controls
+                                  playsInline
                                   loop
                                   muted={isGalleryVideoMuted}
                                   preload="auto"
-                                  isCurrent={idx === activeGalleryIndex}
-                                  isFeedMode={false}
-                                  title={selectedProduct.name}
-                                  onPlay={() => setIsGalleryVideoPlaying(true)}
-                                  onPause={() => setIsGalleryVideoPlaying(false)}
-                                  defaultAspectRatio="fit"
-                                  className="w-full h-full"
+                                  className="w-full h-full object-contain bg-black"
                                 />
-
-                                {/* Floating Play Button Overlay when paused */}
-                                {!isGalleryVideoPlaying && idx === activeGalleryIndex && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      const videoEl = galleryVideoRefs.current[idx];
-                                      if (videoEl) {
-                                        videoEl.play().catch(() => {});
-                                        setIsGalleryVideoPlaying(true);
-                                      }
-                                    }}
-                                    className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-slate-950/75 border border-white/30 backdrop-blur-md flex items-center justify-center text-white shadow-2xl hover:scale-110 active:scale-95 transition-all z-20 cursor-pointer"
-                                    aria-label="Reproducir video"
-                                  >
-                                    <Play className="w-8 h-8 fill-white translate-x-0.5 text-white" />
-                                  </button>
-                                )}
-
-                                {/* Floating Mute/Unmute Toggle Button */}
-                                {idx === activeGalleryIndex && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setIsGalleryVideoMuted((prev) => !prev);
-                                    }}
-                                    className="absolute bottom-3 left-3 z-20 p-2 text-white hover:opacity-80 transition-opacity cursor-pointer flex items-center justify-center drop-shadow-md"
-                                    title={isGalleryVideoMuted ? "Activar sonido" : "Silenciar"}
-                                    aria-label={isGalleryVideoMuted ? "Activar sonido" : "Silenciar"}
-                                  >
-                                    {isGalleryVideoMuted ? (
-                                      <VolumeX className="w-6 h-6 text-white drop-shadow-md" />
-                                    ) : (
-                                      <Volume2 className="w-6 h-6 text-amber-400 drop-shadow-md" />
-                                    )}
-                                  </button>
-                                )}
                               </div>
                             ) : (
                               <img
@@ -1198,16 +1154,44 @@ export default function ShopView({
                       })}
                     </div>
 
-                    {/* Image Counter Badge in Bottom-Right Corner */}
+                    {/* Image Counter Badge in Bottom-Left Corner */}
                     {productGalleryMedia.length > 0 && (
                       <div
-                        className="absolute bottom-3 right-3 z-20 px-2 py-0.5 text-white font-mono text-xs font-bold tracking-wider flex items-center space-x-1 pointer-events-none select-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
+                        className="absolute bottom-3 left-3 z-20 px-2 py-0.5 text-white font-mono text-xs font-bold tracking-wider flex items-center space-x-1 pointer-events-none select-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
                         id="detail-image-counter"
                       >
                         <span className="text-amber-400 font-extrabold">{activeGalleryIndex + 1}</span>
                         <span className="text-white/80">/</span>
                         <span className="text-white">{productGalleryMedia.length}</span>
                       </div>
+                    )}
+
+                    {/* Audio Toggle Button in Bottom-Right Corner (for active video) */}
+                    {checkIsVideo(productGalleryMedia[activeGalleryIndex]) && (
+                      <button
+                        type="button"
+                        id="gallery-video-mute-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsGalleryVideoMuted((prev) => {
+                            const nextMuted = !prev;
+                            const currentVideo = galleryVideoRefs.current[activeGalleryIndex];
+                            if (currentVideo) {
+                              currentVideo.muted = nextMuted;
+                            }
+                            return nextMuted;
+                          });
+                        }}
+                        className="absolute bottom-3 right-3 z-20 p-2 text-white hover:opacity-80 active:scale-95 transition-all cursor-pointer flex items-center justify-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
+                        title={isGalleryVideoMuted ? "Activar audio" : "Silenciar audio"}
+                        aria-label={isGalleryVideoMuted ? "Activar audio" : "Silenciar audio"}
+                      >
+                        {isGalleryVideoMuted ? (
+                          <VolumeX className="w-5 h-5 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" />
+                        ) : (
+                          <Volume2 className="w-5 h-5 text-amber-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" />
+                        )}
+                      </button>
                     )}
                   </div>
 
@@ -1915,58 +1899,96 @@ export default function ShopView({
 
           {/* 5. THANK YOU STEP */}
           {activeStep === 'thankyou' && completedOrder && (
-            <motion.div
-              key="thankyou"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="max-w-md mx-auto bg-slate-50 border border-slate-150 p-6 rounded-2xl text-center shadow-md"
+            <div
+              className="w-full px-2 sm:px-4 py-2"
+              style={{
+                paddingBottom: 'calc(68px + env(safe-area-inset-bottom, 0px) + 5px)'
+              }}
             >
-              <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto animate-bounce" />
-              <h2 className="font-display font-extrabold text-xl text-slate-900 mt-4">¡Muchas Gracias por su Compra!</h2>
-              <p className="text-xs text-slate-500 mt-1">El vendedor ha verificado la transacción correctamente.</p>
-              
-              <div className="bg-white border border-slate-200/80 rounded-xl p-4 mt-6 text-left space-y-3 text-xs">
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                  <span className="text-slate-500 font-medium">Código de Pedido:</span>
-                  <span className="font-mono font-bold text-slate-800">{completedOrder.id}</span>
-                </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                  <span className="text-slate-500 font-medium">Fecha:</span>
-                  <span className="font-mono text-slate-700">
-                    {new Date(completedOrder.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                  <span className="text-slate-500 font-medium">Dirección de Envío:</span>
-                  <span className="text-slate-700 truncate max-w-[180px] font-medium">{completedOrder.shippingAddress}</span>
-                </div>
-                <div className="flex justify-between text-sm font-bold pt-1">
-                  <span>Total Cargado:</span>
-                  <span className="text-emerald-500 font-mono">${completedOrder.total.toFixed(2)}</span>
-                </div>
-              </div>
+              <motion.div
+                key="thankyou"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="max-w-lg mx-auto bg-white p-4 sm:p-6 rounded-2xl text-center"
+              >
+                <CheckCircle2 className="w-14 h-14 sm:w-16 sm:h-16 text-emerald-500 mx-auto animate-bounce" />
+                <h2 className="font-display font-extrabold text-lg sm:text-xl text-slate-900 mt-3">¡Muchas Gracias por su Compra!</h2>
+                <p className="text-xs text-slate-500 mt-1">El vendedor ha verificado la transacción correctamente.</p>
+                
+                {/* Resumen de Productos Comprados */}
+                {completedOrder.items && completedOrder.items.length > 0 && (
+                  <div className="bg-slate-50/80 rounded-xl p-3 sm:p-4 mt-5 text-left">
+                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-2.5">
+                      Productos Comprados ({completedOrder.items.reduce((sum, item) => sum + item.quantity, 0)})
+                    </span>
+                    <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                      {completedOrder.items.map((item, idx) => (
+                        <div key={idx} className="flex items-center space-x-3 bg-white p-2.5 rounded-lg border border-slate-100 shadow-2xs">
+                          <img
+                            src={item.imageUrl}
+                            alt={item.name}
+                            referrerPolicy="no-referrer"
+                            className="w-12 h-12 rounded-md object-cover shrink-0 bg-slate-100"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-xs font-bold text-slate-900 truncate">{item.name}</h4>
+                            <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
+                              <span>Cant: <strong className="text-slate-800 font-semibold">{item.quantity}</strong></span>
+                              <span className="font-mono font-bold text-slate-800">${(item.price * item.quantity).toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-              <div className="mt-8 flex space-x-3">
-                <button
-                  onClick={() => {
-                    setActiveStep('catalog');
-                    setSelectedProduct(null);
-                  }}
-                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-3.5 rounded-xl text-xs transition-colors cursor-pointer"
-                >
-                  Seguir Comprando
-                </button>
-                <button
-                  onClick={() => {
-                    onNavigateToHistory();
-                    setActiveStep('catalog');
-                  }}
-                  className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl text-xs transition-colors cursor-pointer"
-                >
-                  Historial de Pedidos
-                </button>
-              </div>
-            </motion.div>
+                {/* Detalle de Pedido y Dirección Completa */}
+                <div className="bg-slate-50/80 rounded-xl p-3 sm:p-4 mt-3 text-left space-y-2.5 text-xs">
+                  <div className="flex justify-between border-b border-slate-200/60 pb-2">
+                    <span className="text-slate-500 font-medium">Código de Pedido:</span>
+                    <span className="font-mono font-bold text-slate-800">{completedOrder.id}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-200/60 pb-2">
+                    <span className="text-slate-500 font-medium">Fecha:</span>
+                    <span className="font-mono text-slate-700">
+                      {new Date(completedOrder.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="border-b border-slate-200/60 pb-2.5">
+                    <span className="text-slate-500 font-medium block mb-1">Dirección de Envío Completa:</span>
+                    <p className="text-slate-800 font-medium text-xs leading-relaxed break-words whitespace-normal">
+                      {completedOrder.shippingAddress}
+                    </p>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold pt-0.5">
+                    <span>Total Cargado:</span>
+                    <span className="text-emerald-600 font-mono text-base">${completedOrder.total.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex space-x-3">
+                  <button
+                    onClick={() => {
+                      setActiveStep('catalog');
+                      setSelectedProduct(null);
+                    }}
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-3 rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    Seguir Comprando
+                  </button>
+                  <button
+                    onClick={() => {
+                      onNavigateToHistory();
+                      setActiveStep('catalog');
+                    }}
+                    className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    Historial de Pedidos
+                  </button>
+                </div>
+              </motion.div>
+            </div>
           )}
         </AnimatePresence>
       </div>

@@ -110,6 +110,28 @@ export default function MobileApp({
   socket,
 }: MobileAppProps) {
   const isDarkNavActive = activeTab === 'reels';
+  const [navBarHeight, setNavBarHeight] = React.useState(56);
+
+  React.useEffect(() => {
+    const updateNavHeight = () => {
+      const nav = document.getElementById("bottom-nav-bar");
+      if (nav) {
+        setNavBarHeight(nav.offsetHeight || nav.getBoundingClientRect().height || 56);
+      }
+    };
+    updateNavHeight();
+    window.addEventListener("resize", updateNavHeight);
+    const nav = document.getElementById("bottom-nav-bar");
+    let ro: ResizeObserver | null = null;
+    if (nav) {
+      ro = new ResizeObserver(updateNavHeight);
+      ro.observe(nav);
+    }
+    return () => {
+      window.removeEventListener("resize", updateNavHeight);
+      ro?.disconnect();
+    };
+  }, [activeTab]);
 
   return (
     <div className="w-full flex-1 flex flex-col relative no-scrollbar" id="mobile-app-layout" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -186,9 +208,9 @@ export default function MobileApp({
             {activeTab === 'profile' && (
               <div
                 className="w-full"
+                id="mobile-profile-container"
                 style={{
-                  paddingBottom: "calc(50px + env(safe-area-inset-bottom, 0px) + 5px)",
-                  marginBottom: "5px"
+                  paddingBottom: `${navBarHeight + 5}px`
                 }}
               >
                 <ProfileView
@@ -199,6 +221,7 @@ export default function MobileApp({
                   onOpenDirectChat={openPrivateChatDirectly}
                   onSelectProduct={handleProductDetailsLink}
                   onSelectReel={handleReelLink}
+                  onToggleFollowUser={handleToggleFollowUser}
                   onProfileUpdate={(updatedUser) => {
                     setCurrentUser(updatedUser);
                     localStorage.setItem("currentUserData", JSON.stringify(updatedUser));

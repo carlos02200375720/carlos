@@ -7,8 +7,8 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
-/* Global Scrollbar Complete Removal (Invisible scrollbar everywhere on mobile and desktop) */
-*, *::before, *::after, html, body, #root, div, main, section, nav, aside, ul, ol, textarea, span, p, form, article, dialog {
+/* Global Scrollbar Complete Removal (Invisible & 100% Transparent scrollbar everywhere on mobile and desktop) */
+*, *::before, *::after, html, body, #root, div, main, section, nav, aside, ul, ol, textarea, span, p, form, article, dialog, input, select, button {
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
   -webkit-overflow-scrolling: touch;
@@ -27,6 +27,25 @@ aside::-webkit-scrollbar,
 ul::-webkit-scrollbar,
 ol::-webkit-scrollbar,
 textarea::-webkit-scrollbar,
+span::-webkit-scrollbar,
+p::-webkit-scrollbar,
+form::-webkit-scrollbar,
+article::-webkit-scrollbar,
+dialog::-webkit-scrollbar,
+input::-webkit-scrollbar,
+select::-webkit-scrollbar {
+  display: none !important;
+  width: 0px !important;
+  height: 0px !important;
+  max-width: 0px !important;
+  max-height: 0px !important;
+  background: transparent !important;
+  -webkit-appearance: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 ::-webkit-scrollbar-thumb,
 *::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-track,
@@ -40,10 +59,7 @@ textarea::-webkit-scrollbar,
   display: none !important;
   width: 0px !important;
   height: 0px !important;
-  max-width: 0px !important;
-  max-height: 0px !important;
   background: transparent !important;
-  -webkit-appearance: none !important;
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
@@ -63,7 +79,11 @@ textarea::-webkit-scrollbar,
 #profile-panel,
 #profile-panel *,
 #social-page,
-#social-page * {
+#social-page *,
+#auth-root-view,
+#auth-root-view *,
+#guest-profile-login-wrapper,
+#guest-profile-login-wrapper * {
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
 }
@@ -72,7 +92,12 @@ textarea::-webkit-scrollbar,
 .no-scrollbar,
 .scrollbar-none,
 [class*="no-scrollbar"],
-[class*="scrollbar-none"] {
+[class*="scrollbar-none"],
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-auto,
+.overflow-y-scroll,
+.overflow-x-scroll {
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
 }
@@ -80,7 +105,12 @@ textarea::-webkit-scrollbar,
 .no-scrollbar::-webkit-scrollbar,
 .scrollbar-none::-webkit-scrollbar,
 [class*="no-scrollbar"]::-webkit-scrollbar,
-[class*="scrollbar-none"]::-webkit-scrollbar {
+[class*="scrollbar-none"]::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar,
+.overflow-auto::-webkit-scrollbar,
+.overflow-y-scroll::-webkit-scrollbar,
+.overflow-x-scroll::-webkit-scrollbar {
   display: none !important;
   width: 0px !important;
   height: 0px !important;

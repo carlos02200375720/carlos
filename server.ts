@@ -32,7 +32,8 @@ const UserSchema = new mongoose.Schema({
   coverPhoto: { type: String },
   isGuest: { type: Boolean, default: false },
   password: { type: String },
-  email: { type: String, default: "" }
+  email: { type: String, default: "" },
+  privacyPolicy: { type: String, default: "" }
 });
 
 const MongoUser = (mongoose.models.User || mongoose.model("User", UserSchema)) as any;
@@ -1049,7 +1050,94 @@ async function startServer() {
             coverPhoto: found.coverPhoto,
             isGuest: false,
             password: found.password || "",
-            email: found.email || ""
+            email: found.email || "",
+            privacyPolicy: found.privacyPolicy || ""
+          };
+        }
+      }
+
+      // Fallback: If user is not yet in MongoUser or dbUsers, look up in reels
+      if (!user) {
+        const matchedReel = reels.find(
+          (r) =>
+            r.creatorId === rawParam ||
+            r.creatorUsername?.toLowerCase() === cleanParam ||
+            r.creatorName?.toLowerCase() === cleanParam ||
+            (cleanParam && r.creatorUsername && cleanParam.includes(r.creatorUsername.toLowerCase())) ||
+            (cleanParam && r.creatorId && cleanParam.includes(r.creatorId.toLowerCase()))
+        );
+
+        let matchedMongoReel = null;
+        if (!matchedReel && mongoose.connection.readyState === 1) {
+          matchedMongoReel = await MongoReel.findOne({
+            $or: [
+              { creatorId: rawParam },
+              { creatorUsername: cleanParam },
+              { creatorUsername: rawParam },
+              { creatorName: rawParam }
+            ]
+          }).catch(() => null);
+        }
+
+        const sourceReel = matchedReel || matchedMongoReel;
+        if (sourceReel) {
+          user = {
+            id: sourceReel.creatorId || rawParam,
+            originalId: sourceReel.creatorId || rawParam,
+            username: sourceReel.creatorUsername || sourceReel.creatorName?.toLowerCase().replace(/\s+/g, "") || "creador",
+            name: sourceReel.creatorName || "Creador",
+            avatar: sourceReel.creatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+            bio: "Creador oficial en la plataforma",
+            followers: 120,
+            following: 35,
+            followingUserIds: [],
+            savedReelIds: [],
+            coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+            isGuest: false,
+            password: "",
+            email: "",
+            privacyPolicy: ""
+          };
+        }
+      }
+
+      // Fallback: Check in products
+      if (!user) {
+        const matchedProd = products.find(
+          (p) =>
+            p.sellerId === rawParam ||
+            p.sellerName?.toLowerCase() === cleanParam ||
+            (cleanParam && p.sellerId && cleanParam.includes(p.sellerId.toLowerCase()))
+        );
+
+        let matchedMongoProd = null;
+        if (!matchedProd && mongoose.connection.readyState === 1) {
+          matchedMongoProd = await MongoProduct.findOne({
+            $or: [
+              { sellerId: rawParam },
+              { sellerName: rawParam }
+            ]
+          }).catch(() => null);
+        }
+
+        const sourceProd = matchedProd || matchedMongoProd;
+        if (sourceProd) {
+          user = {
+            id: sourceProd.sellerId || rawParam,
+            originalId: sourceProd.sellerId || rawParam,
+            username: sourceProd.sellerName?.toLowerCase().replace(/\s+/g, "") || "tienda",
+            name: sourceProd.sellerName || "Tienda Oficial",
+            avatar: sourceProd.sellerAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+            bio: "Tienda y vendedor verificado en la plataforma",
+            followers: 85,
+            following: 15,
+            followingUserIds: [],
+            savedReelIds: [],
+            coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+            isGuest: false,
+            password: "",
+            email: "",
+            privacyPolicy: ""
           };
         }
       }
@@ -1307,7 +1395,7 @@ async function startServer() {
 
   // Update current user profile info
   app.post("/api/users/current/update", async (req, res) => {
-    const { name, username, bio, avatar, coverPhoto, password } = req.body;
+    const { name, username, bio, avatar, coverPhoto, password, privacyPolicy } = req.body;
     let currentUserObj = null;
 
     if (mongoose.connection.readyState === 1) {
@@ -1324,6 +1412,7 @@ async function startServer() {
     if (username !== undefined) updateFields.username = username;
     if (bio !== undefined) updateFields.bio = bio;
     if (password !== undefined) updateFields.password = password;
+    if (privacyPolicy !== undefined) updateFields.privacyPolicy = privacyPolicy;
 
     if (avatar !== undefined) {
       if (avatar && avatar.startsWith("data:")) {
@@ -1541,7 +1630,8 @@ async function startServer() {
         savedReelIds: targetUser.savedReelIds || [],
         isGuest: false,
         password: targetUser.password || "",
-        email: targetUser.email || ""
+        email: targetUser.email || "",
+        privacyPolicy: targetUser.privacyPolicy || ""
       };
 
       console.log(`🔄 Switched session user to @${returnedUser.username} (original id: ${activeOriginalUserId})`);

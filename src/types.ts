@@ -14,6 +14,7 @@ export interface User {
   isGuest?: boolean;
   password?: string;
   email?: string;
+  privacyPolicy?: string;
 }
 
 export interface Comment {
@@ -64,6 +65,8 @@ export interface Product {
   imageUrl: string;
   stock: number;
   sellerId: string;
+  sellerName?: string;
+  sellerAvatar?: string;
   rating: number;
   shippingCost?: number;
   selectedCarrier?: string;

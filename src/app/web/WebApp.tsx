@@ -188,31 +188,34 @@ export default function WebApp({
             )}
 
             {activeTab === 'profile' && (
-              <ProfileView
-                currentUser={currentUser}
-                selectedCreatorId={selectedCreatorProfileId}
-                users={users}
-                onBackToSelf={() => setSelectedCreatorProfileId(null)}
-                onOpenDirectChat={openPrivateChatDirectly}
-                onSelectProduct={handleProductDetailsLink}
-                onSelectReel={handleReelLink}
-                onProfileUpdate={(updatedUser) => {
-                  setCurrentUser(updatedUser);
-                  localStorage.setItem("currentUserData", JSON.stringify(updatedUser));
-                  setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-                  if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
-                    setIsLoggedIn(true);
-                    localStorage.setItem("isLoggedIn", "true");
-                    localStorage.setItem("loggedInUsername", updatedUser.username);
-                    setSelectedCreatorProfileId(null);
-                    setActiveTab('profile');
-                  }
-                }}
-                onRefreshUsers={refreshAllData}
-                onPublishSuccess={refreshAllData}
-                onLogout={handleLogout}
-                socket={socket}
-              />
+              <div className="w-full pb-6" id="web-profile-container">
+                <ProfileView
+                  currentUser={currentUser}
+                  selectedCreatorId={selectedCreatorProfileId}
+                  users={users}
+                  onBackToSelf={() => setSelectedCreatorProfileId(null)}
+                  onOpenDirectChat={openPrivateChatDirectly}
+                  onSelectProduct={handleProductDetailsLink}
+                  onSelectReel={handleReelLink}
+                  onToggleFollowUser={handleToggleFollowUser}
+                  onProfileUpdate={(updatedUser) => {
+                    setCurrentUser(updatedUser);
+                    localStorage.setItem("currentUserData", JSON.stringify(updatedUser));
+                    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+                    if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
+                      setIsLoggedIn(true);
+                      localStorage.setItem("isLoggedIn", "true");
+                      localStorage.setItem("loggedInUsername", updatedUser.username);
+                      setSelectedCreatorProfileId(null);
+                      setActiveTab('profile');
+                    }
+                  }}
+                  onRefreshUsers={refreshAllData}
+                  onPublishSuccess={refreshAllData}
+                  onLogout={handleLogout}
+                  socket={socket}
+                />
+              </div>
             )}
 
             {activeTab === 'messages' && (
