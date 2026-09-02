@@ -22,6 +22,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { apiFetch } from "../config";
+import VideoUploadPreview from "./VideoUploadPreview";
 
 interface PublishViewProps {
   currentUser: User;
@@ -219,10 +220,12 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     formData.append("description", "Uploaded via publishing portal");
     formData.append("creatorId", currentUser.id);
 
+    // Provide 5 minutes (300,000ms) for videos and 2 minutes for photos
+    const timeoutMs = isVideo ? 300000 : 120000;
     const response = await apiFetch("/api/upload", {
       method: "POST",
       body: formData,
-    });
+    }, timeoutMs);
 
     if (!response.ok) {
       throw new Error(`Error subiendo archivo: ${fileToUpload.name}`);
@@ -332,8 +335,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         if (!singleVideoFile) {
           throw new Error("Por favor, selecciona un video para tu publicación.");
         }
-        if (!validateFileExtension(singleVideoFile, ["mp4"])) {
-          throw new Error("El video debe tener una extensión válida (.mp4)");
+        if (!validateFileExtension(singleVideoFile, ["mp4", "mov", "m4v", "webm"])) {
+          throw new Error("El video debe tener una extensión válida (.mp4, .mov, .m4v, .webm)");
         }
 
         // 1. Upload video
@@ -381,7 +384,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
           throw new Error("Error al guardar la publicación en el servidor");
         }
 
-        setSuccessMessage("¡Tu video se ha publicado con éxito!");
+        setSuccessMessage("¡Tu video se ha procesado a H.264 ultra-compatible y publicado con éxito!");
         setTimeout(() => {
           onSuccess();
         }, 1500);
@@ -474,8 +477,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         }
 
         // Validate product video extension if exists
-        if (productVideoFile && !validateFileExtension(productVideoFile, ["mp4"])) {
-          throw new Error("El video del producto debe tener una extensión válida (.mp4)");
+        if (productVideoFile && !validateFileExtension(productVideoFile, ["mp4", "mov", "m4v", "webm"])) {
+          throw new Error("El video del producto debe tener una extensión válida (.mp4, .mov, .m4v, .webm)");
         }
 
         // 1. Upload new product photos and combine with imported CJ photos
@@ -527,7 +530,11 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
       }
     } catch (err: any) {
       console.error("Error publishing:", err);
-      setErrorMessage(err.message || "Error al realizar la publicación");
+      let msg = err.message || "Error al realizar la publicación";
+      if (typeof msg === "string" && (msg.includes("signal is aborted") || msg.includes("aborted"))) {
+        msg = "La subida tardó más tiempo del esperado por tu velocidad de conexión. Por favor, inténtalo nuevamente.";
+      }
+      setErrorMessage(msg);
     } finally {
       setIsLoading(false);
     }
@@ -674,7 +681,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
               <input
                 type="file"
                 ref={videoInputRef}
-                accept="video/mp4"
+                accept="video/mp4, video/quicktime, video/webm, video/x-m4v, video/*"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) setSingleVideoFile(file);
@@ -682,21 +689,14 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                 className="hidden"
               />
               {singleVideoFile ? (
-                <div className="space-y-3 w-full max-w-sm">
-                  <div className="p-3 bg-slate-100 rounded-lg flex items-center justify-between text-left">
-                    <div className="flex items-center space-x-2 overflow-hidden">
-                      <Video className="w-4 h-4 text-amber-500 shrink-0" />
-                      <span className="text-xs font-mono font-semibold text-slate-700 truncate">{singleVideoFile.name}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSingleVideoFile(null)}
-                      className="p-1 hover:bg-slate-200 text-slate-500 rounded-md cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-500 font-medium">El archivo cumple con el estándar requerido (.mp4)</p>
+                <div className="space-y-4 w-full max-w-xl">
+                  {/* Interactive Video Preview Player and Metadata Summary */}
+                  <VideoUploadPreview
+                    file={singleVideoFile}
+                    coverFile={videoCoverFile}
+                    onRemove={() => setSingleVideoFile(null)}
+                    onChangeFile={() => videoInputRef.current?.click()}
+                  />
                   
                   {/* Custom video cover selector */}
                   <div className="mt-3 pt-3 border-t border-slate-200 w-full text-left">
@@ -760,7 +760,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                   </div>
                   <div>
                     <p className="text-xs font-bold text-slate-700">Arrastra o haz clic para subir tu Video Reel</p>
-                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">Soporta formato .mp4</p>
+                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">Soporta .mp4, .mov (procesamiento automático a H.264 para móviles)</p>
                   </div>
                 </div>
               )}
@@ -927,7 +927,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                 <input
                   type="file"
                   ref={prodVideoRef}
-                  accept="video/mp4"
+                  accept="video/mp4, video/quicktime, video/webm, video/x-m4v, video/*"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) setProductVideoFile(file);
@@ -936,15 +936,13 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                 />
 
                 {productVideoFile ? (
-                  <div className="p-2 bg-slate-50 border border-slate-150 rounded flex items-center justify-between mb-3 text-left">
-                    <span className="text-[10px] font-mono font-medium text-slate-600 truncate max-w-[120px]">{productVideoFile.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => setProductVideoFile(null)}
-                      className="p-0.5 bg-white border border-slate-200 rounded hover:bg-slate-100 cursor-pointer"
-                    >
-                      <X className="w-3 h-3 text-rose-500" />
-                    </button>
+                  <div className="mb-3">
+                    <VideoUploadPreview
+                      file={productVideoFile}
+                      compact={true}
+                      onRemove={() => setProductVideoFile(null)}
+                      onChangeFile={() => prodVideoRef.current?.click()}
+                    />
                   </div>
                 ) : (
                   <div className="h-[48px] flex items-center justify-center text-center text-slate-400 text-[10px] italic border border-dashed border-slate-200 rounded mb-3">
@@ -1348,7 +1346,11 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                <span>Publicando en GCS...</span>
+                <span>
+                  {publishType === "video" || (publishType === "product" && productVideoFile)
+                    ? "Procesando video a H.264..."
+                    : "Publicando en GCS..."}
+                </span>
               </>
             ) : (
               <>

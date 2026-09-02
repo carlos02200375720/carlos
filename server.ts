@@ -9,7 +9,7 @@ import mongoose from "mongoose";
 import { Storage } from "@google-cloud/storage";
 import multer from "multer";
 import fs from "fs";
-import { transcodeVideoToHLS, hlsQueue, deleteHlsStreamBatch } from "./src/server/hlsTranscoder";
+import { transcodeVideoToHLS, hlsQueue, deleteHlsStreamBatch, optimizeVideoToH264 } from "./src/server/hlsTranscoder";
 
 // Configure dotenv to read environment variables first
 dotenv.config();
@@ -188,50 +188,62 @@ const upload = multer({
   }
 });
 
-// Helper: Upload file to GCS
-const uploadToGCS = (file: Express.Multer.File, folder: string = "publicaciones"): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    let originalName = file.originalname.replace(/\s+/g, "_");
-    const mimeType = file.mimetype.toLowerCase();
+// Helper: Upload file to GCS (with H.264 mobile optimization for all videos)
+const uploadToGCS = async (file: Express.Multer.File, folder: string = "publicaciones"): Promise<string> => {
+  let originalName = file.originalname.replace(/\s+/g, "_");
+  const mimeType = file.mimetype.toLowerCase();
 
-    // Enforce correct extensions on upload as requested
-    const isVideo = mimeType.startsWith("video/") || originalName.toLowerCase().endsWith(".mp4");
-    if (isVideo) {
-      if (!originalName.toLowerCase().endsWith(".mp4")) {
-        const dotIdx = originalName.lastIndexOf(".");
-        if (dotIdx !== -1) {
-          originalName = originalName.substring(0, dotIdx) + ".mp4";
-        } else {
-          originalName += ".mp4";
-        }
-      }
-    } else if (mimeType.startsWith("image/")) {
-      const lowerName = originalName.toLowerCase();
-      const validExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".heic", ".heif"];
-      const hasValidExt = validExtensions.some(ext => lowerName.endsWith(ext));
-      if (!hasValidExt) {
-        if (mimeType.includes("png")) {
-          originalName += ".png";
-        } else if (mimeType.includes("webp")) {
-          originalName += ".webp";
-        } else if (mimeType.includes("gif")) {
-          originalName += ".gif";
-        } else if (mimeType.includes("svg")) {
-          originalName += ".svg";
-        } else if (mimeType.includes("avif")) {
-          originalName += ".avif";
-        } else if (mimeType.includes("heic")) {
-          originalName += ".heic";
-        } else if (mimeType.includes("heif")) {
-          originalName += ".heif";
-        } else if (mimeType.includes("jpeg") || mimeType.includes("jpg")) {
-          originalName += ".jpeg";
-        } else {
-          originalName += ".jpeg";
-        }
+  // Enforce correct extensions on upload as requested
+  const isVideo = mimeType.startsWith("video/") || originalName.toLowerCase().endsWith(".mp4");
+  if (isVideo) {
+    if (!originalName.toLowerCase().endsWith(".mp4")) {
+      const dotIdx = originalName.lastIndexOf(".");
+      if (dotIdx !== -1) {
+        originalName = originalName.substring(0, dotIdx) + ".mp4";
+      } else {
+        originalName += ".mp4";
       }
     }
 
+    // Process video to universal H.264 (AVC) with adjusted bitrate and +faststart for instant mobile playback
+    try {
+      console.log(`🎬 [Upload] Procesando video ${originalName} a formato H.264 universal para móviles...`);
+      const optResult = await optimizeVideoToH264(file.buffer, generateId());
+      file.buffer = optResult.buffer;
+      file.size = optResult.optimizedSize;
+      (file as any).h264Optimization = optResult;
+      console.log(`✨ [Upload] Video optimizado con éxito: ${optResult.compressionRatioPercent}% de compresión`);
+    } catch (optErr: any) {
+      console.warn("⚠️ [Upload] No se pudo completar la optimización H.264, usando buffer original:", optErr.message);
+    }
+  } else if (mimeType.startsWith("image/")) {
+    const lowerName = originalName.toLowerCase();
+    const validExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".heic", ".heif"];
+    const hasValidExt = validExtensions.some(ext => lowerName.endsWith(ext));
+    if (!hasValidExt) {
+      if (mimeType.includes("png")) {
+        originalName += ".png";
+      } else if (mimeType.includes("webp")) {
+        originalName += ".webp";
+      } else if (mimeType.includes("gif")) {
+        originalName += ".gif";
+      } else if (mimeType.includes("svg")) {
+        originalName += ".svg";
+      } else if (mimeType.includes("avif")) {
+        originalName += ".avif";
+      } else if (mimeType.includes("heic")) {
+        originalName += ".heic";
+      } else if (mimeType.includes("heif")) {
+        originalName += ".heif";
+      } else if (mimeType.includes("jpeg") || mimeType.includes("jpg")) {
+        originalName += ".jpeg";
+      } else {
+        originalName += ".jpeg";
+      }
+    }
+  }
+
+  return new Promise((resolve, reject) => {
     const uniqueName = `${Date.now()}-${generateId()}-${originalName}`;
     const blob = bucket.file(`${folder}/${uniqueName}`);
     
@@ -682,14 +694,25 @@ async function startServer() {
         );
       }
 
+      const h264Opt = (req.file as any).h264Optimization;
+
       // Return immediately to client without freezing UI (< 1s upload experience)
       res.json({
         success: true,
-        message: "Archivo subido exitosamente. Transcodificación HLS en cola en segundo plano.",
+        message: isVideo
+          ? "Video procesado a H.264 (AVC) ultra-compatible con bitrate ajustado y reproducción instantánea."
+          : "Archivo subido exitosamente. Transcodificación HLS en cola en segundo plano.",
         url: publicUrl,
         hlsUrl: provisionalHlsUrl,
         jobId,
-        publicacion: savedPublicacionObj
+        publicacion: savedPublicacionObj,
+        h264Optimization: h264Opt ? {
+          codec: h264Opt.codec,
+          originalSize: h264Opt.originalSize,
+          optimizedSize: h264Opt.optimizedSize,
+          compressionRatioPercent: h264Opt.compressionRatioPercent,
+          durationMs: h264Opt.durationMs
+        } : undefined
       });
     } catch (error: any) {
       console.error("❌ Error en el proceso de upload:", error);
@@ -711,6 +734,7 @@ async function startServer() {
       const publicUrl = await uploadToGCS(req.file, "publicaciones");
       const pubId = "pub_" + generateId();
       const provisionalHlsUrl = undefined;
+      const h264Opt = (req.file as any).h264Optimization;
 
       let savedPublicacionObj = null;
       if (mongoose.connection.readyState === 1) {
@@ -730,8 +754,9 @@ async function startServer() {
         }
       }
 
+      let jobId: string | undefined = undefined;
       if (isVideo) {
-        const jobId = "hls_" + generateId();
+        jobId = "hls_" + generateId();
         hlsQueue.enqueue(
           jobId,
           req.file.buffer,
@@ -761,10 +786,20 @@ async function startServer() {
 
       res.json({
         success: true,
-        message: "Archivo subido y registrado exitosamente",
+        message: isVideo
+          ? "Video procesado a H.264 (AVC) ultra-compatible y subido exitosamente"
+          : "Archivo subido y registrado exitosamente",
         url: publicUrl,
         hlsUrl: provisionalHlsUrl,
-        publicacion: savedPublicacionObj
+        jobId,
+        publicacion: savedPublicacionObj,
+        h264Optimization: h264Opt ? {
+          codec: h264Opt.codec,
+          originalSize: h264Opt.originalSize,
+          optimizedSize: h264Opt.optimizedSize,
+          compressionRatioPercent: h264Opt.compressionRatioPercent,
+          durationMs: h264Opt.durationMs
+        } : undefined
       });
     } catch (error: any) {
       console.error("❌ Error en /upload:", error);

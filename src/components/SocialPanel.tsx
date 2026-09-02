@@ -111,8 +111,10 @@ export default function SocialPanel({
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+          className="absolute right-4 p-2.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer z-30"
+          style={{ top: "max(1.5rem, calc(env(safe-area-inset-top, 0px) + 0.85rem))" }}
           title="Cerrar"
+          id="close-guest-blocked-button"
         >
           <X className="w-5 h-5" />
         </button>
@@ -248,7 +250,7 @@ export default function SocialPanel({
                           <div className="flex items-center space-x-3">
                             <div className="relative">
                               <img
-                                src={user.avatar}
+                                src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                                 alt={user.name}
                                 referrerPolicy="no-referrer"
                                 className="w-10 h-10 rounded-full object-cover border border-slate-200"
@@ -301,7 +303,7 @@ export default function SocialPanel({
                           <div className="flex items-center space-x-3">
                             <div className="relative">
                               <img
-                                src={user.avatar}
+                                src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                                 alt={user.name}
                                 referrerPolicy="no-referrer"
                                 className="w-10 h-10 rounded-full object-cover border border-slate-200"
@@ -357,7 +359,7 @@ export default function SocialPanel({
                 </span>
               </div>
               <img
-                src={activeChatUser.avatar}
+                src={activeChatUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                 alt={activeChatUser.username}
                 referrerPolicy="no-referrer"
                 className="w-6 h-6 rounded-full object-cover border border-slate-200"

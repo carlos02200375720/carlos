@@ -143,7 +143,7 @@ export default function WebSidebar({
           }`}
         >
           <img
-            src={currentUser.avatar}
+            src={currentUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
             alt={currentUser.name}
             referrerPolicy="no-referrer"
             className="w-9 h-9 rounded-full object-cover border border-amber-500/40 shrink-0"

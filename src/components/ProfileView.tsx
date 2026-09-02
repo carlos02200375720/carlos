@@ -67,7 +67,12 @@ function PublicationCover({ reel }: { reel: Reel }) {
 
       return () => {
         isCancelled = true;
-        video.src = "";
+        try {
+          video.removeAttribute("src");
+          video.load();
+        } catch {
+          // ignore
+        }
       };
     }
   }, [reel.videoUrl, thumbUrl]);
@@ -490,7 +495,7 @@ export default function ProfileView({
     <div className="w-full max-w-4xl mx-auto min-h-[600px] bg-white rounded-none sm:rounded-t-none sm:rounded-b-2xl border-0 sm:border sm:border-slate-200 shadow-none sm:shadow-xl overflow-hidden flex flex-col no-scrollbar pb-0" id="profile-panel" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
       {/* Profile Header Image Backbanner */}
       <div className="h-40 bg-slate-900 relative overflow-hidden rounded-t-none">
-        {profileUser.coverPhoto ? (
+        {profileUser.coverPhoto && profileUser.coverPhoto.trim().length > 0 ? (
           <img
             src={profileUser.coverPhoto}
             alt="Profile cover banner"
@@ -523,7 +528,7 @@ export default function ProfileView({
           <div className="flex items-end space-x-4">
             <div className="flex flex-col items-center shrink-0">
               <img
-                src={profileUser.avatar}
+                src={profileUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                 alt={profileUser.name}
                 referrerPolicy="no-referrer"
                 className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-white shadow-md bg-white shrink-0"
@@ -1208,7 +1213,7 @@ export default function ProfileView({
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Imagen de Perfil</label>
                                 <div className="flex items-center space-x-4 bg-white p-3 border border-slate-200 rounded-xl">
                                   <img
-                                    src={editAvatar}
+                                    src={editAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                                     alt="Previsualización"
                                     className="w-12 h-12 rounded-full object-cover border border-slate-200 shrink-0"
                                     referrerPolicy="no-referrer"
@@ -1279,7 +1284,7 @@ export default function ProfileView({
                                 <div className="flex items-center space-x-4 bg-white p-3 border border-slate-200 rounded-xl">
                                   <div className="w-16 h-10 rounded bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
                                     <img
-                                      src={editCoverPhoto}
+                                      src={editCoverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80"}
                                       alt="Previsualización de portada"
                                       className="w-full h-full object-cover"
                                       referrerPolicy="no-referrer"
@@ -1583,7 +1588,7 @@ export default function ProfileView({
                                   <div className="flex items-center justify-between w-full">
                                     <div className="flex items-center space-x-3">
                                       <img
-                                        src={u.avatar}
+                                        src={u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                                         alt={u.name}
                                         className="w-10 h-10 rounded-full object-cover border border-slate-150 shrink-0"
                                         referrerPolicy="no-referrer"
@@ -1733,12 +1738,18 @@ export default function ProfileView({
                           id={`profile-prod-${prod.id}`}
                         >
                           <div className="w-28 sm:w-32 self-stretch shrink-0 relative bg-slate-100 overflow-hidden">
-                            <img
-                              src={prod.imageUrl}
-                              alt={prod.name}
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
-                            />
+                            {prod.imageUrl ? (
+                              <img
+                                src={prod.imageUrl}
+                                alt={prod.name}
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-slate-400">
+                                <ShoppingBag className="w-6 h-6" />
+                              </div>
+                            )}
                           </div>
                           <div className="flex-1 min-w-0 p-3 sm:p-3.5 flex flex-col justify-between">
                             <div>

@@ -1051,7 +1051,7 @@ export default function ShopView({
                           <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between">
                             <div>
                               <div className="flex items-center space-x-1.5 text-[9px] text-slate-500 mb-1">
-                                <img src={seller.avatar} alt={seller.name} referrerPolicy="no-referrer" className="w-3.5 h-3.5 rounded-full object-cover" />
+                                <img src={seller.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"} alt={seller.name} referrerPolicy="no-referrer" className="w-3.5 h-3.5 rounded-full object-cover" />
                                 <span className="font-bold truncate">@{seller.name.toLowerCase().replace(/\s+/g, "")}</span>
                               </div>
                               
@@ -1220,7 +1220,7 @@ export default function ShopView({
                               {isVideo ? (
                                 <div className="w-full h-full bg-slate-900 flex items-center justify-center relative overflow-hidden">
                                   <img
-                                    src={selectedProduct.imageUrl || selectedProduct.images?.[0]}
+                                    src={selectedProduct.imageUrl || selectedProduct.images?.[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=300&q=80"}
                                     className="w-full h-full object-cover opacity-75"
                                     referrerPolicy="no-referrer"
                                     alt=""
@@ -1268,7 +1268,7 @@ export default function ShopView({
                       className="inline-flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-full text-xs font-bold text-slate-800 cursor-pointer transition-colors"
                     >
                       <img
-                        src={getSellerInfo(selectedProduct.sellerId).avatar}
+                        src={getSellerInfo(selectedProduct.sellerId).avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                         alt="Creator"
                         referrerPolicy="no-referrer"
                         className="w-5 h-5 rounded-full object-cover"

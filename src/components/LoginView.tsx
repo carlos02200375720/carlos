@@ -339,7 +339,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
                           className="flex items-center space-x-2.5 p-2 bg-slate-950/40 hover:bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl text-left transition-all cursor-pointer"
                         >
                           <img
-                            src={user.avatar}
+                            src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                             alt={user.name}
                             className="w-7 h-7 rounded-full object-cover border border-slate-800"
                           />

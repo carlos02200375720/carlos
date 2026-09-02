@@ -3,8 +3,7 @@ import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, Volum
 import { Reel, Product, Comment, User, CartItem } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../config";
-import { videoPreloader } from "../utils/videoPreloader";
-import { NativeVideoPlayer, NativeVideoPlayerHandle } from "./VideoPlayer";
+import { ReelProgressBar } from "./ReelProgressBar";
 
 interface ReelsViewProps {
   reels: Reel[];
@@ -45,7 +44,6 @@ export default function ReelsView({
   const [displayCount, setDisplayCount] = useState<number>(() => Math.max(reels.length * 2, 8));
   const [isMuted, setIsMuted] = useState(false);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
-  const [, setPreloaderRevision] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [showComments, setShowComments] = useState<string | null>(null);
   const [commentText, setCommentText] = useState("");
@@ -53,17 +51,8 @@ export default function ReelsView({
   const [showShareModal, setShowShareModal] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
-  const [mediaLoading, setMediaLoading] = useState<{ [key: string]: boolean }>({});
   const [carouselIndices, setCarouselIndices] = useState<{ [key: string]: number }>({});
   const [mediaAspectRatios, setMediaAspectRatios] = useState<{ [key: string]: 'vertical' | 'horizontal_or_square' }>({});
-
-  // Subscribe to video preloader updates to trigger re-renders when memory Blobs are ready
-  useEffect(() => {
-    const unsubscribe = videoPreloader.subscribe(() => {
-      setPreloaderRevision((prev) => prev + 1);
-    });
-    return unsubscribe;
-  }, []);
 
   // Listen for user interaction to allow unmuting seamlessly according to browser policy
   useEffect(() => {
@@ -94,16 +83,6 @@ export default function ReelsView({
     }
     return list;
   }, [reels, displayCount]);
-
-  // Proactively buffer the sliding window of 10 videos ahead into local memory
-  useEffect(() => {
-    const urls = displayedReels
-      .map((r) => r.hlsUrl || r.videoUrl)
-      .filter((u): u is string => Boolean(u));
-    if (urls.length > 0) {
-      videoPreloader.updateQueue(urls, activeReelIndex);
-    }
-  }, [displayedReels, activeReelIndex]);
 
   const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>([]);
 
@@ -148,11 +127,6 @@ export default function ReelsView({
   }, 0);
   const effectiveTotal = effectiveSubtotal + effectiveShipping;
 
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [isScrubbing, setIsScrubbing] = useState(false);
-  const progressBarRef = useRef<HTMLDivElement>(null);
-
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
 
@@ -169,12 +143,12 @@ export default function ReelsView({
     }
   };
 
-  // Play active video smoothly, pause others, and buffer adjacent video elements
+  // Play active video smoothly, pause non-active videos without restarting or resetting buffers
   useEffect(() => {
-    displayedReels.forEach((reel, idx) => {
+    Object.keys(videoRefs.current).forEach((key) => {
+      const idx = Number(key);
       const video = videoRefs.current[idx];
       if (video) {
-        const dist = Math.abs(idx - activeReelIndex);
         if (idx === activeReelIndex) {
           video.muted = isMuted;
           video.volume = isMuted ? 0 : 1.0;
@@ -186,16 +160,10 @@ export default function ReelsView({
         } else {
           video.pause();
           video.muted = true;
-          if (dist <= 2) {
-            // Buffer adjacent videos
-            video.preload = "auto";
-          } else if (dist > 5) {
-            video.currentTime = 0;
-          }
         }
       }
     });
-  }, [activeReelIndex, displayedReels, isPlaying, isMuted]);
+  }, [activeReelIndex, isPlaying, isMuted]);
 
   // Ensure unmuted playback unlocks seamlessly upon first user touch/click/gesture
   useEffect(() => {
@@ -222,7 +190,7 @@ export default function ReelsView({
     };
   }, [activeReelIndex, isMuted, isPlaying]);
 
-  // Handle scroll detection for snap scroll & continuous infinite expansion
+  // Handle scroll detection for snap scroll & continuous infinite expansion with INSTANT response
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const container = e.currentTarget;
     const scrollPos = container.scrollTop;
@@ -230,6 +198,37 @@ export default function ReelsView({
     if (!childHeight) return;
     const index = Math.round(scrollPos / childHeight);
     if (index !== activeReelIndex && index >= 0 && index < displayedReels.length) {
+      // 1. Immediately pause previous video to avoid overlapping sound & conserve hardware decoder
+      const prevVideo = videoRefs.current[activeReelIndex];
+      if (prevVideo && prevVideo !== videoRefs.current[index]) {
+        try { prevVideo.pause(); } catch {}
+      }
+
+      // 2. Instantly start playing the target video directly within the scroll gesture
+      const nextVideo = videoRefs.current[index];
+      if (nextVideo) {
+        nextVideo.muted = isMuted;
+        nextVideo.volume = isMuted ? 0 : 1.0;
+        const p = nextVideo.play();
+        if (p !== undefined) {
+          p.catch(() => {
+            nextVideo.muted = true;
+            nextVideo.play().catch(() => {});
+          });
+        }
+      }
+
+      // 3. Immediately prime future video buffers
+      [index + 1, index + 2].forEach((futureIdx) => {
+        const futureVideo = videoRefs.current[futureIdx];
+        if (futureVideo) {
+          futureVideo.preload = "auto";
+          if (futureVideo.readyState < 2) {
+            try { futureVideo.load(); } catch {}
+          }
+        }
+      });
+
       setActiveReelIndex(index);
       setIsPlaying(true);
     }
@@ -312,72 +311,6 @@ export default function ReelsView({
   };
 
   const currentReel = displayedReels[activeReelIndex];
-
-  // Reset time and duration state on active reel change
-  useEffect(() => {
-    setCurrentTime(0);
-    setDuration(0);
-    const video = videoRefs.current[activeReelIndex];
-    if (video) {
-      setCurrentTime(video.currentTime || 0);
-      setDuration(video.duration || 0);
-    }
-  }, [activeReelIndex]);
-
-  const handleSeekFromEvent = (clientX: number) => {
-    if (!progressBarRef.current || !currentReel || duration <= 0) return;
-    const rect = progressBarRef.current.getBoundingClientRect();
-    const clickX = clientX - rect.left;
-    const percentage = Math.max(0, Math.min(1, clickX / rect.width));
-    const newTime = percentage * duration;
-    const video = videoRefs.current[activeReelIndex];
-    if (video) {
-      video.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-  };
-
-  const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    handleSeekFromEvent(e.clientX);
-  };
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
-    setIsScrubbing(true);
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    handleSeekFromEvent(clientX);
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isScrubbing) {
-        handleSeekFromEvent(e.clientX);
-      }
-    };
-    const handleMouseUp = () => {
-      if (isScrubbing) {
-        setIsScrubbing(false);
-      }
-    };
-    const handleTouchMove = (e: TouchEvent) => {
-      if (isScrubbing && e.touches[0]) {
-        handleSeekFromEvent(e.touches[0].clientX);
-      }
-    };
-
-    if (isScrubbing) {
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-      window.addEventListener("touchmove", handleTouchMove);
-      window.addEventListener("touchend", handleMouseUp);
-    }
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-      window.removeEventListener("touchmove", handleTouchMove);
-      window.removeEventListener("touchend", handleMouseUp);
-    };
-  }, [isScrubbing, duration, currentReel]);
 
   const viewedReelsRef = useRef<Set<string>>(new Set());
 
@@ -599,97 +532,88 @@ export default function ReelsView({
                             onIndexChange={(idx) => setCarouselIndices((prev) => ({ ...prev, [`${reel.id}_${index}`]: idx }))}
                           />
                         </div>
-                      ) : (
-                        <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black">
-                          <img
-                            src={(reel.images?.[0] && !reel.images[0].includes("1618005182384")) ? reel.images[0] : (reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") ? reel.thumbnailUrl : "")}
-                            alt={reel.description}
-                            draggable={false}
-                            onClick={() => setIsPlaying(!isPlaying)}
-                            onDoubleClick={() => handleDoubleTap(reel.id)}
-                            onLoadStart={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: true }))}
-                            onLoad={(e) => {
-                              setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                              const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.05;
-                              setMediaAspectRatios((prev) => ({
-                                ...prev,
-                                [reel.id]: isVert ? "vertical" : "horizontal_or_square",
-                              }));
-                            }}
-                            onError={() => setMediaLoading((prev) => ({ ...prev, [reel.id]: false }))}
-                            className={`w-full h-full cursor-pointer select-none block touch-auto ${
-                              mediaAspectRatios[reel.id] === "horizontal_or_square"
-                                ? "object-contain"
-                                : "object-cover"
-                            }`}
-                            style={{ touchAction: "pan-y" }}
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-                      )
+                      ) : (() => {
+                        const singleImg = (reel.images?.[0] && !reel.images[0].includes("1618005182384"))
+                          ? reel.images[0]
+                          : (reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") ? reel.thumbnailUrl : null);
+
+                        return (
+                          <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black">
+                            {singleImg ? (
+                              <img
+                                src={singleImg}
+                                alt={reel.description || ""}
+                                draggable={false}
+                                onClick={() => setIsPlaying(!isPlaying)}
+                                onDoubleClick={() => handleDoubleTap(reel.id)}
+                                onLoad={(e) => {
+                                  const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.05;
+                                  setMediaAspectRatios((prev) => ({
+                                    ...prev,
+                                    [reel.id]: isVert ? "vertical" : "horizontal_or_square",
+                                  }));
+                                }}
+                                className={`w-full h-full cursor-pointer select-none block touch-auto ${
+                                  mediaAspectRatios[reel.id] === "horizontal_or_square"
+                                    ? "object-contain"
+                                    : "object-cover"
+                                }`}
+                                style={{ touchAction: "pan-y" }}
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-black text-slate-600 text-xs">
+                                <span>Publicación de imagen</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
                     ) : (
-                        <NativeVideoPlayer
-                          ref={(handle) => {
-                            if (handle) {
-                              videoRefs.current[index] = handle.getVideoElement();
-                            } else {
-                              videoRefs.current[index] = null;
-                            }
+                      <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
+                        <video
+                          ref={(el) => {
+                            videoRefs.current[index] = el;
                           }}
-                          src={videoPreloader.getVideoSrc(reel.videoUrl || (reel.thumbnailUrl?.endsWith(".mp4") ? reel.thumbnailUrl : ""))}
-                          hlsUrl={reel.hlsUrl && reel.hlsUrl.includes(".m3u8") ? reel.hlsUrl : undefined}
-                          poster={(reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".mp4")) ? reel.thumbnailUrl : undefined}
-                          autoPlay={isCurrent}
+                          src={(() => {
+                            const rawVid = reel.videoUrl || (reel.thumbnailUrl?.endsWith(".mp4") ? reel.thumbnailUrl : "");
+                            return rawVid && rawVid.trim().length > 0 ? rawVid.trim() : undefined;
+                          })()}
+                          poster={
+                            reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".mp4")
+                              ? reel.thumbnailUrl
+                              : undefined
+                          }
+                          playsInline
                           loop
                           muted={isMuted}
-                          preload={Math.abs(index - activeReelIndex) <= 2 ? "auto" : "metadata"}
-                          isCurrent={isCurrent}
-                          isFeedMode={true}
-                          title={reel.description}
-                          creatorName={reel.creatorUsername || reel.creatorName}
-                          onDoubleClickCenter={() => handleDoubleTap(reel.id)}
+                          autoPlay={isCurrent}
+                          preload={isCurrent ? "auto" : Math.abs(index - activeReelIndex) <= 1 ? "metadata" : "none"}
+                          className={`w-full h-full block relative z-10 select-none cursor-pointer ${
+                            mediaAspectRatios[reel.id] === "horizontal_or_square" ? "object-contain" : "object-cover"
+                          }`}
+                          style={{ touchAction: "pan-y" }}
                           onClick={() => handleVideoClick(index)}
-                          onWaiting={() => {
-                            if (isCurrent) {
-                              setMediaLoading((prev) => ({ ...prev, [reel.id]: true }));
-                            }
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            handleDoubleTap(reel.id);
                           }}
-                          onPlaying={() => {
-                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                          }}
-                          onCanPlay={() => {
-                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                          }}
-                          onLoadedData={() => {
-                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                          }}
-                          onError={() => {
-                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                          }}
-                          onLoadedMetadata={(dur) => {
-                            setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                            if (isCurrent) {
-                              setDuration(dur);
-                            }
-                            const video = videoRefs.current[index];
-                            if (video) {
+                          onLoadedMetadata={(e) => {
+                            const video = e.currentTarget;
+                            if (video.videoHeight && video.videoWidth) {
                               const isVert = video.videoHeight > video.videoWidth * 1.08;
-                              setMediaAspectRatios((prev) => ({
-                                ...prev,
-                                [reel.id]: isVert ? "vertical" : "horizontal_or_square",
-                              }));
+                              const aspectVal = isVert ? "vertical" : "horizontal_or_square";
+                              setMediaAspectRatios((prev) => {
+                                if (prev[reel.id] === aspectVal) return prev;
+                                return {
+                                  ...prev,
+                                  [reel.id]: aspectVal,
+                                };
+                              });
                             }
                           }}
-                          onTimeUpdate={(curr, dur) => {
-                            if (isCurrent) {
-                              setMediaLoading((prev) => ({ ...prev, [reel.id]: false }));
-                              setCurrentTime(curr);
-                              setDuration(dur);
-                            }
-                          }}
-                          defaultAspectRatio={mediaAspectRatios[reel.id] === "horizontal_or_square" ? "fit" : "fill"}
-                          className="w-full h-full"
                         />
+                      </div>
                     )}
 
                     {/* Floating Large Double Tap Heart Animation */}
@@ -798,12 +722,18 @@ export default function ReelsView({
                           }}
                         >
                           <div className="w-20 shrink-0 h-full relative overflow-hidden bg-black/10 border-r border-white/10">
-                            <img
-                              src={reelProduct.imageUrl}
-                              alt={reelProduct.name}
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-cover"
-                            />
+                            {reelProduct.imageUrl ? (
+                              <img
+                                src={reelProduct.imageUrl}
+                                alt={reelProduct.name}
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-slate-800 text-amber-400">
+                                <ShoppingBag className="w-5 h-5" />
+                              </div>
+                            )}
                           </div>
                           <div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-black/10">
                             <span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center">
@@ -820,26 +750,11 @@ export default function ReelsView({
                     </div>
 
                     {/* Video Progress Bar */}
-                    {isCurrent && reel.type !== "image" && reel.type !== "carousel" && duration > 0 && (
-                      <div
-                        ref={progressBarRef}
-                        className="absolute bottom-0 left-0 right-0 z-30 h-3 flex items-end cursor-pointer group select-none touch-none"
-                        onClick={handleProgressBarClick}
-                        onMouseDown={handleMouseDown}
-                        onTouchStart={handleMouseDown}
-                        id="video-progress-bar"
-                      >
-                        {/* Background Track with uniform solid thickness */}
-                        <div className="w-full h-[3px] bg-white/30 backdrop-blur-md relative overflow-hidden">
-                          {/* Filled Progress */}
-                          <div
-                            className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 rounded-r-full shadow-[0_0_10px_rgba(245,158,11,0.9)] transition-all duration-75 relative"
-                            style={{ width: `${Math.min(100, Math.max(0, (currentTime / duration) * 100))}%` }}
-                          >
-                            <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-2 h-2 bg-amber-400 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </div>
-                        </div>
-                      </div>
+                    {isCurrent && reel.type !== "image" && reel.type !== "carousel" && (
+                      <ReelProgressBar
+                        video={videoRefs.current[index]}
+                        isActive={isCurrent}
+                      />
                     )}
                   </div>
 
@@ -861,7 +776,7 @@ export default function ReelsView({
                         id={`creator-avatar-btn-${reel.id}`}
                       >
                         <img
-                          src={reel.creatorAvatar}
+                          src={reel.creatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                           alt={reel.creatorName}
                           referrerPolicy="no-referrer"
                           className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover"
@@ -1032,7 +947,7 @@ export default function ReelsView({
                     ?.comments.map((comm) => (
                       <div key={comm.id} className="flex space-x-3 items-start">
                         <img
-                          src={comm.avatar}
+                          src={comm.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                           alt={comm.username}
                           referrerPolicy="no-referrer"
                           className="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-xs"
@@ -1244,17 +1159,21 @@ export default function ReelsView({
                         }`}
                         id={`reel-cart-item-${item.product.id}-${idx}`}
                       >
-                        <div className="w-24 sm:w-28 shrink-0 relative bg-slate-200 h-full overflow-hidden">
-                          <img
-                            src={item.product.imageUrl}
-                            alt={item.product.name}
-                            referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
-                            onClick={() => {
-                              setShowCartDrawer(false);
-                              onProductClick(item.product);
-                            }}
-                          />
+                        <div className="w-24 sm:w-28 shrink-0 relative bg-slate-200 h-full overflow-hidden flex items-center justify-center">
+                          {item.product.imageUrl ? (
+                            <img
+                              src={item.product.imageUrl}
+                              alt={item.product.name}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
+                              onClick={() => {
+                                setShowCartDrawer(false);
+                                onProductClick(item.product);
+                              }}
+                            />
+                          ) : (
+                            <ShoppingBag className="w-6 h-6 text-slate-400" />
+                          )}
                         </div>
                         <div className="flex-1 min-w-0 p-2.5 flex flex-col justify-between h-full">
                           <div>
@@ -1472,7 +1391,7 @@ function ReelCarousel({
       className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-none select-none bg-black cursor-grab active:cursor-grabbing touch-auto"
       style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-x pan-y" }}
     >
-      {images.map((img, idx) => (
+      {images.filter((img) => Boolean(img && typeof img === "string" && img.trim().length > 0)).map((img, idx) => (
         <div
           key={idx}
           className="w-full h-full shrink-0 snap-center flex items-center justify-center relative overflow-hidden bg-black"

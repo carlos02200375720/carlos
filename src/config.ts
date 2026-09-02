@@ -106,11 +106,17 @@ export const getWebSocketUrl = (): string => {
 export const apiFetch = async (
   input: string,
   init?: RequestInit,
-  customTimeoutMs: number = 25000
+  customTimeoutMs?: number
 ): Promise<Response> => {
   const cleanPath = input.startsWith("/") ? input : `/${input}`;
   const targetUrl = getApiUrl(input);
   const headers = new Headers(init?.headers);
+
+  // Set generous timeout: 5 minutes (300,000ms) for upload endpoints or FormData bodies, 60s for general API calls
+  const isUpload = cleanPath.includes("upload") || (init?.body instanceof FormData);
+  const effectiveTimeout = customTimeoutMs !== undefined 
+    ? customTimeoutMs 
+    : (isUpload ? 300000 : 60000);
 
   if (typeof window !== "undefined") {
     try {
@@ -140,10 +146,16 @@ export const apiFetch = async (
   }
 
   // Setup timeout abort controller if signal not already supplied
+  let isTimedOut = false;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, customTimeoutMs);
+    isTimedOut = true;
+    try {
+      controller.abort(new Error(`Timeout: La solicitud tardó más de ${Math.round(effectiveTimeout / 1000)}s`));
+    } catch {
+      controller.abort();
+    }
+  }, effectiveTimeout);
 
   const signal = init?.signal || controller.signal;
 
@@ -157,19 +169,28 @@ export const apiFetch = async (
     const res = await fetch(targetUrl, fetchOptions);
     clearTimeout(timeoutId);
     return res;
-  } catch (primaryErr) {
+  } catch (primaryErr: any) {
     clearTimeout(timeoutId);
 
-    // Fallback: If primary targetUrl failed, attempt the alternate URL (relative vs remote)
-    const alternateUrl = targetUrl === cleanPath 
-      ? `${CLOUD_RUN_BACKEND_URL.replace(/\/$/, "")}${cleanPath}`
-      : cleanPath;
-
-    try {
-      return await fetch(alternateUrl, fetchOptions);
-    } catch (fallbackErr) {
-      throw primaryErr;
+    // If request was explicitly aborted due to timeout, throw friendly error
+    if (isTimedOut) {
+      throw new Error(`La carga o conexión ha tardado más de ${Math.round(effectiveTimeout / 1000)} segundos. Por favor, verifica tu conexión a internet e inténtalo de nuevo.`);
     }
+
+    // Fallback: If primary targetUrl failed and was NOT aborted by user, attempt alternate URL
+    if (!signal.aborted) {
+      const alternateUrl = targetUrl === cleanPath 
+        ? `${CLOUD_RUN_BACKEND_URL.replace(/\/$/, "")}${cleanPath}`
+        : cleanPath;
+
+      try {
+        return await fetch(alternateUrl, fetchOptions);
+      } catch (fallbackErr) {
+        throw primaryErr;
+      }
+    }
+
+    throw primaryErr;
   }
 };
 
