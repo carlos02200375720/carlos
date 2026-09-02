@@ -298,8 +298,8 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       // Case 2: Hls.js for Chrome / Firefox / Edge / Android
       else if (isM3u8 && Hls.isSupported()) {
         const hls = new Hls({
-          maxBufferLength: 15,
-          maxMaxBufferLength: 30,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
           enableWorker: true,
           lowLatencyMode: false,
         });
