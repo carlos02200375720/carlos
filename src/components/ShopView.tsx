@@ -235,8 +235,9 @@ export default function ShopView({
   const checkIsVideo = (url: string) => {
     if (!url) return false;
     const lower = url.toLowerCase();
+    const normalizedUrl = url.trim();
     return (
-      Boolean(selectedProduct?.videos && selectedProduct.videos.some(v => v === url || lower.includes(v.toLowerCase()))) ||
+      Boolean(selectedProduct?.videos?.some(v => v.trim() === normalizedUrl)) ||
       lower.includes(".mp4") ||
       lower.includes(".webm") ||
       lower.includes(".mov") ||
@@ -259,6 +260,16 @@ export default function ShopView({
     ).filter(Boolean);
   }, [selectedProduct]);
 
+  const playActiveGalleryVideo = (videoEl: HTMLVideoElement) => {
+    videoEl.muted = isGalleryVideoMuted;
+    if (isGalleryVideoPlaying && videoEl.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      videoEl.play().catch((err) => {
+        console.log("Gallery video playback paused or blocked:", err);
+        setIsGalleryVideoPlaying(false);
+      });
+    }
+  };
+
   // Sync video playback with active gallery slide
   useEffect(() => {
     productGalleryMedia.forEach((mediaUrl, idx) => {
@@ -266,21 +277,14 @@ export default function ShopView({
       const videoEl = galleryVideoRefs.current[idx];
       if (isVideo && videoEl) {
         if (idx === activeGalleryIndex) {
-          videoEl.muted = isGalleryVideoMuted;
-          if (isGalleryVideoPlaying) {
-            videoEl.play().catch((err) => {
-              console.log("Gallery video playback paused or blocked:", err);
-              setIsGalleryVideoPlaying(false);
-            });
-          } else {
-            videoEl.pause();
-          }
+          if (isGalleryVideoPlaying) playActiveGalleryVideo(videoEl);
+          else videoEl.pause();
         } else {
           videoEl.pause();
         }
       }
     });
-  }, [activeGalleryIndex, productGalleryMedia, isGalleryVideoPlaying, isGalleryVideoMuted]);
+  }, [activeGalleryIndex, productGalleryMedia, isGalleryVideoPlaying, isGalleryVideoMuted, selectedProduct]);
 
   // Sync thumbnail container scroll with active gallery index
   useEffect(() => {
@@ -1138,6 +1142,11 @@ export default function ShopView({
                                   loop
                                   muted={isGalleryVideoMuted}
                                   preload="auto"
+                                  onLoadedMetadata={(event) => {
+                                    if (idx === activeGalleryIndex && isGalleryVideoPlaying) {
+                                      playActiveGalleryVideo(event.currentTarget);
+                                    }
+                                  }}
                                   className="w-full h-full object-contain bg-black"
                                 />
                               </div>
