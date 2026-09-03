@@ -36,8 +36,12 @@ jobs:
       - name: 6. Agregar plataforma Android y Sincronizar
         run: |
           npm install @capacitor/cli @capacitor/core @capacitor/android @capacitor/status-bar
-          npx cap add android || true
+          npx cap add android 
           npx cap sync android
+          npx capacitor-assets generate
+          npm install --save-dev @capacitor/assets
+
+
 
       - name: 6.1. Corregir clases duplicadas de Kotlin
         run: |
@@ -62,3 +66,5 @@ jobs:
         with:
           name: app-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      
