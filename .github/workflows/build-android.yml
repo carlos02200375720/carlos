@@ -16,7 +16,7 @@ jobs:
       - name: 2. Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
 
       - name: 3. Configurar Java (JDK 21)
         uses: actions/setup-java@v4
@@ -36,11 +36,8 @@ jobs:
       - name: 6. Agregar plataforma Android y Sincronizar
         run: |
           npm install @capacitor/cli @capacitor/core @capacitor/android @capacitor/status-bar
-          npm install --save-dev @capacitor/assets
-          npx cap add android
-          npx capacitor-assets generate
+          npx cap add android || true
           npx cap sync android
-
 
       - name: 6.1. Corregir clases duplicadas de Kotlin
         run: |
@@ -65,5 +62,3 @@ jobs:
         with:
           name: app-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
-
-      

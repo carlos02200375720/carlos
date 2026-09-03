@@ -1,0 +1,47 @@
+{
+  "name": "MallSocial - Social & Shopping Live",
+  "short_name": "MallSocial",
+  "id": "mall-social-app",
+  "description": "Plataforma social interactiva de comercio en vivo: video reels, transmisiones en vivo con chat en tiempo real, tienda e-commerce y catálogo.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "dir": "ltr",
+  "lang": "es",
+  "categories": [
+    "shopping",
+    "social",
+    "video",
+    "entertainment",
+    "lifestyle"
+  ],
+  "icons": [
+    {
+      "src": "/app-icon.jpg",
+      "type": "image/jpeg",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.jpg",
+      "type": "image/jpeg",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.jpg",
+      "type": "image/jpeg",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    }
+  ]
+}
