@@ -457,6 +457,22 @@ export default function App() {
             break;
           }
 
+          case "product_updated": {
+            if (payload.product) {
+              setProducts((prev) =>
+                prev.map((p) => (p.id === payload.product.id ? { ...p, ...payload.product } : p))
+              );
+            }
+            break;
+          }
+
+          case "product_deleted": {
+            if (payload.productId) {
+              setProducts((prev) => prev.filter((p) => p.id !== payload.productId));
+            }
+            break;
+          }
+
           case "reel_updated": {
             setReels((prev) =>
               prev.map((r) => {
@@ -828,6 +844,10 @@ export default function App() {
         items: checkoutItems,
         shippingAddress: address,
         shippingCost: shippingCost,
+        buyerName: currentUser.name,
+        buyerUsername: currentUser.username,
+        buyerAvatar: currentUser.avatar,
+        buyerEmail: currentUser.email,
       }),
     })
       .then((res) => res.json())

@@ -80,6 +80,7 @@ export interface Product {
   }[];
   variantList?: ProductVariantItem[];
   category?: string;
+  views?: number;
 }
 
 export interface CartItem {
@@ -90,19 +91,50 @@ export interface CartItem {
   selectedCountry?: string;
 }
 
+export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+
+export interface OrderItem {
+  productId: string;
+  name: string;
+  price: number;
+  quantity: number;
+  imageUrl: string;
+  sellerId?: string;
+  sellerName?: string;
+  sellerUsername?: string;
+  carrier?: string;
+}
+
+export interface OrderStatusHistoryItem {
+  status: OrderStatus;
+  label: string;
+  timestamp: string;
+  note?: string;
+  trackingNumber?: string;
+  carrier?: string;
+}
+
 export interface Order {
   id: string;
-  items: {
-    productId: string;
-    name: string;
-    price: number;
-    quantity: number;
-    imageUrl: string;
-  }[];
+  buyerId?: string;
+  buyerName?: string;
+  buyerUsername?: string;
+  buyerAvatar?: string;
+  buyerEmail?: string;
+  items: OrderItem[];
   total: number;
+  shippingCost?: number;
   shippingAddress: string;
   paymentStatus: 'paid' | 'pending';
+  status?: OrderStatus;
+  trackingNumber?: string;
+  carrier?: string;
+  trackingUrl?: string;
+  estimatedDelivery?: string;
+  sellerNotes?: string;
+  statusHistory?: OrderStatusHistoryItem[];
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface ChatMessage {

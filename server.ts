@@ -78,7 +78,8 @@ const ProductSchema = new mongoose.Schema({
   }],
   category: { type: String },
   cjVid: { type: String },
-  cjPid: { type: String }
+  cjPid: { type: String },
+  views: { type: Number, default: 0 }
 });
 
 const MongoProduct = (mongoose.models.Product || mongoose.model("Product", ProductSchema)) as any;
@@ -125,6 +126,49 @@ const CartSchema = new mongoose.Schema({
 
 const MongoCart = (mongoose.models.Cart || mongoose.model("Cart", CartSchema)) as any;
 const cartMemoryStore = new Map<string, any[]>();
+
+// Mongoose Order Schema for persistent orders, tracking numbers, and seller fulfillment
+const OrderSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  buyerId: { type: String },
+  buyerName: { type: String },
+  buyerUsername: { type: String },
+  buyerAvatar: { type: String },
+  buyerEmail: { type: String },
+  items: [{
+    productId: { type: String, required: true },
+    name: { type: String, required: true },
+    price: { type: Number, required: true },
+    quantity: { type: Number, required: true },
+    imageUrl: { type: String },
+    sellerId: { type: String },
+    sellerName: { type: String },
+    sellerUsername: { type: String },
+    carrier: { type: String }
+  }],
+  total: { type: Number, required: true },
+  shippingCost: { type: Number, default: 0 },
+  shippingAddress: { type: String, required: true },
+  paymentStatus: { type: String, default: "paid" },
+  status: { type: String, default: "processing" },
+  trackingNumber: { type: String, default: "" },
+  carrier: { type: String, default: "" },
+  trackingUrl: { type: String, default: "" },
+  estimatedDelivery: { type: String, default: "" },
+  sellerNotes: { type: String, default: "" },
+  statusHistory: [{
+    status: { type: String },
+    label: { type: String },
+    timestamp: { type: String },
+    note: { type: String },
+    trackingNumber: { type: String },
+    carrier: { type: String }
+  }],
+  createdAt: { type: String },
+  updatedAt: { type: String }
+}, { strict: false });
+
+const MongoOrder = (mongoose.models.Order || mongoose.model("Order", OrderSchema)) as any;
 
 // Google Cloud Storage setup
 let storage: Storage;
@@ -375,7 +419,8 @@ async function getUsers(): Promise<User[]> {
         coverPhoto: u.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
         isGuest: u.isGuest || false,
         password: u.password || "",
-        email: u.email || ""
+        email: u.email || "",
+        privacyPolicy: u.privacyPolicy || ""
       }));
     }
   } catch (err) {
@@ -503,7 +548,8 @@ async function connectToMongoDB() {
         images: p.images || [],
         videos: p.videos || [],
         variants: p.variants || [],
-        category: p.category || ""
+        category: p.category || "",
+        views: p.views || 0
       }));
       console.log(`📦 Loaded ${products.length} unique products successfully from MongoDB Atlas!`);
     }
@@ -556,6 +602,152 @@ async function connectToMongoDB() {
         };
       });
       console.log(`📦 Loaded ${reels.length} unique reels successfully from MongoDB Atlas!`);
+    }
+
+    // Load or Seed Orders from MongoDB Atlas
+    console.log("📦 Loading orders from MongoDB...");
+    const orderCount = await MongoOrder.countDocuments();
+    if (orderCount === 0) {
+      console.log("🌱 Seeding realistic demo purchase and sale orders to MongoDB...");
+      const now = Date.now();
+      const demoOrders: Order[] = [
+        {
+          id: "ord_demo_compra",
+          buyerId: "current_user",
+          buyerName: "Carlos Gómez",
+          buyerUsername: "carlosg",
+          buyerAvatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=400&q=80",
+          items: [
+            {
+              productId: products[0]?.id || "prod_1",
+              name: products[0]?.name || "Auriculares Inalámbricos Pro",
+              price: products[0]?.price || 89.99,
+              quantity: 1,
+              imageUrl: products[0]?.imageUrl || "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=400&q=80",
+              sellerId: "seller_official",
+              sellerName: "Tech Store Oficial",
+              sellerUsername: "techstore",
+              carrier: "DHL Express"
+            }
+          ],
+          total: (products[0]?.price || 89.99) + 5.99,
+          shippingCost: 5.99,
+          shippingAddress: "Av. Central 742, Piso 4, Madrid, España",
+          paymentStatus: "paid",
+          status: "shipped",
+          trackingNumber: "DHL-84920184ES",
+          carrier: "DHL Express",
+          trackingUrl: "https://www.dhl.com",
+          estimatedDelivery: new Date(now + 2 * 86400000).toISOString().split("T")[0],
+          sellerNotes: "Paquete entregado a la agencia DHL en Madrid. En tránsito hacia destino.",
+          statusHistory: [
+            {
+              status: "pending",
+              label: "Pago confirmado exitosamente",
+              timestamp: new Date(now - 86400000 * 2).toISOString(),
+              note: "Transacción aprobada mediante tarjeta bancaria."
+            },
+            {
+              status: "processing",
+              label: "Empaque y preparación de producto",
+              timestamp: new Date(now - 86400000 * 1.5).toISOString(),
+              note: "Verificación de embalaje protector y precinto de seguridad."
+            },
+            {
+              status: "shipped",
+              label: "Despachado con número de guía DHL",
+              timestamp: new Date(now - 86400000 * 0.8).toISOString(),
+              note: "Guía DHL-84920184ES generada. En camino al centro de distribución.",
+              trackingNumber: "DHL-84920184ES",
+              carrier: "DHL Express"
+            }
+          ],
+          createdAt: new Date(now - 86400000 * 2).toISOString(),
+          updatedAt: new Date(now - 86400000 * 0.8).toISOString()
+        },
+        {
+          id: "ord_demo_venta",
+          buyerId: "user_maria",
+          buyerName: "María Fernández",
+          buyerUsername: "mariaf",
+          buyerAvatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80",
+          buyerEmail: "maria.fernandez@ejemplo.com",
+          items: [
+            {
+              productId: products[1]?.id || products[0]?.id || "prod_2",
+              name: products[1]?.name || products[0]?.name || "Smartwatch Deportivo Ultra",
+              price: products[1]?.price || 129.50,
+              quantity: 2,
+              imageUrl: products[1]?.imageUrl || products[0]?.imageUrl || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80",
+              sellerId: "current_user",
+              sellerName: "Carlos Gómez",
+              sellerUsername: "carlosg",
+              carrier: "FedEx"
+            }
+          ],
+          total: (products[1]?.price || 129.50) * 2 + 7.50,
+          shippingCost: 7.50,
+          shippingAddress: "Calle Las Flores 128, Apto 3B, Barcelona, España",
+          paymentStatus: "paid",
+          status: "processing",
+          trackingNumber: "FDX-938201948",
+          carrier: "FedEx",
+          trackingUrl: "https://www.fedex.com",
+          estimatedDelivery: new Date(now + 4 * 86400000).toISOString().split("T")[0],
+          sellerNotes: "Preparando pedido para recolección de FedEx.",
+          statusHistory: [
+            {
+              status: "pending",
+              label: "Pago recibido del cliente",
+              timestamp: new Date(now - 3600000 * 5).toISOString(),
+              note: "Pago acreditado por 2 unidades."
+            },
+            {
+              status: "processing",
+              label: "En preparación por tu negocio",
+              timestamp: new Date(now - 3600000 * 2).toISOString(),
+              note: "Asigna o confirma el número de guía para despachar."
+            }
+          ],
+          createdAt: new Date(now - 3600000 * 5).toISOString(),
+          updatedAt: new Date(now - 3600000 * 2).toISOString()
+        }
+      ];
+      await MongoOrder.insertMany(demoOrders as any);
+      orders = demoOrders;
+      console.log(`🌱 Seeding orders completed (${orders.length} orders)!`);
+    } else {
+      const dbOrders = await MongoOrder.find().sort({ createdAt: -1 });
+      const seenOrderIds = new Set<string>();
+      orders = dbOrders
+        .filter((o: any) => {
+          if (!o.id || seenOrderIds.has(o.id)) return false;
+          seenOrderIds.add(o.id);
+          return true;
+        })
+        .map((o: any) => ({
+          id: o.id,
+          buyerId: o.buyerId,
+          buyerName: o.buyerName,
+          buyerUsername: o.buyerUsername,
+          buyerAvatar: o.buyerAvatar,
+          buyerEmail: o.buyerEmail,
+          items: o.items || [],
+          total: o.total,
+          shippingCost: o.shippingCost || 0,
+          shippingAddress: o.shippingAddress,
+          paymentStatus: o.paymentStatus || "paid",
+          status: o.status || "processing",
+          trackingNumber: o.trackingNumber || "",
+          carrier: o.carrier || "",
+          trackingUrl: o.trackingUrl || "",
+          estimatedDelivery: o.estimatedDelivery || "",
+          sellerNotes: o.sellerNotes || "",
+          statusHistory: o.statusHistory || [],
+          createdAt: o.createdAt || new Date().toISOString(),
+          updatedAt: o.updatedAt || o.createdAt || new Date().toISOString(),
+        }));
+      console.log(`📦 Loaded ${orders.length} orders successfully from MongoDB Atlas!`);
     }
   } catch (error) {
     console.error("❌ Failed to connect to MongoDB Atlas:", error);
@@ -1032,7 +1224,8 @@ async function startServer() {
           coverPhoto: activeUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
           isGuest: false,
           password: activeUser.password || "",
-          email: activeUser.email || ""
+          email: activeUser.email || "",
+          privacyPolicy: activeUser.privacyPolicy || ""
         };
       } else {
         // Safe guest user representation
@@ -1050,24 +1243,20 @@ async function startServer() {
           coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
           isGuest: true,
           password: "",
-          email: ""
+          email: "",
+          privacyPolicy: ""
         };
       }
     } else {
-      user = dbUsers.find(
-        (u) =>
-          u.id === rawParam ||
-          u.username?.toLowerCase() === cleanParam ||
-          u.id?.toLowerCase() === cleanParam ||
-          (u.originalId && u.originalId === rawParam)
-      );
-
-      if (!user && mongoose.connection.readyState === 1) {
+      // 1. Direct MongoDB lookup for the freshest profile data including privacyPolicy
+      if (mongoose.connection.readyState === 1) {
         const found = await MongoUser.findOne({
           $or: [
             { id: rawParam },
+            { id: cleanParam },
             { username: cleanParam },
-            { username: rawParam }
+            { username: rawParam },
+            { name: rawParam }
           ]
         });
         if (found) {
@@ -1076,19 +1265,31 @@ async function startServer() {
             originalId: found.id,
             username: found.username,
             name: found.name,
-            avatar: found.avatar,
-            bio: found.bio,
+            avatar: found.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+            bio: found.bio || "Creador en la plataforma",
+            isOnline: found.isOnline !== undefined ? found.isOnline : false,
             followers: found.followers || 0,
             following: found.following || 0,
             followingUserIds: found.followingUserIds || [],
             savedReelIds: found.savedReelIds || [],
-            coverPhoto: found.coverPhoto,
+            coverPhoto: found.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
             isGuest: false,
             password: found.password || "",
             email: found.email || "",
             privacyPolicy: found.privacyPolicy || ""
           };
         }
+      }
+
+      // 2. Fallback to in-memory dbUsers
+      if (!user) {
+        user = dbUsers.find(
+          (u) =>
+            u.id === rawParam ||
+            u.username?.toLowerCase() === cleanParam ||
+            u.id?.toLowerCase() === cleanParam ||
+            (u.originalId && u.originalId === rawParam)
+        );
       }
 
       // Fallback: If user is not yet in MongoUser or dbUsers, look up in reels
@@ -1116,22 +1317,31 @@ async function startServer() {
 
         const sourceReel = matchedReel || matchedMongoReel;
         if (sourceReel) {
+          let creatorMongoUser = null;
+          if (mongoose.connection.readyState === 1) {
+            creatorMongoUser = await MongoUser.findOne({
+              $or: [
+                { id: sourceReel.creatorId },
+                { username: sourceReel.creatorUsername }
+              ]
+            }).catch(() => null);
+          }
           user = {
             id: sourceReel.creatorId || rawParam,
             originalId: sourceReel.creatorId || rawParam,
             username: sourceReel.creatorUsername || sourceReel.creatorName?.toLowerCase().replace(/\s+/g, "") || "creador",
             name: sourceReel.creatorName || "Creador",
             avatar: sourceReel.creatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-            bio: "Creador oficial en la plataforma",
-            followers: 120,
-            following: 35,
-            followingUserIds: [],
-            savedReelIds: [],
-            coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+            bio: creatorMongoUser?.bio || "Creador oficial en la plataforma",
+            followers: creatorMongoUser?.followers || 120,
+            following: creatorMongoUser?.following || 35,
+            followingUserIds: creatorMongoUser?.followingUserIds || [],
+            savedReelIds: creatorMongoUser?.savedReelIds || [],
+            coverPhoto: creatorMongoUser?.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
             isGuest: false,
             password: "",
             email: "",
-            privacyPolicy: ""
+            privacyPolicy: creatorMongoUser?.privacyPolicy || ""
           };
         }
       }
@@ -1157,22 +1367,31 @@ async function startServer() {
 
         const sourceProd = matchedProd || matchedMongoProd;
         if (sourceProd) {
+          let sellerMongoUser = null;
+          if (mongoose.connection.readyState === 1) {
+            sellerMongoUser = await MongoUser.findOne({
+              $or: [
+                { id: sourceProd.sellerId },
+                { username: sourceProd.sellerName?.toLowerCase().replace(/\s+/g, "") }
+              ]
+            }).catch(() => null);
+          }
           user = {
             id: sourceProd.sellerId || rawParam,
             originalId: sourceProd.sellerId || rawParam,
             username: sourceProd.sellerName?.toLowerCase().replace(/\s+/g, "") || "tienda",
             name: sourceProd.sellerName || "Tienda Oficial",
             avatar: sourceProd.sellerAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-            bio: "Tienda y vendedor verificado en la plataforma",
-            followers: 85,
-            following: 15,
-            followingUserIds: [],
-            savedReelIds: [],
-            coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+            bio: sellerMongoUser?.bio || "Tienda y vendedor verificado en la plataforma",
+            followers: sellerMongoUser?.followers || 85,
+            following: sellerMongoUser?.following || 15,
+            followingUserIds: sellerMongoUser?.followingUserIds || [],
+            savedReelIds: sellerMongoUser?.savedReelIds || [],
+            coverPhoto: sellerMongoUser?.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
             isGuest: false,
             password: "",
             email: "",
-            privacyPolicy: ""
+            privacyPolicy: sellerMongoUser?.privacyPolicy || ""
           };
         }
       }
@@ -1219,7 +1438,30 @@ async function startServer() {
         return true;
       });
 
-    const userOrders = user.id === "current_user" ? orders : [];
+    // Compute purchases made by the user
+    const userPurchases = orders.filter((o) => {
+      if (user.id === "current_user") {
+        return o.buyerId === "current_user" || (activeOriginalUserId && o.buyerId === activeOriginalUserId) || !o.buyerId;
+      }
+      return (
+        userIdentifiers.has(o.buyerId || "") ||
+        (o.buyerUsername && userIdentifiers.has(o.buyerUsername.toLowerCase()))
+      );
+    });
+
+    // Compute sales where the user is the seller of at least one product
+    const userSales = orders.filter((o) => {
+      return o.items.some((it) => {
+        if (user.id === "current_user") {
+          return it.sellerId === "current_user" || (activeOriginalUserId && it.sellerId === activeOriginalUserId) || !it.sellerId;
+        }
+        return (
+          userIdentifiers.has(it.sellerId || "") ||
+          (it.sellerUsername && userIdentifiers.has(it.sellerUsername.toLowerCase()))
+        );
+      });
+    });
+
     const seenSaved = new Set<string>();
     const userSavedReels = reels
       .filter((r) => (user.savedReelIds || []).includes(r.id))
@@ -1233,7 +1475,9 @@ async function startServer() {
       user,
       products: userProducts,
       reels: userReels,
-      orders: userOrders,
+      orders: userPurchases,
+      purchases: userPurchases,
+      sales: userSales,
       savedReels: userSavedReels,
     });
   });
@@ -1430,17 +1674,38 @@ async function startServer() {
 
   // Update current user profile info
   app.post("/api/users/current/update", async (req, res) => {
-    const { name, username, bio, avatar, coverPhoto, password, privacyPolicy } = req.body;
+    const { name, username, bio, avatar, coverPhoto, password, privacyPolicy, userId, currentUsername } = req.body;
+    const headerUsername = (req.headers["x-user-username"] as string)?.trim().toLowerCase();
+    const headerUserId = (req.headers["x-user-id"] as string)?.trim();
     let currentUserObj = null;
 
     if (mongoose.connection.readyState === 1) {
-      currentUserObj = await MongoUser.findOne({ id: activeOriginalUserId });
+      const idCandidates = [activeOriginalUserId, userId, headerUserId].filter(
+        id => id && id !== "user_guest" && id !== "current_user" && id !== "invitado" && id !== "guest"
+      );
+      const usernameCandidates = [currentUsername, headerUsername].filter(
+        u => u && u !== "invitado" && u !== "user_guest" && u !== "guest"
+      );
+
+      for (const cid of idCandidates) {
+        currentUserObj = await MongoUser.findOne({ id: cid });
+        if (currentUserObj) break;
+      }
+
+      if (!currentUserObj) {
+        for (const un of usernameCandidates) {
+          currentUserObj = await MongoUser.findOne({ username: un.toLowerCase() });
+          if (currentUserObj) break;
+        }
+      }
     }
 
     if (!currentUserObj) {
       res.status(401).json({ error: "Debe iniciar sesión para realizar esta acción." });
       return;
     }
+
+    activeOriginalUserId = currentUserObj.id;
 
     const updateFields: any = {};
     if (name !== undefined) updateFields.name = name;
@@ -1480,14 +1745,14 @@ async function startServer() {
     }
 
     let updatedUser = currentUserObj;
-    if (mongoose.connection.readyState === 1 && activeOriginalUserId !== "user_guest") {
+    if (mongoose.connection.readyState === 1 && currentUserObj.id !== "user_guest") {
       try {
         updatedUser = await MongoUser.findOneAndUpdate(
-          { id: activeOriginalUserId },
+          { id: currentUserObj.id },
           updateFields,
           { new: true }
         );
-        console.log(`💾 User profile updated directly in MongoDB Atlas for ${updatedUser.username}`);
+        console.log(`💾 User profile updated directly in MongoDB Atlas for ${updatedUser.username}, privacyPolicy length: ${(updatedUser.privacyPolicy || "").length}`);
       } catch (err) {
         console.error("Failed to update profile in MongoDB:", err);
       }
@@ -1495,7 +1760,7 @@ async function startServer() {
 
     // Update in memory items that reference this user
     reels.forEach(r => {
-      if (r.creatorId === "current_user") {
+      if (r.creatorId === "current_user" || r.creatorId === currentUserObj.id) {
         if (name !== undefined) r.creatorName = name;
         if (avatar !== undefined) r.creatorAvatar = avatar;
       }
@@ -1510,7 +1775,8 @@ async function startServer() {
     const returnedUser = {
       ...(updatedUser?.toObject ? updatedUser.toObject() : updatedUser),
       id: "current_user",
-      originalId: activeOriginalUserId
+      originalId: currentUserObj.id,
+      privacyPolicy: updatedUser?.privacyPolicy !== undefined ? updatedUser.privacyPolicy : (privacyPolicy || "")
     };
 
     res.json({ success: true, user: returnedUser });
@@ -2422,7 +2688,8 @@ async function startServer() {
           variantList: p.variantList || [],
           category: p.category || "",
           cjVid: p.cjVid || undefined,
-          cjPid: p.cjPid || undefined
+          cjPid: p.cjPid || undefined,
+          views: p.views || 0
         }));
       } catch (err) {
         console.error("❌ Failed to load live products from MongoDB Atlas during GET:", err);
@@ -2458,7 +2725,8 @@ async function startServer() {
           variantList: p.variantList || [],
           category: p.category || "",
           cjVid: p.cjVid || undefined,
-          cjPid: p.cjPid || undefined
+          cjPid: p.cjPid || undefined,
+          views: p.views || 0
         }));
       } catch (err) {
         console.error("❌ Failed to sync products on ID fetch:", err);
@@ -2470,6 +2738,38 @@ async function startServer() {
       return;
     }
     res.json(product);
+  });
+
+  // Record a view on a product detail page
+  app.post("/api/products/:id/view", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const product = products.find((p) => p.id === id);
+      if (!product) {
+        res.status(404).json({ error: "Product not found" });
+        return;
+      }
+      product.views = (product.views || 0) + 1;
+
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoProduct.updateOne({ id }, { $inc: { views: 1 } });
+        } catch (dbErr) {
+          console.error("❌ Failed to update product views in MongoDB:", dbErr);
+        }
+      }
+
+      broadcastToAll({
+        type: "product_viewed",
+        productId: id,
+        views: product.views,
+      });
+
+      res.json({ success: true, views: product.views });
+    } catch (err: any) {
+      console.error("Error recording product view:", err);
+      res.status(500).json({ error: "Failed to record view", details: err.message });
+    }
   });
 
   // Create a new publication (video, image, or carousel)
@@ -2577,7 +2877,8 @@ async function startServer() {
         variantList: variantList || [],
         category: category || "",
         cjVid: cjVid || undefined,
-        cjPid: cjPid || undefined
+        cjPid: cjPid || undefined,
+        views: 0
       };
 
       // Add to memory list
@@ -2643,6 +2944,162 @@ async function startServer() {
     } catch (err: any) {
       console.error("Error creating product:", err);
       res.status(500).json({ error: "Failed to create product", details: err.message });
+    }
+  });
+
+  // Update an existing product (fields: name, description, price, imageUrl, stock, shippingCost, category, images, variants)
+  app.all(["/api/products/:id/update", "/api/products/:id"], async (req: any, res: any, next: any) => {
+    // Only handle PUT and POST methods for updating
+    if (req.method !== "PUT" && req.method !== "POST") {
+      return next();
+    }
+
+    try {
+      const { id } = req.params;
+      if (!id) {
+        res.status(400).json({ error: "El ID del producto es obligatorio" });
+        return;
+      }
+
+      const {
+        name,
+        description,
+        price,
+        imageUrl,
+        stock,
+        shippingCost,
+        images,
+        videos,
+        variants,
+        variantList,
+        category,
+      } = req.body;
+
+      const updateFields: any = {};
+      if (name !== undefined) updateFields.name = String(name).trim();
+      if (description !== undefined) updateFields.description = String(description).trim();
+      if (price !== undefined) updateFields.price = Math.max(0, Number(price) || 0);
+      if (imageUrl !== undefined) updateFields.imageUrl = String(imageUrl).trim();
+      if (stock !== undefined) updateFields.stock = Math.max(0, parseInt(String(stock), 10) || 0);
+      if (shippingCost !== undefined) updateFields.shippingCost = Math.max(0, Number(shippingCost) || 0);
+      if (category !== undefined) updateFields.category = String(category).trim();
+      if (images !== undefined) updateFields.images = Array.isArray(images) ? images : [];
+      if (videos !== undefined) updateFields.videos = Array.isArray(videos) ? videos : [];
+      if (variants !== undefined) updateFields.variants = variants;
+      if (variantList !== undefined) updateFields.variantList = variantList;
+
+      // Update in memory
+      let updatedProduct: any = null;
+      const index = products.findIndex((p) => p.id === id);
+      if (index !== -1) {
+        products[index] = {
+          ...products[index],
+          ...updateFields,
+        };
+        updatedProduct = products[index];
+      }
+
+      // Update in MongoDB Atlas
+      if (mongoose.connection.readyState === 1) {
+        try {
+          const dbProd = await MongoProduct.findOneAndUpdate(
+            { id },
+            { $set: updateFields },
+            { new: true }
+          );
+          if (dbProd) {
+            const parsedDbProd = dbProd.toObject ? dbProd.toObject() : dbProd;
+            updatedProduct = parsedDbProd;
+            if (index !== -1) {
+              products[index] = parsedDbProd;
+            } else {
+              products.unshift(parsedDbProd);
+            }
+          }
+          console.log(`💾 Product ${id} updated in MongoDB Atlas`);
+        } catch (dbErr) {
+          console.error("❌ Failed to update product in MongoDB Atlas:", dbErr);
+        }
+      }
+
+      if (!updatedProduct) {
+        res.status(404).json({ error: "Producto no encontrado en el sistema" });
+        return;
+      }
+
+      // If imageUrl or name changed, update companion reel in memory and database
+      if (imageUrl || name) {
+        reels.forEach((r) => {
+          if (r.productId === id) {
+            if (imageUrl) r.thumbnailUrl = imageUrl;
+            if (images && images.length > 0) r.images = images;
+          }
+        });
+        if (mongoose.connection.readyState === 1) {
+          const reelUpdates: any = {};
+          if (imageUrl) reelUpdates.thumbnailUrl = imageUrl;
+          if (images && images.length > 0) reelUpdates.images = images;
+          await MongoReel.updateMany({ productId: id }, { $set: reelUpdates }).catch(() => null);
+        }
+      }
+
+      // Broadcast update across all connected clients in real-time
+      broadcastToAll({
+        type: "product_updated",
+        product: updatedProduct,
+      });
+
+      res.json({ success: true, product: updatedProduct });
+    } catch (err: any) {
+      console.error("Error updating product:", err);
+      res.status(500).json({ error: "Error al actualizar el producto", details: err.message });
+    }
+  });
+
+  // Delete an existing product
+  app.all(["/api/products/:id/delete", "/api/products/:id"], async (req: any, res: any, next: any) => {
+    // Only handle DELETE and POST methods for deletion
+    if (req.method !== "DELETE" && req.method !== "POST") {
+      return next();
+    }
+
+    try {
+      const { id } = req.params;
+      if (!id) {
+        res.status(400).json({ error: "El ID del producto es obligatorio" });
+        return;
+      }
+
+      console.log(`🗑️ Deleting product ${id}...`);
+
+      // Remove from memory
+      products = products.filter((p) => p.id !== id);
+
+      // Remove from MongoDB Atlas
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoProduct.deleteOne({ id });
+          // Also optionally remove companion reels or unlink
+          await MongoReel.deleteMany({ productId: id }).catch(() => null);
+          console.log(`💾 Product ${id} and companion reels deleted from MongoDB Atlas`);
+        } catch (dbErr) {
+          console.error("❌ Failed to delete product from MongoDB Atlas:", dbErr);
+        }
+      }
+
+      // Also remove companion reels from memory
+      reels = reels.filter((r) => r.productId !== id);
+
+      // Broadcast deletion across all connected clients in real-time
+      broadcastToAll({
+        type: "product_deleted",
+        productId: id,
+      });
+
+      res.json({ success: true, message: "Producto eliminado exitosamente" });
+    } catch (err: any) {
+      console.error("Error deleting product:", err);
+      res.status(500).json({ error: "Error al eliminar el producto", details: err.message });
     }
   });
 
@@ -2731,7 +3188,7 @@ async function startServer() {
 
   // Create purchase order (checkout)
   app.post("/api/orders", async (req, res) => {
-    const { items, shippingAddress, shippingCost, userId } = req.body;
+    const { items, shippingAddress, shippingCost, userId, buyerName, buyerUsername, buyerAvatar, buyerEmail } = req.body;
     if (!items || !items.length) {
       res.status(400).json({ error: "Cart is empty" });
       return;
@@ -2739,6 +3196,9 @@ async function startServer() {
 
     let total = 0;
     const orderItems: any[] = [];
+    const dbUsers = await getUsers();
+    const userMap = new Map<string, any>();
+    dbUsers.forEach((u: any) => userMap.set(u.id, u));
 
     // Verify stock and calculate total
     for (const item of items) {
@@ -2755,27 +3215,78 @@ async function startServer() {
 
       product.stock -= item.quantity;
       total += product.price * item.quantity;
+
+      const sellerUser = userMap.get(product.sellerId);
       orderItems.push({
         productId: product.id,
         name: product.name,
         price: product.price,
         quantity: item.quantity,
         imageUrl: product.imageUrl,
+        sellerId: product.sellerId || "current_user",
+        sellerName: sellerUser ? sellerUser.name : (product.sellerName || "Vendedor"),
+        sellerUsername: sellerUser ? sellerUser.username : undefined,
+        carrier: item.selectedCarrier || product.selectedCarrier || "DHL Express",
       });
     }
 
     total += Number(shippingCost) || 0;
 
+    const assignedCarrier = orderItems[0]?.carrier || "";
+    const nowIso = new Date().toISOString();
+    const estimatedDate = new Date(Date.now() + 4 * 86400000).toISOString().split("T")[0];
+
+    const buyerUser = userMap.get(userId || activeOriginalUserId);
+
     const newOrder: Order = {
       id: "ord_" + generateId(),
+      buyerId: userId || (activeOriginalUserId !== "user_guest" ? activeOriginalUserId : "current_user"),
+      buyerName: buyerName || (buyerUser ? buyerUser.name : "Cliente"),
+      buyerUsername: buyerUsername || (buyerUser ? buyerUser.username : undefined),
+      buyerAvatar: buyerAvatar || (buyerUser ? buyerUser.avatar : undefined),
+      buyerEmail: buyerEmail || (buyerUser ? buyerUser.email : undefined),
       items: orderItems,
       total: Math.round((total + Number.EPSILON) * 100) / 100,
-      shippingAddress: shippingAddress || "Default Delivery Address, City",
+      shippingCost: Number(shippingCost) || 0,
+      shippingAddress: shippingAddress || "Dirección de Entrega Principal",
       paymentStatus: "paid",
-      createdAt: new Date().toISOString(),
+      status: "processing",
+      trackingNumber: "",
+      carrier: assignedCarrier,
+      trackingUrl: "",
+      estimatedDelivery: estimatedDate,
+      sellerNotes: "Pedido recibido. El vendedor preparará el paquete y registrará el número de guía de paquetería.",
+      statusHistory: [
+        {
+          status: "pending",
+          label: "Pago aprobado y orden confirmada",
+          timestamp: nowIso,
+          note: "Transacción aprobada de manera segura.",
+        },
+        {
+          status: "processing",
+          label: "En preparación por el vendedor",
+          timestamp: nowIso,
+          note: assignedCarrier ? `Preparando despacho con paquetería ${assignedCarrier}.` : "El vendedor está preparando el empaque de los artículos.",
+          carrier: assignedCarrier,
+        },
+      ],
+      createdAt: nowIso,
+      updatedAt: nowIso,
     };
 
     orders.unshift(newOrder);
+
+    // Save to MongoDB if connected
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const mongoOrder = new MongoOrder(newOrder);
+        await mongoOrder.save();
+        console.log(`💾 Saved order ${newOrder.id} to MongoDB Atlas`);
+      } catch (dbErr) {
+        console.error("❌ Failed to save order to MongoDB Atlas:", dbErr);
+      }
+    }
 
     // If userId provided, clear the cart in memory and DB
     if (userId) {
@@ -2795,12 +3306,135 @@ async function startServer() {
       products: products.map((p) => ({ id: p.id, stock: p.stock }))
     });
 
+    // Broadcast new order event for real-time buyer and seller sync
+    broadcastToAll({
+      type: "order_created",
+      order: newOrder,
+    });
+
     res.json(newOrder);
   });
 
-  // Fetch orders
+  // Fetch orders with optional query parameters
   app.get("/api/orders", (req, res) => {
-    res.json(orders);
+    const { userId } = req.query;
+    if (!userId || typeof userId !== "string") {
+      res.json(orders);
+      return;
+    }
+
+    const cleanId = userId.toLowerCase();
+    const purchases = orders.filter(
+      (o) =>
+        o.buyerId === userId ||
+        (o.buyerId && o.buyerId.toLowerCase() === cleanId) ||
+        (o.buyerUsername && o.buyerUsername.toLowerCase() === cleanId) ||
+        (userId === "current_user" && (o.buyerId === activeOriginalUserId || o.buyerId === "current_user" || !o.buyerId))
+    );
+
+    const sales = orders.filter((o) =>
+      o.items.some(
+        (it) =>
+          it.sellerId === userId ||
+          (it.sellerId && it.sellerId.toLowerCase() === cleanId) ||
+          (it.sellerUsername && it.sellerUsername.toLowerCase() === cleanId) ||
+          (userId === "current_user" && (it.sellerId === activeOriginalUserId || it.sellerId === "current_user" || !it.sellerId))
+      )
+    );
+
+    res.json({ orders, purchases, sales });
+  });
+
+  // Update tracking number, carrier, and order fulfillment status (Mis Ventas / Gestión de Envíos)
+  app.post("/api/orders/:id/update-tracking", async (req, res) => {
+    const { id } = req.params;
+    const { trackingNumber, carrier, status, trackingUrl, estimatedDelivery, sellerNotes } = req.body;
+
+    const orderIndex = orders.findIndex((o) => o.id === id);
+    if (orderIndex === -1) {
+      res.status(404).json({ error: "Pedido no encontrado" });
+      return;
+    }
+
+    const currentOrder = orders[orderIndex];
+    const nowIso = new Date().toISOString();
+
+    const newStatus = status || currentOrder.status || "processing";
+    const newTracking = (trackingNumber !== undefined ? trackingNumber : currentOrder.trackingNumber || "").trim();
+    const newCarrier = (carrier !== undefined ? carrier : currentOrder.carrier || "").trim();
+    const newTrackingUrl = (trackingUrl !== undefined ? trackingUrl : currentOrder.trackingUrl || "").trim();
+    const newEstimated = (estimatedDelivery !== undefined ? estimatedDelivery : currentOrder.estimatedDelivery || "").trim();
+    const newNotes = (sellerNotes !== undefined ? sellerNotes : currentOrder.sellerNotes || "").trim();
+
+    // Determine label for history based on status
+    let historyLabel = `Actualización de estado a ${newStatus}`;
+    if (newStatus === "processing") {
+      historyLabel = "En preparación por el vendedor";
+    } else if (newStatus === "shipped") {
+      historyLabel = `Despachado y en camino (${newCarrier || "Paquetería"})`;
+    } else if (newStatus === "delivered") {
+      historyLabel = "Pedido entregado con éxito al destinatario";
+    } else if (newStatus === "cancelled") {
+      historyLabel = "Pedido cancelado";
+    }
+
+    const historyEntry = {
+      status: newStatus as any,
+      label: historyLabel,
+      timestamp: nowIso,
+      note: newNotes || (newTracking ? `Guía de rastreo: ${newTracking}` : "Actualización realizada por el vendedor"),
+      trackingNumber: newTracking,
+      carrier: newCarrier,
+    };
+
+    const updatedHistory = [...(currentOrder.statusHistory || []), historyEntry];
+
+    const updatedOrder: Order = {
+      ...currentOrder,
+      status: newStatus as any,
+      trackingNumber: newTracking,
+      carrier: newCarrier,
+      trackingUrl: newTrackingUrl,
+      estimatedDelivery: newEstimated,
+      sellerNotes: newNotes,
+      statusHistory: updatedHistory,
+      updatedAt: nowIso,
+    };
+
+    orders[orderIndex] = updatedOrder;
+
+    // Update in MongoDB Atlas
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await MongoOrder.findOneAndUpdate(
+          { id },
+          {
+            $set: {
+              status: newStatus,
+              trackingNumber: newTracking,
+              carrier: newCarrier,
+              trackingUrl: newTrackingUrl,
+              estimatedDelivery: newEstimated,
+              sellerNotes: newNotes,
+              statusHistory: updatedHistory,
+              updatedAt: nowIso,
+            },
+          },
+          { new: true, upsert: true }
+        );
+        console.log(`💾 Order ${id} tracking updated in MongoDB Atlas (Tracking: ${newTracking}, Status: ${newStatus})`);
+      } catch (dbErr) {
+        console.error("❌ Failed to update order tracking in MongoDB Atlas:", dbErr);
+      }
+    }
+
+    // Broadcast update via WebSocket to keep both buyer and seller synchronized in real time
+    broadcastToAll({
+      type: "order_updated",
+      order: updatedOrder,
+    });
+
+    res.json({ success: true, order: updatedOrder });
   });
 
   // Get historical chats with a partner

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Product, Reel, Order } from "../types";
-import { Eye, Heart, MessageCircle, BarChart3, ShoppingBag, ShieldCheck, Shield, Lock, FileText, Mail, Users, ArrowUpRight, Play, Star, Bookmark, Settings, Camera, Plus, Search, X, LogOut, BadgeCheck, UserPlus, UserCheck } from "lucide-react";
+import { Eye, Heart, MessageCircle, BarChart3, ShoppingBag, ShieldCheck, Shield, Lock, FileText, Mail, Users, ArrowUpRight, Play, Star, Bookmark, Settings, Camera, Plus, Search, X, LogOut, BadgeCheck, UserPlus, UserCheck, Package, Edit3, Trash2, Upload, Check, AlertCircle, Sparkles, DollarSign, Layers, CheckCircle2, RefreshCw, Loader2, Truck, Copy, ExternalLink, MapPin, Calendar, Clock, TrendingUp, Send, PackageCheck, PackageSearch } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import PublishView from "./PublishView";
 import LoginView from "./LoginView";
@@ -162,10 +162,53 @@ export default function ProfileView({
   const [userProducts, setUserProducts] = useState<Product[]>([]);
   const [userReels, setUserReels] = useState<Reel[]>([]);
   const [userOrders, setUserOrders] = useState<Order[]>([]);
+  const [userSales, setUserSales] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [orderFilterTab, setOrderFilterTab] = useState<"purchases" | "sales">("purchases");
+  const [orderSearchQuery, setOrderSearchQuery] = useState("");
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
+
+  // Tracking inspection modal
+  const [selectedTrackingOrder, setSelectedTrackingOrder] = useState<Order | null>(null);
+
+  // Seller editing tracking / fulfillment modal
+  const [editingTrackingOrder, setEditingTrackingOrder] = useState<Order | null>(null);
+  const [editTrackingNumber, setEditTrackingNumber] = useState("");
+  const [editCarrier, setEditCarrier] = useState("DHL Express");
+  const [editOrderStatus, setEditOrderStatus] = useState<"pending" | "processing" | "shipped" | "delivered" | "cancelled">("processing");
+  const [editEstimatedDelivery, setEditEstimatedDelivery] = useState("");
+  const [editTrackingUrl, setEditTrackingUrl] = useState("");
+  const [editSellerNotes, setEditSellerNotes] = useState("");
+  const [isUpdatingTracking, setIsUpdatingTracking] = useState(false);
+  const [trackingSuccessMessage, setTrackingSuccessMessage] = useState<string | null>(null);
+  const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
   const [savedReels, setSavedReels] = useState<Reel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeSubTab, setActiveSubTab] = useState<"publications" | "saved" | "orders" | "performance" | "edit" | "publish">("publications");
+  const [activeSubTab, setActiveSubTab] = useState<"publications" | "products" | "saved" | "orders" | "performance" | "edit" | "publish">("publications");
   const [publicTab, setPublicTab] = useState<"publications" | "products" | "policies">("publications");
+
+  // Product management states (for business owner)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [productSearchQuery, setProductSearchQuery] = useState("");
+  const [editProdForm, setEditProdForm] = useState({
+    name: "",
+    description: "",
+    price: "",
+    stock: "",
+    shippingCost: "",
+    category: "Ropa Femenina",
+    imageUrl: "",
+    images: [] as string[],
+  });
+  const [newExtraImageUrl, setNewExtraImageUrl] = useState("");
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
+  const [isUploadingProdImage, setIsUploadingProdImage] = useState(false);
+  const [productActionError, setProductActionError] = useState<string | null>(null);
+  const [productActionSuccess, setProductActionSuccess] = useState<string | null>(null);
+  const prodImageInputRef = useRef<HTMLInputElement>(null);
+  const prodExtraImageInputRef = useRef<HTMLInputElement>(null);
 
   // Profile edit states
   const [editName, setEditName] = useState(currentUser.name);
@@ -203,6 +246,8 @@ export default function ProfileView({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          userId: currentUser.originalId || currentUser.id,
+          currentUsername: currentUser.username,
           name: editName,
           username: editUsername,
           bio: editBio,
@@ -213,10 +258,13 @@ export default function ProfileView({
         }),
       });
       const data = await response.json();
-      if (data.success) {
+      if (data.success && data.user) {
         setProfileUser(data.user);
         if (onProfileUpdate) {
           onProfileUpdate(data.user);
+        }
+        if (onRefreshUsers) {
+          onRefreshUsers();
         }
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
@@ -366,6 +414,7 @@ export default function ProfileView({
         if (!data.error && data.user) {
           if (isSelf && currentUser && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest) {
             // Keep authenticated client identity fields while updating metrics and server stats
+            const resolvedPolicy = data.user.privacyPolicy !== undefined ? data.user.privacyPolicy : (currentUser.privacyPolicy || "");
             setProfileUser({
               ...currentUser,
               ...data.user,
@@ -376,13 +425,20 @@ export default function ProfileView({
               avatar: currentUser.avatar || data.user.avatar,
               coverPhoto: currentUser.coverPhoto || data.user.coverPhoto,
               isGuest: false,
+              privacyPolicy: resolvedPolicy,
             });
+            if (resolvedPolicy) {
+              setEditPrivacyPolicy(resolvedPolicy);
+            }
           } else {
             setProfileUser(data.user);
           }
           setUserProducts(deduplicateById(data.products || []));
           setUserReels(deduplicateById(data.reels || []));
-          setUserOrders(deduplicateById(data.orders || []));
+          setUserOrders(deduplicateById(data.purchases || data.orders || []));
+          if (data.sales) {
+            setUserSales(deduplicateById(data.sales || []));
+          }
           setSavedReels(deduplicateById(data.savedReels || []));
         } else if (isSelf) {
           setProfileUser(currentUser);
@@ -447,6 +503,324 @@ export default function ProfileView({
     } catch (err) {
       console.error("Error al eliminar la publicación:", err);
       alert("Error de red al intentar eliminar la publicación.");
+    }
+  };
+
+  // Open product editor modal and pre-fill form
+  const handleStartEditProduct = (prod: Product, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingProduct(prod);
+    setEditProdForm({
+      name: prod.name || "",
+      description: prod.description || "",
+      price: prod.price !== undefined ? String(prod.price) : "0",
+      stock: prod.stock !== undefined ? String(prod.stock) : "0",
+      shippingCost: prod.shippingCost !== undefined ? String(prod.shippingCost) : "0",
+      category: prod.category || "Ropa Femenina",
+      imageUrl: prod.imageUrl || "",
+      images: Array.isArray(prod.images) ? [...prod.images] : (prod.imageUrl ? [prod.imageUrl] : []),
+    });
+    setNewExtraImageUrl("");
+    setProductActionError(null);
+  };
+
+  // Upload image from file input (for main image or extra gallery images)
+  const handleUploadProdImage = async (file: File, isExtra = false) => {
+    try {
+      setIsUploadingProdImage(true);
+      setProductActionError(null);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("title", file.name);
+      formData.append("creatorId", currentUser.id);
+
+      const res = await apiFetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (data.success && data.url) {
+        if (isExtra) {
+          setEditProdForm((prev) => ({
+            ...prev,
+            images: prev.images.includes(data.url) ? prev.images : [...prev.images, data.url],
+          }));
+        } else {
+          setEditProdForm((prev) => ({ ...prev, imageUrl: data.url }));
+        }
+      } else {
+        // Fallback to FileReader base64 DataURL
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === "string") {
+            const dataUrl = reader.result as string;
+            if (isExtra) {
+              setEditProdForm((prev) => ({ ...prev, images: [...prev.images, dataUrl] }));
+            } else {
+              setEditProdForm((prev) => ({ ...prev, imageUrl: dataUrl }));
+            }
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch (err: any) {
+      console.warn("Upload to GCS failed, falling back to FileReader DataURL:", err);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === "string") {
+          const dataUrl = reader.result as string;
+          if (isExtra) {
+            setEditProdForm((prev) => ({ ...prev, images: [...prev.images, dataUrl] }));
+          } else {
+            setEditProdForm((prev) => ({ ...prev, imageUrl: dataUrl }));
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsUploadingProdImage(false);
+    }
+  };
+
+  // Save product changes to backend
+  const handleSaveProductChanges = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+
+    if (!editProdForm.name.trim()) {
+      setProductActionError("El nombre del producto es obligatorio.");
+      return;
+    }
+    const numPrice = parseFloat(editProdForm.price);
+    if (isNaN(numPrice) || numPrice < 0) {
+      setProductActionError("Por favor ingresa un precio numérico válido (mayor o igual a 0).");
+      return;
+    }
+    const numStock = parseInt(editProdForm.stock, 10);
+    if (isNaN(numStock) || numStock < 0) {
+      setProductActionError("El inventario/stock debe ser un número entero mayor o igual a 0.");
+      return;
+    }
+    if (!editProdForm.imageUrl.trim()) {
+      setProductActionError("La imagen principal del producto es obligatoria.");
+      return;
+    }
+
+    try {
+      setIsSavingProduct(true);
+      setProductActionError(null);
+
+      const payload = {
+        name: editProdForm.name.trim(),
+        description: editProdForm.description.trim(),
+        price: numPrice,
+        stock: numStock,
+        shippingCost: Math.max(0, parseFloat(editProdForm.shippingCost) || 0),
+        category: editProdForm.category.trim() || "General",
+        imageUrl: editProdForm.imageUrl.trim(),
+        images: editProdForm.images.filter((img) => img.trim().length > 0),
+      };
+
+      const res = await apiFetch(`/api/products/${editingProduct.id}/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Error al actualizar el producto");
+      }
+
+      const updated = data.product;
+      setUserProducts((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+      setProductActionSuccess(`¡Producto "${updated.name}" actualizado exitosamente!`);
+      setTimeout(() => setProductActionSuccess(null), 4000);
+      setEditingProduct(null);
+
+      if (onRefreshUsers) {
+        onRefreshUsers();
+      }
+    } catch (err: any) {
+      console.error("Error al actualizar producto:", err);
+      setProductActionError(err.message || "Error al actualizar el producto.");
+    } finally {
+      setIsSavingProduct(false);
+    }
+  };
+
+  // Confirm delete product
+  const handleConfirmDeleteProduct = async () => {
+    if (!deletingProduct) return;
+
+    try {
+      setIsDeletingProduct(true);
+      const res = await apiFetch(`/api/products/${deletingProduct.id}/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Error al eliminar el producto");
+      }
+
+      setUserProducts((prev) => prev.filter((p) => p.id !== deletingProduct.id));
+      setProductActionSuccess(`Producto "${deletingProduct.name}" eliminado correctamente.`);
+      setTimeout(() => setProductActionSuccess(null), 4000);
+      setDeletingProduct(null);
+
+      if (onRefreshUsers) {
+        onRefreshUsers();
+      }
+    } catch (err: any) {
+      console.error("Error al eliminar el producto:", err);
+      alert(err.message || "Error de red al eliminar el producto.");
+    } finally {
+      setIsDeletingProduct(false);
+    }
+  };
+
+  // Fetch fresh orders (both purchases and sales)
+  const fetchOrders = async () => {
+    try {
+      setOrdersLoading(true);
+      const res = await apiFetch(`/api/orders?userId=${encodeURIComponent(currentUser.id)}`);
+      const data = await res.json();
+      if (data && !data.error) {
+        if (data.purchases) {
+          setUserOrders(deduplicateById(data.purchases));
+        } else if (Array.isArray(data)) {
+          setUserOrders(deduplicateById(data));
+        }
+        if (data.sales) {
+          setUserSales(deduplicateById(data.sales));
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching orders:", err);
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  // Listen to WebSocket events for real-time order tracking updates
+  useEffect(() => {
+    if (!socket) return;
+    const handleWsMessage = (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "order_created" || payload.type === "order_updated") {
+          const updated: Order = payload.order;
+          if (updated) {
+            // Update in purchases
+            setUserOrders((prev) => {
+              const idx = prev.findIndex((o) => o.id === updated.id);
+              if (idx !== -1) {
+                const next = [...prev];
+                next[idx] = updated;
+                return next;
+              }
+              const isBuyer =
+                updated.buyerId === currentUser.id ||
+                updated.buyerId === "current_user" ||
+                (currentUser.originalId && updated.buyerId === currentUser.originalId) ||
+                (updated.buyerUsername && updated.buyerUsername.toLowerCase() === currentUser.username?.toLowerCase());
+              return isBuyer ? [updated, ...prev] : prev;
+            });
+
+            // Update in sales
+            setUserSales((prev) => {
+              const idx = prev.findIndex((o) => o.id === updated.id);
+              if (idx !== -1) {
+                const next = [...prev];
+                next[idx] = updated;
+                return next;
+              }
+              const isSeller = updated.items.some(
+                (it) =>
+                  it.sellerId === currentUser.id ||
+                  it.sellerId === "current_user" ||
+                  (currentUser.originalId && it.sellerId === currentUser.originalId) ||
+                  (it.sellerUsername && it.sellerUsername.toLowerCase() === currentUser.username?.toLowerCase())
+              );
+              return isSeller ? [updated, ...prev] : prev;
+            });
+
+            // Update modal if currently opened
+            setSelectedTrackingOrder((prev) => (prev && prev.id === updated.id ? updated : prev));
+          }
+        }
+      } catch (e) {}
+    };
+
+    socket.addEventListener("message", handleWsMessage);
+    return () => {
+      socket.removeEventListener("message", handleWsMessage);
+    };
+  }, [socket, currentUser.id, currentUser.originalId, currentUser.username]);
+
+  // Copy tracking number to clipboard with feedback
+  const handleCopyTrackingNumber = (trackingNum: string, orderId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!trackingNum) return;
+    navigator.clipboard.writeText(trackingNum);
+    setCopiedTrackingId(orderId);
+    setTimeout(() => setCopiedTrackingId(null), 2500);
+  };
+
+  // Open seller tracking / fulfillment editor modal
+  const openEditTrackingModal = (order: Order, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingTrackingOrder(order);
+    setEditTrackingNumber(order.trackingNumber || "");
+    setEditCarrier(order.carrier || "");
+    setEditOrderStatus((order.status as any) || "processing");
+    setEditEstimatedDelivery(order.estimatedDelivery || "");
+    setEditTrackingUrl(order.trackingUrl || "");
+    setEditSellerNotes(order.sellerNotes || "");
+    setTrackingSuccessMessage(null);
+  };
+
+  // Submit tracking update by seller
+  const handleSaveTrackingUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTrackingOrder) return;
+
+    try {
+      setIsUpdatingTracking(true);
+      const res = await apiFetch(`/api/orders/${editingTrackingOrder.id}/update-tracking`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trackingNumber: editTrackingNumber,
+          carrier: editCarrier,
+          status: editOrderStatus,
+          trackingUrl: editTrackingUrl,
+          estimatedDelivery: editEstimatedDelivery,
+          sellerNotes: editSellerNotes,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.order) {
+        const updated: Order = data.order;
+        setUserSales((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+        setUserOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+        setTrackingSuccessMessage("¡Guía de rastreo y estado actualizados exitosamente!");
+        setTimeout(() => {
+          setTrackingSuccessMessage(null);
+          setEditingTrackingOrder(null);
+        }, 1200);
+      } else {
+        alert(data.error || "No se pudo actualizar el seguimiento.");
+      }
+    } catch (err) {
+      console.error("Error saving tracking update:", err);
+      alert("Error de conexión al actualizar la guía de seguimiento.");
+    } finally {
+      setIsUpdatingTracking(false);
     }
   };
 
@@ -597,6 +971,7 @@ export default function ProfileView({
                     <button
                       type="button"
                       onClick={() => {
+                        if (isSelf) return;
                         const targetId = (profileUser.username && profileUser.username !== "invitado")
                           ? profileUser.username
                           : (profileUser.id && profileUser.id !== "current_user" ? profileUser.id : (profileUser.name || "current_user"));
@@ -607,7 +982,7 @@ export default function ProfileView({
                         isFollowingCreator
                           ? "bg-slate-200/90 hover:bg-rose-50 text-slate-700 hover:text-rose-600 border-slate-300 hover:border-rose-200"
                           : "bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-500 font-extrabold"
-                      }`}
+                      } ${isSelf ? "opacity-75 cursor-default" : ""}`}
                     >
                       {isFollowingCreator ? (
                         <>
@@ -617,7 +992,7 @@ export default function ProfileView({
                       ) : (
                         <>
                           <UserPlus className="w-3.5 h-3.5 shrink-0" />
-                          <span>Seguir</span>
+                          <span>{isSelf ? "Tu Perfil" : "Seguir"}</span>
                         </>
                       )}
                     </button>
@@ -660,6 +1035,27 @@ export default function ProfileView({
             </button>
 
             <button
+              onClick={() => setActiveSubTab("products")}
+              className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
+                activeSubTab === "products"
+                  ? "text-amber-500 font-bold scale-105"
+                  : "text-slate-400 hover:text-slate-600"
+              }`}
+              title={`Mis Productos Publicados (${userProducts.length})`}
+              id="profile-subtab-products"
+            >
+              <div className="relative flex items-center justify-center">
+                <Package className="w-4.5 h-4.5 stroke-[2]" />
+              </div>
+              {activeSubTab === "products" && (
+                <motion.div
+                  layoutId="activeSubTabIndicator"
+                  className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full"
+                />
+              )}
+            </button>
+
+            <button
               onClick={() => setActiveSubTab("saved")}
               className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
                 activeSubTab === "saved"
@@ -679,16 +1075,26 @@ export default function ProfileView({
             </button>
 
             <button
-              onClick={() => setActiveSubTab("orders")}
+              onClick={() => {
+                setActiveSubTab("orders");
+                fetchOrders();
+              }}
               className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
                 activeSubTab === "orders"
                   ? "text-amber-500 font-bold scale-105"
                   : "text-slate-400 hover:text-slate-600"
               }`}
-              title="Historial de Compras"
+              title="Historial de Compras y Ventas"
               id="profile-subtab-orders"
             >
-              <ShoppingBag className="w-4.5 h-4.5 stroke-[2]" />
+              <div className="relative flex items-center justify-center">
+                <ShoppingBag className="w-4.5 h-4.5 stroke-[2]" />
+                {(userOrders.length > 0 || userSales.length > 0) && (
+                  <span className="absolute -top-1.5 -right-2 bg-amber-500 text-slate-950 text-[8px] font-black px-1 rounded-full min-w-3 h-3 flex items-center justify-center border border-white leading-none shadow-xs">
+                    {userOrders.length + userSales.length}
+                  </span>
+                )}
+              </div>
               {activeSubTab === "orders" && (
                 <motion.div
                   layoutId="activeSubTabIndicator"
@@ -879,6 +1285,246 @@ export default function ProfileView({
                   </motion.div>
                 )}
 
+                {activeSubTab === "products" && (
+                  <motion.div
+                    key="admin-products"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.15 }}
+                    className="space-y-4"
+                    id="admin-products-management-panel"
+                  >
+                    {/* Header & Quick Actions Bar */}
+                    <div className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-100 p-3.5 rounded-2xl">
+                      <div className="flex items-center space-x-2">
+                        <Package className="w-5 h-5 text-amber-500" />
+                        <span className="bg-amber-100 text-amber-800 text-xs font-black px-2.5 py-1 rounded-full border border-amber-200">
+                          {userProducts.length} {userProducts.length === 1 ? "producto" : "productos"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => setActiveSubTab("publish")}
+                          className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs flex items-center space-x-1.5 transition-all shadow-xs shrink-0 cursor-pointer"
+                          id="btn-add-new-product"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Publicar Producto</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Notice / Feedback Banner */}
+                    {productActionSuccess && (
+                      <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold px-4 py-3 rounded-xl flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>{productActionSuccess}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setProductActionSuccess(null)}
+                          className="text-emerald-700 hover:text-emerald-900 p-1 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Search & Filter Bar if there are products */}
+                    {userProducts.length > 0 && (
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={productSearchQuery}
+                          onChange={(e) => setProductSearchQuery(e.target.value)}
+                          placeholder="Buscar producto por nombre, categoría o descripción..."
+                          className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none transition-all font-medium text-slate-800"
+                        />
+                        {productSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setProductSearchQuery("")}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Product List / Empty States */}
+                    {userProducts.length === 0 ? (
+                      <div className="text-center py-12 px-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-amber-100">
+                          <Package className="w-7 h-7 text-amber-500" />
+                        </div>
+                        <h4 className="font-display font-extrabold text-sm text-slate-800">
+                          No tienes productos publicados todavía
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                          Agrega artículos a tu catálogo para que tus clientes puedan descubrirlos, comprarlos y agregarlos al carrito.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setActiveSubTab("publish")}
+                          className="mt-4 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs inline-flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Publicar mi primer producto</span>
+                        </button>
+                      </div>
+                    ) : (() => {
+                      const filtered = userProducts.filter((p) => {
+                        if (!productSearchQuery.trim()) return true;
+                        const q = productSearchQuery.toLowerCase();
+                        return (
+                          p.name?.toLowerCase().includes(q) ||
+                          p.category?.toLowerCase().includes(q) ||
+                          p.description?.toLowerCase().includes(q)
+                        );
+                      });
+
+                      if (filtered.length === 0) {
+                        return (
+                          <div className="text-center py-10 bg-slate-50 rounded-xl border border-slate-200">
+                            <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                            <p className="text-xs font-semibold text-slate-600">
+                              No se encontraron productos que coincidan con "{productSearchQuery}"
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setProductSearchQuery("")}
+                              className="mt-2 text-xs font-bold text-amber-600 hover:text-amber-700 underline cursor-pointer"
+                            >
+                              Limpiar búsqueda
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5" id="business-products-list">
+                          {filtered.map((prod) => {
+                            const isOutOfStock = prod.stock !== undefined && prod.stock <= 0;
+                            return (
+                              <div
+                                key={prod.id}
+                                id={`product-manage-card-${prod.id}`}
+                                className="bg-white border border-slate-200/90 rounded-2xl p-3.5 flex flex-col justify-between hover:border-amber-400/80 hover:shadow-sm transition-all group relative"
+                              >
+                                <div>
+                                  {/* Top Row: Image & Primary Info */}
+                                  <div className="flex space-x-3">
+                                    <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden bg-slate-100 shrink-0 border border-slate-100">
+                                      <img
+                                        src={prod.imageUrl || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&q=80"}
+                                        alt={prod.name}
+                                        referrerPolicy="no-referrer"
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                      />
+                                      {prod.images && prod.images.length > 1 && (
+                                        <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-xs flex items-center space-x-0.5">
+                                          <Layers className="w-2.5 h-2.5" />
+                                          <span>{prod.images.length}</span>
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="flex-1 min-w-0 flex flex-col justify-between">
+                                      <div>
+                                        <div className="flex items-start justify-between gap-1">
+                                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 truncate block">
+                                            {prod.category || "General"}
+                                          </span>
+                                          {isOutOfStock ? (
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-600 border border-rose-200 shrink-0">
+                                              Agotado
+                                            </span>
+                                          ) : (
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                              Stock: {prod.stock ?? 1}
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <h4 className="font-extrabold text-xs text-slate-900 line-clamp-1 mt-0.5" title={prod.name}>
+                                          {prod.name}
+                                        </h4>
+
+                                        <div className="flex items-baseline space-x-2 mt-1">
+                                          <span className="font-display font-black text-sm sm:text-base text-amber-600">
+                                            ${Number(prod.price || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                          </span>
+                                          {prod.shippingCost !== undefined && (
+                                            <span className="text-[10px] text-slate-500 font-medium">
+                                              {prod.shippingCost === 0 ? "Envío gratis" : `Envío: $${prod.shippingCost}`}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {prod.description && (
+                                        <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-relaxed">
+                                          {prod.description}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Action Buttons Footer */}
+                                <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => onSelectProduct(prod)}
+                                    className="text-[11px] font-bold text-slate-500 hover:text-slate-800 flex items-center space-x-1 transition-colors cursor-pointer py-1"
+                                    title="Ver vista pública del producto"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>Ver en tienda</span>
+                                  </button>
+
+                                  <div className="flex items-center space-x-2">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleStartEditProduct(prod, e)}
+                                      className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer shadow-2xs"
+                                      title="Editar detalles del producto"
+                                      id={`btn-edit-product-${prod.id}`}
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                                      <span>Editar</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeletingProduct(prod);
+                                      }}
+                                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer shadow-2xs"
+                                      title="Eliminar este producto"
+                                      id={`btn-delete-product-${prod.id}`}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                      <span>Eliminar</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </motion.div>
+                )}
+
                 {activeSubTab === "publish" && (
                   <motion.div
                     key="admin-publish"
@@ -982,53 +1628,534 @@ export default function ProfileView({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.15 }}
+                    className="space-y-4"
                   >
-                    <h3 className="font-display font-extrabold text-sm text-slate-900 mb-4 flex items-center space-x-2">
-                      <ShoppingBag className="w-4 h-4 text-amber-500" />
-                      <span>Historial de Mis Compras Recientes</span>
-                    </h3>
+                    {/* Header & Refresh */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
+                      <div>
+                        <h3 className="font-display font-extrabold text-base text-slate-900 flex items-center space-x-2">
+                          <ShoppingBag className="w-5 h-5 text-amber-500" />
+                          <span>Historial de Compras & Gestión de Ventas</span>
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Rastrea los envíos de tus compras en tiempo real y gestiona las guías y despachos de tus ventas.
+                        </p>
+                      </div>
 
-                    <div className="space-y-3">
-                      {userOrders.length === 0 ? (
-                        <div className="border border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center text-center text-slate-400">
-                          <ShoppingBag className="w-10 h-10 stroke-1 text-slate-300 mb-2" />
-                          <p className="text-xs font-semibold text-slate-500">No hay transacciones registradas</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">Tus pedidos de e-commerce se mostrarán aquí en tiempo real.</p>
-                        </div>
-                      ) : (
-                        userOrders.map((order, index) => (
-                          <div
-                            key={`${order.id}-${index}`}
-                            className="border border-slate-150 rounded-xl p-4 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                            id={`order-item-${order.id}`}
+                      <div className="flex items-center space-x-2 shrink-0">
+                        <button
+                          onClick={fetchOrders}
+                          disabled={ordersLoading}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-60"
+                          title="Actualizar pedidos"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${ordersLoading ? "animate-spin text-amber-500" : ""}`} />
+                          <span>Actualizar</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Sub-tabs: Mis Compras vs Mis Ventas */}
+                    <div className="flex items-center space-x-2 bg-slate-100/90 p-1 rounded-xl">
+                      <button
+                        onClick={() => setOrderFilterTab("purchases")}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
+                          orderFilterTab === "purchases"
+                            ? "bg-white text-slate-900 shadow-xs scale-[1.01]"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                        id="tab-btn-mis-compras"
+                      >
+                        <ShoppingBag className="w-4 h-4 text-amber-500" />
+                        <span>Mis Compras</span>
+                        <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+                          {userOrders.length}
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={() => setOrderFilterTab("sales")}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
+                          orderFilterTab === "sales"
+                            ? "bg-white text-slate-900 shadow-xs scale-[1.01]"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                        id="tab-btn-mis-ventas"
+                      >
+                        <Truck className="w-4 h-4 text-emerald-600" />
+                        <span>Ventas</span>
+                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+                          {userSales.length}
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Search and Status Filters */}
+                    <div className="flex flex-col sm:flex-row items-center gap-2">
+                      <div className="relative flex-1 w-full">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={orderSearchQuery}
+                          onChange={(e) => setOrderSearchQuery(e.target.value)}
+                          placeholder={
+                            orderFilterTab === "purchases"
+                              ? "Buscar por referencia, producto, vendedor o guía de rastreo..."
+                              : "Buscar por ref, producto vendido, cliente o guía..."
+                          }
+                          className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 focus:bg-white transition-all text-slate-800 placeholder-slate-400"
+                        />
+                        {orderSearchQuery && (
+                          <button
+                            onClick={() => setOrderSearchQuery("")}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
                           >
-                            <div className="space-y-1">
-                              <div className="flex items-center space-x-2">
-                                <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center space-x-0.5">
-                                  <ShieldCheck className="w-3 h-3" /> <span>Transacción Aprobada</span>
-                                </span>
-                                <span className="text-[10px] text-slate-400 font-mono font-bold">Ref: {order.id}</span>
-                              </div>
-                              
-                              {/* Order items list summary */}
-                              <div className="text-xs font-semibold text-slate-800 pt-1">
-                                {order.items.map((it) => `${it.name} (x${it.quantity})`).join(", ")}
-                              </div>
-                              
-                              <div className="text-[10px] text-slate-500 flex items-center space-x-1.5">
-                                <span>Entregar en: {order.shippingAddress}</span>
-                                <span>•</span>
-                                <span className="font-mono">{new Date(order.createdAt).toLocaleDateString()}</span>
-                              </div>
-                            </div>
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
 
-                            <div className="text-right sm:border-l sm:border-slate-200/80 sm:pl-6 shrink-0 flex sm:flex-col justify-between items-center sm:items-end">
-                              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Total Cargado</span>
-                              <span className="text-base font-extrabold font-mono text-slate-900 mt-0.5">${order.total.toFixed(2)}</span>
+                      <select
+                        value={orderStatusFilter}
+                        onChange={(e) => setOrderStatusFilter(e.target.value)}
+                        className="w-full sm:w-auto px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:outline-none focus:border-amber-500 cursor-pointer"
+                      >
+                        <option value="all">Todos los estados</option>
+                        <option value="processing">🟡 En preparación</option>
+                        <option value="shipped">🚚 En camino / Despachado</option>
+                        <option value="delivered">🟢 Entregado</option>
+                        <option value="cancelled">🔴 Cancelado</option>
+                      </select>
+                    </div>
+
+                    {/* Quick Stats Summary Banner */}
+                    {orderFilterTab === "purchases" ? (
+                      <div className="grid grid-cols-3 gap-2 p-3 bg-amber-50/60 border border-amber-200/60 rounded-xl">
+                        <div className="text-center">
+                          <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700">Total Compras</p>
+                          <p className="text-sm font-black text-slate-900 mt-0.5 font-mono">{userOrders.length}</p>
+                        </div>
+                        <div className="text-center border-x border-amber-200/60">
+                          <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700">En Tránsito</p>
+                          <p className="text-sm font-black text-amber-600 mt-0.5 font-mono">
+                            {userOrders.filter((o) => o.status === "shipped" || o.status === "processing").length}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700">Total Invertido</p>
+                          <p className="text-sm font-black text-slate-900 mt-0.5 font-mono">
+                            ${userOrders.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2 p-3 bg-emerald-50/60 border border-emerald-200/60 rounded-xl">
+                        <div className="text-center">
+                          <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-800">Total Ventas</p>
+                          <p className="text-sm font-black text-slate-900 mt-0.5 font-mono">{userSales.length}</p>
+                        </div>
+                        <div className="text-center border-x border-emerald-200/60">
+                          <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-800">Por Despachar</p>
+                          <p className="text-sm font-black text-amber-600 mt-0.5 font-mono">
+                            {userSales.filter((o) => o.status === "processing" || !o.trackingNumber).length}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-800">Ingresos Totales</p>
+                          <p className="text-sm font-black text-emerald-700 mt-0.5 font-mono">
+                            ${userSales.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Orders List */}
+                    <div className="space-y-4">
+                      {(() => {
+                        const targetList = orderFilterTab === "purchases" ? userOrders : userSales;
+                        const filtered = targetList.filter((order) => {
+                          // Filter by status
+                          if (orderStatusFilter !== "all" && order.status !== orderStatusFilter) {
+                            return false;
+                          }
+                          // Filter by query
+                          if (!orderSearchQuery.trim()) return true;
+                          const q = orderSearchQuery.toLowerCase();
+                          const matchesId = order.id?.toLowerCase().includes(q);
+                          const matchesTracking = order.trackingNumber?.toLowerCase().includes(q);
+                          const matchesCarrier = order.carrier?.toLowerCase().includes(q);
+                          const matchesAddress = order.shippingAddress?.toLowerCase().includes(q);
+                          const matchesBuyer =
+                            order.buyerName?.toLowerCase().includes(q) ||
+                            order.buyerUsername?.toLowerCase().includes(q);
+                          const matchesItem = order.items?.some((it) =>
+                            it.name?.toLowerCase().includes(q) ||
+                            it.sellerName?.toLowerCase().includes(q)
+                          );
+                          return matchesId || matchesTracking || matchesCarrier || matchesAddress || matchesBuyer || matchesItem;
+                        });
+
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="border border-dashed border-slate-200 rounded-2xl p-10 flex flex-col items-center justify-center text-center text-slate-400 bg-slate-50/40">
+                              {orderFilterTab === "purchases" ? (
+                                <ShoppingBag className="w-12 h-12 stroke-1 text-slate-300 mb-2" />
+                              ) : (
+                                <Truck className="w-12 h-12 stroke-1 text-slate-300 mb-2" />
+                              )}
+                              <p className="text-sm font-extrabold text-slate-700">
+                                {orderFilterTab === "purchases"
+                                  ? "No se encontraron compras registradas"
+                                  : "No se encontraron ventas registradas"}
+                              </p>
+                              <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                                {orderSearchQuery || orderStatusFilter !== "all"
+                                  ? "Intenta modificar el término de búsqueda o quitar los filtros de estado."
+                                  : orderFilterTab === "purchases"
+                                  ? "Cuando compres productos en la plataforma, aparecerán aquí con su código de guía y rastreo en vivo."
+                                  : "Cuando otros usuarios compren productos de tu negocio, aquí podrás gestionar sus envíos y asignar guías de seguimiento."}
+                              </p>
+                              {(orderSearchQuery || orderStatusFilter !== "all") && (
+                                <button
+                                  onClick={() => {
+                                    setOrderSearchQuery("");
+                                    setOrderStatusFilter("all");
+                                  }}
+                                  className="mt-3 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                                >
+                                  Limpiar filtros
+                                </button>
+                              )}
                             </div>
-                          </div>
-                        ))
-                      )}
+                          );
+                        }
+
+                        return filtered.map((order, index) => {
+                          const isShipped = order.status === "shipped";
+                          const isDelivered = order.status === "delivered";
+                          const isProcessing = order.status === "processing" || !order.status;
+                          const isCancelled = order.status === "cancelled";
+
+                          const stepProgress = isDelivered ? 4 : isShipped ? 3 : isProcessing ? 2 : 1;
+
+                          return (
+                            <div
+                              key={`${order.id}-${index}`}
+                              className="border border-slate-200 rounded-2xl p-4 sm:p-5 bg-white shadow-xs transition-all hover:border-slate-300 flex flex-col space-y-4"
+                              id={`order-card-${order.id}`}
+                            >
+                              {/* Order Card Top: Reference, Date, Status Badge */}
+                              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-xs font-black font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">
+                                    Ref: {order.id}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400 font-medium flex items-center space-x-1">
+                                    <Clock className="w-3 h-3" />
+                                    <span>{new Date(order.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center space-x-1.5">
+                                  {isDelivered && (
+                                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-1 rounded-full flex items-center space-x-1">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      <span>Entregado</span>
+                                    </span>
+                                  )}
+                                  {isShipped && (
+                                    <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2.5 py-1 rounded-full flex items-center space-x-1">
+                                      <Truck className="w-3 h-3 text-blue-600 animate-pulse" />
+                                      <span>En Camino / Despachado</span>
+                                    </span>
+                                  )}
+                                  {isProcessing && (
+                                    <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-1 rounded-full flex items-center space-x-1">
+                                      <Package className="w-3 h-3 text-amber-600" />
+                                      <span>En Preparación</span>
+                                    </span>
+                                  )}
+                                  {isCancelled && (
+                                    <span className="bg-rose-100 text-rose-800 text-[10px] font-black px-2.5 py-1 rounded-full flex items-center space-x-1">
+                                      <AlertCircle className="w-3 h-3 text-rose-600" />
+                                      <span>Cancelado</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Buyer metadata (If on Sales tab) */}
+                              {orderFilterTab === "sales" && (
+                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                                  <div className="flex items-center space-x-3">
+                                    <img
+                                      src={
+                                        order.buyerAvatar ||
+                                        "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=400&q=80"
+                                      }
+                                      alt={order.buyerName || "Comprador"}
+                                      className="w-9 h-9 rounded-full object-cover border border-slate-200"
+                                    />
+                                    <div>
+                                      <p className="font-extrabold text-slate-900">
+                                        Cliente: {order.buyerName || "Cliente"}
+                                      </p>
+                                      <p className="text-[11px] text-slate-500">
+                                        {order.buyerUsername ? `@${order.buyerUsername}` : order.buyerEmail || "Cliente registrado"}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center space-x-2 text-slate-600 text-[11px]">
+                                    <MapPin className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <span className="font-medium line-clamp-1">{order.shippingAddress}</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Tracking Progress Stepper (4 Steps) */}
+                              {!isCancelled && (
+                                <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-150">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 flex items-center space-x-1">
+                                      <Truck className="w-3 h-3 text-amber-500" />
+                                      <span>Progreso del Envío</span>
+                                    </span>
+                                    {order.estimatedDelivery && (
+                                      <span className="text-[11px] font-bold text-slate-600 flex items-center space-x-1">
+                                        <Calendar className="w-3 h-3 text-amber-500" />
+                                        <span>Entrega estimada: {order.estimatedDelivery}</span>
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="relative flex items-center justify-between mt-3 mb-2 px-3">
+                                    {/* Background Connecting Line */}
+                                    <div className="absolute left-6 right-6 top-1/2 -translate-y-1/2 h-1 bg-slate-200 z-0" />
+                                    {/* Active Progress Line */}
+                                    <div
+                                      className="absolute left-6 top-1/2 -translate-y-1/2 h-1 bg-amber-500 transition-all duration-500 z-0"
+                                      style={{
+                                        width:
+                                          stepProgress === 1
+                                            ? "0%"
+                                            : stepProgress === 2
+                                            ? "33%"
+                                            : stepProgress === 3
+                                            ? "66%"
+                                            : "100%",
+                                      }}
+                                    />
+
+                                    {/* Step 1: Pago Aprobado */}
+                                    <div className="relative z-10 flex flex-col items-center">
+                                      <div
+                                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                          stepProgress >= 1
+                                            ? "bg-amber-500 text-slate-950 ring-4 ring-amber-100"
+                                            : "bg-slate-200 text-slate-500"
+                                        }`}
+                                      >
+                                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                      </div>
+                                      <span className="text-[9px] font-bold text-slate-600 mt-1">Confirmado</span>
+                                    </div>
+
+                                    {/* Step 2: En Preparación */}
+                                    <div className="relative z-10 flex flex-col items-center">
+                                      <div
+                                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                          stepProgress >= 2
+                                            ? "bg-amber-500 text-slate-950 ring-4 ring-amber-100"
+                                            : "bg-slate-200 text-slate-500"
+                                        }`}
+                                      >
+                                        {stepProgress > 2 ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : "2"}
+                                      </div>
+                                      <span className="text-[9px] font-bold text-slate-600 mt-1">Preparando</span>
+                                    </div>
+
+                                    {/* Step 3: En Camino */}
+                                    <div className="relative z-10 flex flex-col items-center">
+                                      <div
+                                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                          stepProgress >= 3
+                                            ? "bg-amber-500 text-slate-950 ring-4 ring-amber-100"
+                                            : "bg-slate-200 text-slate-500"
+                                        }`}
+                                      >
+                                        {stepProgress > 3 ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : "3"}
+                                      </div>
+                                      <span className="text-[9px] font-bold text-slate-600 mt-1">En Camino</span>
+                                    </div>
+
+                                    {/* Step 4: Entregado */}
+                                    <div className="relative z-10 flex flex-col items-center">
+                                      <div
+                                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                          stepProgress === 4
+                                            ? "bg-emerald-500 text-white ring-4 ring-emerald-100"
+                                            : "bg-slate-200 text-slate-500"
+                                        }`}
+                                      >
+                                        {stepProgress === 4 ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : "4"}
+                                      </div>
+                                      <span className="text-[9px] font-bold text-slate-600 mt-1">Entregado</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Prominent Tracking Information Banner */}
+                              <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-50/70 via-slate-50 to-amber-50/40 border border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="space-y-1">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-md flex items-center space-x-1">
+                                      <Truck className="w-3 h-3" />
+                                      <span>{order.carrier || "Paquetería Express"}</span>
+                                    </span>
+                                    <span className="text-[11px] font-extrabold text-slate-700">
+                                      Guía de Seguimiento:
+                                    </span>
+                                  </div>
+
+                                  {order.trackingNumber ? (
+                                    <div className="flex items-center space-x-2 pt-0.5">
+                                      <span className="font-mono font-black text-sm text-slate-900 tracking-wide bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                        {order.trackingNumber}
+                                      </span>
+                                      <button
+                                        onClick={(e) => handleCopyTrackingNumber(order.trackingNumber!, order.id, e)}
+                                        className="p-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 hover:text-slate-900 transition-colors cursor-pointer text-xs flex items-center space-x-1"
+                                        title="Copiar número de guía"
+                                      >
+                                        {copiedTrackingId === order.id ? (
+                                          <>
+                                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                            <span className="text-[10px] font-black text-emerald-700">¡Copiado!</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Copy className="w-3.5 h-3.5" />
+                                            <span className="text-[10px] font-bold">Copiar</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-amber-700 font-semibold pt-0.5">
+                                      ⚠️ Pendiente de generar número de guía por el vendedor.
+                                    </p>
+                                  )}
+
+                                  {order.sellerNotes && (
+                                    <p className="text-[11px] text-slate-500 italic pt-0.5">
+                                      Nota: "{order.sellerNotes}"
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-wrap sm:flex-col items-stretch sm:items-end gap-2 shrink-0">
+                                  <button
+                                    onClick={() => setSelectedTrackingOrder(order)}
+                                    className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold rounded-xl transition-all shadow-xs flex items-center justify-center space-x-1.5 cursor-pointer"
+                                  >
+                                    <PackageSearch className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>Ver Rastreo en Vivo</span>
+                                  </button>
+
+                                  {orderFilterTab === "sales" && (
+                                    <button
+                                      onClick={(e) => openEditTrackingModal(order, e)}
+                                      className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl transition-all shadow-xs flex items-center justify-center space-x-1.5 cursor-pointer"
+                                      id={`btn-manage-tracking-${order.id}`}
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                      <span>Gestionar Guía & Envío</span>
+                                    </button>
+                                  )}
+
+                                  {order.trackingUrl && (
+                                    <a
+                                      href={order.trackingUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-bold rounded-xl border border-slate-200 transition-colors flex items-center justify-center space-x-1"
+                                    >
+                                      <span>Web del transportista</span>
+                                      <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Items Purchased/Sold Details */}
+                              <div className="space-y-2 pt-1">
+                                <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400">
+                                  Artículos en este pedido ({order.items.length})
+                                </span>
+                                <div className="divide-y divide-slate-100">
+                                  {order.items.map((item, itIdx) => (
+                                    <div key={itIdx} className="py-2 flex items-center justify-between gap-3">
+                                      <div className="flex items-center space-x-3 min-w-0">
+                                        <img
+                                          src={item.imageUrl || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"}
+                                          alt={item.name}
+                                          className="w-10 h-10 rounded-lg object-cover bg-slate-100 border border-slate-200 shrink-0"
+                                        />
+                                        <div className="min-w-0">
+                                          <p className="text-xs font-bold text-slate-800 truncate">{item.name}</p>
+                                          <p className="text-[10px] text-slate-500">
+                                            {item.sellerName && (
+                                              <span>Vendedor: {item.sellerName} • </span>
+                                            )}
+                                            <span className="font-mono">Cantidad: {item.quantity}</span>
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      <div className="text-right shrink-0">
+                                        <p className="text-xs font-extrabold font-mono text-slate-900">
+                                          ${(item.price * item.quantity).toFixed(2)}
+                                        </p>
+                                        {item.quantity > 1 && (
+                                          <p className="text-[10px] text-slate-400 font-mono">
+                                            ${item.price.toFixed(2)} c/u
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Footer: Address and Total Summary */}
+                              <div className="pt-3 border-t border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                <div className="flex items-center space-x-1.5 text-slate-500 text-[11px]">
+                                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                  <span className="truncate">Dirección: {order.shippingAddress}</span>
+                                </div>
+
+                                <div className="flex items-center justify-between sm:justify-end space-x-4">
+                                  {order.shippingCost !== undefined && order.shippingCost > 0 && (
+                                    <span className="text-[11px] text-slate-500">
+                                      Envío: <span className="font-mono font-bold">${order.shippingCost.toFixed(2)}</span>
+                                    </span>
+                                  )}
+                                  <div className="text-right">
+                                    <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mr-1.5">
+                                      {orderFilterTab === "purchases" ? "Total Pagado:" : "Ingreso Venta:"}
+                                    </span>
+                                    <span className="text-sm font-black font-mono text-slate-900">
+                                      ${order.total.toFixed(2)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </motion.div>
                 )}
@@ -1825,25 +2952,40 @@ export default function ProfileView({
                         <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">Términos y Políticas del Vendedor</h4>
                       </div>
 
-                      {profileUser.privacyPolicy && profileUser.privacyPolicy.trim() ? (
-                        <div className="text-xs text-slate-700 font-medium leading-relaxed whitespace-pre-line space-y-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100">
-                          {profileUser.privacyPolicy}
-                        </div>
-                      ) : (
-                        <div className="space-y-3 py-2">
-                          <div className="p-3.5 bg-amber-50/70 border border-amber-200/60 rounded-xl text-amber-900 text-xs leading-relaxed font-medium">
-                            <p className="font-bold mb-1">Garantías estándar de la plataforma:</p>
-                            <ul className="list-disc list-inside space-y-1 text-[11px] text-amber-800">
-                              <li>Todas tus transacciones cuentan con protección al comprador.</li>
-                              <li>Puedes comunicarte directamente con el vendedor a través del chat oficial.</li>
-                              <li>Tus datos personales y dirección solo son usados para la logística del despacho.</li>
-                            </ul>
+                      {(() => {
+                        const matchedUser = users?.find(
+                          (u) =>
+                            u.id === profileUser.id ||
+                            (profileUser.username && u.username?.toLowerCase() === profileUser.username.toLowerCase()) ||
+                            (profileUser.originalId && u.originalId === profileUser.originalId) ||
+                            (profileUser.name && u.name?.toLowerCase() === profileUser.name.toLowerCase())
+                        );
+                        const effectivePolicy =
+                          (profileUser.privacyPolicy && profileUser.privacyPolicy.trim()) ||
+                          (matchedUser?.privacyPolicy && matchedUser.privacyPolicy.trim()) ||
+                          (isSelf && editPrivacyPolicy && editPrivacyPolicy.trim()) ||
+                          "";
+
+                        return effectivePolicy ? (
+                          <div className="text-xs text-slate-700 font-medium leading-relaxed whitespace-pre-line space-y-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100">
+                            {effectivePolicy}
                           </div>
-                          <p className="text-[11px] text-slate-400 italic text-center">
-                            (El vendedor aún no ha configurado términos adicionales personalizados)
-                          </p>
-                        </div>
-                      )}
+                        ) : (
+                          <div className="space-y-3 py-2">
+                            <div className="p-3.5 bg-amber-50/70 border border-amber-200/60 rounded-xl text-amber-900 text-xs leading-relaxed font-medium">
+                              <p className="font-bold mb-1">Garantías estándar de la plataforma:</p>
+                              <ul className="list-disc list-inside space-y-1 text-[11px] text-amber-800">
+                                <li>Todas tus transacciones cuentan con protección al comprador.</li>
+                                <li>Puedes comunicarte directamente con el vendedor a través del chat oficial.</li>
+                                <li>Tus datos personales y dirección solo son usados para la logística del despacho.</li>
+                              </ul>
+                            </div>
+                            <p className="text-[11px] text-slate-400 italic text-center">
+                              (El vendedor aún no ha configurado términos adicionales personalizados)
+                            </p>
+                          </div>
+                        );
+                      })()}
 
                       {/* Contact Action */}
                       <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
@@ -1865,7 +3007,964 @@ export default function ProfileView({
         </AnimatePresence>
       </div>
 
+      {/* Hidden File Inputs for Product Images */}
+      <input
+        type="file"
+        ref={prodImageInputRef}
+        accept="image/png,image/jpeg,image/jpg,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            handleUploadProdImage(file, false);
+          }
+          e.target.value = "";
+        }}
+      />
+      <input
+        type="file"
+        ref={prodExtraImageInputRef}
+        accept="image/png,image/jpeg,image/jpg,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            handleUploadProdImage(file, true);
+          }
+          e.target.value = "";
+        }}
+      />
 
+      {/* Edit Product Modal */}
+      <AnimatePresence>
+        {editingProduct && (
+          <div
+            className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+            id="modal-edit-product-backdrop"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white rounded-2xl sm:rounded-3xl max-w-xl w-full p-5 sm:p-7 shadow-2xl border border-slate-100 max-h-[92vh] overflow-y-auto my-auto flex flex-col justify-between"
+              id="modal-edit-product-content"
+            >
+              <div>
+                {/* Header */}
+                <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-5">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-600">
+                      <Edit3 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-display font-extrabold text-base text-slate-900 leading-tight">
+                        Editar Producto
+                      </h3>
+                      <p className="text-[11px] text-slate-400 font-medium">
+                        Modifica precio, fotos, inventario, descripción y detalles
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isSavingProduct) {
+                        setEditingProduct(null);
+                      }
+                    }}
+                    className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Error Banner */}
+                {productActionError && (
+                  <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                    <span>{productActionError}</span>
+                  </div>
+                )}
+
+                {/* Form Fields */}
+                <form onSubmit={handleSaveProductChanges} id="form-edit-product" className="space-y-4">
+                  {/* Name Input */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Nombre del Producto *
+                    </label>
+                    <input
+                      type="text"
+                      value={editProdForm.name}
+                      onChange={(e) => setEditProdForm({ ...editProdForm, name: e.target.value })}
+                      placeholder="Ej: Zapatillas Urbanas Pro Max"
+                      className="w-full text-xs font-semibold px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-800"
+                      required
+                    />
+                  </div>
+
+                  {/* Two Columns: Price & Stock */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Precio ($ USD) *
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={editProdForm.price}
+                          onChange={(e) => setEditProdForm({ ...editProdForm, price: e.target.value })}
+                          placeholder="0.00"
+                          className="w-full text-xs font-bold pl-7 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-800 font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Stock / Inventario *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={editProdForm.stock}
+                        onChange={(e) => setEditProdForm({ ...editProdForm, stock: e.target.value })}
+                        placeholder="10"
+                        className="w-full text-xs font-bold px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-800 font-mono"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Two Columns: Shipping & Category */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Costo de Envío ($)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={editProdForm.shippingCost}
+                          onChange={(e) => setEditProdForm({ ...editProdForm, shippingCost: e.target.value })}
+                          placeholder="0.00 (Gratis)"
+                          className="w-full text-xs font-semibold pl-7 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-800 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Categoría
+                      </label>
+                      <select
+                        value={editProdForm.category}
+                        onChange={(e) => setEditProdForm({ ...editProdForm, category: e.target.value })}
+                        className="w-full text-xs font-semibold px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-800"
+                      >
+                        <option value="Ropa Femenina">Ropa Femenina</option>
+                        <option value="Ropa Masculina">Ropa Masculina</option>
+                        <option value="Calzado">Calzado</option>
+                        <option value="Tecnología & Celulares">Tecnología & Celulares</option>
+                        <option value="Belleza & Cuidado Personal">Belleza & Cuidado Personal</option>
+                        <option value="Joyería & Relojes">Joyería & Relojes</option>
+                        <option value="Hogar & Decoración">Hogar & Decoración</option>
+                        <option value="Deportes & Fitness">Deportes & Fitness</option>
+                        <option value="Juguetes & Bebés">Juguetes & Bebés</option>
+                        <option value="General">General / Otros</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Main Product Image */}
+                  <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                        Foto Principal del Producto *
+                      </label>
+                      <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/50">
+                        Portada
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-3.5">
+                      <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-white border border-slate-200 shrink-0">
+                        {editProdForm.imageUrl ? (
+                          <img
+                            src={editProdForm.imageUrl}
+                            alt="Preview"
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-slate-300">
+                            <Package className="w-8 h-8" />
+                          </div>
+                        )}
+                        {isUploadingProdImage && (
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                            <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <button
+                          type="button"
+                          disabled={isUploadingProdImage}
+                          onClick={() => prodImageInputRef.current?.click()}
+                          className="w-full px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-amber-500" />
+                          <span>{isUploadingProdImage ? "Subiendo foto..." : "Subir desde tu dispositivo"}</span>
+                        </button>
+
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={editProdForm.imageUrl}
+                            onChange={(e) => setEditProdForm({ ...editProdForm, imageUrl: e.target.value })}
+                            placeholder="O pega una URL de imagen (https://...)"
+                            className="w-full text-[11px] font-medium px-3 py-1.5 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-500 focus:border-amber-500 outline-none text-slate-700"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Additional Gallery Images */}
+                  <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                        Galería de Fotos Adicionales ({editProdForm.images.length})
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => prodExtraImageInputRef.current?.click()}
+                        className="text-[10px] font-bold text-amber-600 hover:text-amber-700 flex items-center space-x-1 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Subir otra foto</span>
+                      </button>
+                    </div>
+
+                    {editProdForm.images.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {editProdForm.images.map((imgUrl, idx) => (
+                          <div
+                            key={idx}
+                            className="relative w-14 h-14 rounded-lg overflow-hidden bg-white border border-slate-200 group/img shrink-0"
+                          >
+                            <img
+                              src={imgUrl}
+                              alt={`Extra ${idx}`}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditProdForm((prev) => ({
+                                  ...prev,
+                                  images: prev.images.filter((_, i) => i !== idx),
+                                }));
+                              }}
+                              className="absolute top-0.5 right-0.5 w-4.5 h-4.5 bg-black/75 hover:bg-rose-600 text-white rounded-full flex items-center justify-center transition-colors cursor-pointer"
+                              title="Quitar foto"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 italic">No hay fotos adicionales agregadas</p>
+                    )}
+
+                    <div className="flex items-center space-x-2 pt-1">
+                      <input
+                        type="text"
+                        value={newExtraImageUrl}
+                        onChange={(e) => setNewExtraImageUrl(e.target.value)}
+                        placeholder="O pega URL de foto adicional..."
+                        className="flex-1 text-[11px] font-medium px-3 py-1.5 bg-white border border-slate-200 rounded-lg outline-none text-slate-700"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newExtraImageUrl.trim()) {
+                            setEditProdForm((prev) => ({
+                              ...prev,
+                              images: prev.images.includes(newExtraImageUrl.trim())
+                                ? prev.images
+                                : [...prev.images, newExtraImageUrl.trim()],
+                            }));
+                            setNewExtraImageUrl("");
+                          }
+                        }}
+                        className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        Añadir
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Description Input */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Descripción del Producto
+                    </label>
+                    <textarea
+                      value={editProdForm.description}
+                      onChange={(e) => setEditProdForm({ ...editProdForm, description: e.target.value })}
+                      rows={3}
+                      placeholder="Describe materiales, detalles, garantía, tallas, colores..."
+                      className="w-full text-xs font-medium px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-800 resize-none leading-relaxed"
+                    />
+                  </div>
+
+                  {/* Footer Actions */}
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2.5">
+                    <button
+                      type="button"
+                      disabled={isSavingProduct}
+                      onClick={() => setEditingProduct(null)}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSavingProduct}
+                      className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold rounded-xl transition-all shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isSavingProduct ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Guardando cambios...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4 stroke-[2.5]" />
+                          <span>Guardar Cambios</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Product Confirmation Modal */}
+      <AnimatePresence>
+        {deletingProduct && (
+          <div
+            className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4"
+            id="modal-delete-product-backdrop"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center"
+              id="modal-delete-product-content"
+            >
+              <div className="w-12 h-12 bg-rose-50 border border-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-3 text-rose-600">
+                <Trash2 className="w-6 h-6" />
+              </div>
+
+              <h3 className="font-display font-extrabold text-base text-slate-900">
+                ¿Eliminar este producto?
+              </h3>
+
+              <div className="my-3.5 p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center space-x-3 text-left">
+                <img
+                  src={deletingProduct.imageUrl || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&q=80"}
+                  alt={deletingProduct.name}
+                  referrerPolicy="no-referrer"
+                  className="w-12 h-12 rounded-lg object-cover bg-white border border-slate-200 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-xs text-slate-900 truncate">{deletingProduct.name}</p>
+                  <p className="text-amber-600 font-bold text-xs mt-0.5">
+                    ${Number(deletingProduct.price || 0).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 leading-relaxed mb-5">
+                Esta acción retirará el producto de tu tienda, catálogo público y bases de datos. No se puede deshacer.
+              </p>
+
+              <div className="flex items-center justify-center space-x-2.5">
+                <button
+                  type="button"
+                  disabled={isDeletingProduct}
+                  onClick={() => setDeletingProduct(null)}
+                  className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingProduct}
+                  onClick={handleConfirmDeleteProduct}
+                  className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl transition-all shadow-md flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  id="btn-confirm-delete-product"
+                >
+                  {isDeletingProduct ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Eliminando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Eliminar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* MODAL 1: LIVE TRACKING & EXPANDED DISPATCH TIMELINE */}
+        {selectedTrackingOrder && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto"
+            onClick={() => setSelectedTrackingOrder(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto max-h-[90vh] flex flex-col"
+              id="modal-live-tracking"
+            >
+              {/* Modal Header */}
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
+                    <PackageSearch className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-extrabold text-sm text-slate-900">
+                      Rastreo de Envío en Vivo
+                    </h3>
+                    <p className="text-[11px] font-mono text-slate-500">
+                      Ref: {selectedTrackingOrder.id}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedTrackingOrder(null)}
+                  className="w-8 h-8 rounded-full bg-slate-200/80 hover:bg-slate-300 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Modal Scrollable Body */}
+              <div className="p-5 space-y-4 overflow-y-auto">
+                {/* Carrier & Tracking Code Card */}
+                <div className="p-4 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-slate-50 rounded-2xl border border-amber-200/70 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md flex items-center space-x-1">
+                      <Truck className="w-3 h-3" />
+                      <span>{selectedTrackingOrder.carrier || "Paquetería Express"}</span>
+                    </span>
+
+                    {selectedTrackingOrder.estimatedDelivery && (
+                      <span className="text-xs font-bold text-slate-700 flex items-center space-x-1">
+                        <Calendar className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Entrega: {selectedTrackingOrder.estimatedDelivery}</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Número de Guía / Seguimiento
+                    </p>
+                    <div className="flex items-center space-x-2 mt-0.5">
+                      <span className="text-base font-black font-mono text-slate-900 tracking-wider">
+                        {selectedTrackingOrder.trackingNumber || "Pendiente de asignación"}
+                      </span>
+                      {selectedTrackingOrder.trackingNumber && (
+                        <button
+                          onClick={(e) =>
+                            handleCopyTrackingNumber(
+                              selectedTrackingOrder.trackingNumber!,
+                              selectedTrackingOrder.id,
+                              e
+                            )
+                          }
+                          className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-700 text-xs font-bold transition-all shadow-2xs flex items-center space-x-1 cursor-pointer"
+                        >
+                          {copiedTrackingId === selectedTrackingOrder.id ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <span className="text-[10px] text-emerald-700 font-bold">¡Copiado!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span className="text-[10px]">Copiar</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {selectedTrackingOrder.trackingUrl && (
+                    <div className="pt-1">
+                      <a
+                        href={selectedTrackingOrder.trackingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center space-x-1 text-xs font-bold text-amber-700 hover:text-amber-800 hover:underline"
+                      >
+                        <span>Abrir portal oficial de {selectedTrackingOrder.carrier || "paquetería"}</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4-Step Stepper in Modal */}
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-3">
+                    Estado Actual del Paquete
+                  </p>
+                  {(() => {
+                    const st = selectedTrackingOrder.status;
+                    const step =
+                      st === "delivered" ? 4 : st === "shipped" ? 3 : st === "processing" ? 2 : 1;
+                    return (
+                      <div className="relative flex items-center justify-between px-2">
+                        {/* Connecting track */}
+                        <div className="absolute left-6 right-6 top-3 h-1 bg-slate-200 z-0" />
+                        <div
+                          className="absolute left-6 top-3 h-1 bg-amber-500 transition-all duration-300 z-0"
+                          style={{
+                            width:
+                              step === 1 ? "0%" : step === 2 ? "33%" : step === 3 ? "66%" : "100%",
+                          }}
+                        />
+
+                        {/* Steps */}
+                        <div className="relative z-10 flex flex-col items-center text-center">
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                              step >= 1
+                                ? "bg-amber-500 text-slate-950 ring-4 ring-amber-100"
+                                : "bg-slate-200 text-slate-500"
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          </div>
+                          <span className="text-[9px] font-bold text-slate-700 mt-1">Confirmado</span>
+                        </div>
+
+                        <div className="relative z-10 flex flex-col items-center text-center">
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                              step >= 2
+                                ? "bg-amber-500 text-slate-950 ring-4 ring-amber-100"
+                                : "bg-slate-200 text-slate-500"
+                            }`}
+                          >
+                            {step > 2 ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : "2"}
+                          </div>
+                          <span className="text-[9px] font-bold text-slate-700 mt-1">Preparando</span>
+                        </div>
+
+                        <div className="relative z-10 flex flex-col items-center text-center">
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                              step >= 3
+                                ? "bg-amber-500 text-slate-950 ring-4 ring-amber-100"
+                                : "bg-slate-200 text-slate-500"
+                            }`}
+                          >
+                            {step > 3 ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : "3"}
+                          </div>
+                          <span className="text-[9px] font-bold text-slate-700 mt-1">En Camino</span>
+                        </div>
+
+                        <div className="relative z-10 flex flex-col items-center text-center">
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                              step === 4
+                                ? "bg-emerald-500 text-white ring-4 ring-emerald-100"
+                                : "bg-slate-200 text-slate-500"
+                            }`}
+                          >
+                            {step === 4 ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : "4"}
+                          </div>
+                          <span className="text-[9px] font-bold text-slate-700 mt-1">Entregado</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Chronological Timeline History */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Historial Cronológico de Paradas y Despacho
+                  </p>
+
+                  <div className="border border-slate-200 rounded-2xl p-4 bg-white space-y-4">
+                    {selectedTrackingOrder.statusHistory &&
+                    selectedTrackingOrder.statusHistory.length > 0 ? (
+                      selectedTrackingOrder.statusHistory.map((h, hIdx) => (
+                        <div key={hIdx} className="flex items-start space-x-3 text-xs">
+                          <div className="relative flex flex-col items-center">
+                            <div className="w-4 h-4 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center text-[8px] font-black ring-4 ring-amber-50 shrink-0">
+                              ✓
+                            </div>
+                            {hIdx < (selectedTrackingOrder.statusHistory?.length || 1) - 1 && (
+                              <div className="w-0.5 h-10 bg-slate-200 mt-1" />
+                            )}
+                          </div>
+                          <div className="flex-1 space-y-0.5 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="font-extrabold text-slate-900 text-xs truncate">
+                                {h.label || "Actualización de despacho"}
+                              </p>
+                              <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                                {new Date(h.timestamp).toLocaleDateString("es-ES", {
+                                  day: "2-digit",
+                                  month: "short",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                            {h.note && <p className="text-[11px] text-slate-600">{h.note}</p>}
+                            {h.trackingNumber && (
+                              <p className="text-[10px] text-amber-700 font-mono font-bold">
+                                Guía asignada: {h.trackingNumber} ({h.carrier || "Transportista"})
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-4 text-slate-400 text-xs">
+                        <Clock className="w-6 h-6 mx-auto mb-1 stroke-1 text-slate-300" />
+                        <p>El paquete está en proceso de despacho inicial.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Delivery Destination */}
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 flex items-start space-x-2.5 text-xs text-slate-600">
+                  <MapPin className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-slate-800">Dirección de Destino:</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {selectedTrackingOrder.shippingAddress}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTrackingOrder(null)}
+                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold rounded-xl transition-colors cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* MODAL 2: SELLER EDIT TRACKING NUMBER & FULFILLMENT */}
+        {editingTrackingOrder && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto"
+            onClick={() => {
+              if (!isUpdatingTracking) setEditingTrackingOrder(null);
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto max-h-[92vh] flex flex-col"
+              id="modal-edit-tracking"
+            >
+              {/* Modal Header */}
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
+                    <Truck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-extrabold text-sm text-slate-900">
+                      Gestionar Envío & Guía de Rastreo
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Pedido: <span className="font-mono font-bold text-slate-800">{editingTrackingOrder.id}</span>
+                      {editingTrackingOrder.buyerName && ` • Cliente: ${editingTrackingOrder.buyerName}`}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isUpdatingTracking}
+                  onClick={() => setEditingTrackingOrder(null)}
+                  className="w-8 h-8 rounded-full bg-slate-200/80 hover:bg-slate-300 text-slate-600 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form Body */}
+              <form onSubmit={handleSaveTrackingUpdate} className="flex-1 overflow-y-auto p-5 space-y-4">
+                {trackingSuccessMessage && (
+                  <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center space-x-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{trackingSuccessMessage}</span>
+                  </div>
+                )}
+
+                {/* Carrier Manual Input with Suggestions */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-800 flex items-center space-x-1">
+                    <span>Empresa de Paquetería / Courier *</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={editCarrier}
+                      onChange={(e) => setEditCarrier(e.target.value)}
+                      placeholder="Ej: DHL Express, FedEx, Correos de España, Estafeta, etc."
+                      list="carrier-suggestions"
+                      className="w-full text-xs font-semibold px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-800"
+                      id="input-edit-carrier"
+                    />
+                    <datalist id="carrier-suggestions">
+                      <option value="DHL Express" />
+                      <option value="FedEx" />
+                      <option value="UPS" />
+                      <option value="Correos de España" />
+                      <option value="Estafeta" />
+                      <option value="Servientrega" />
+                      <option value="Envia" />
+                      <option value="Paquetería Express Local" />
+                    </datalist>
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Escribe manualmente el nombre de cualquier empresa de paquetería o servicio de envío.
+                  </p>
+                </div>
+
+                {/* Tracking Number Input (Manual Entry Only) */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-800 block">
+                    Número de Seguimiento (Guía de Rastreo) *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={editTrackingNumber}
+                      onChange={(e) => setEditTrackingNumber(e.target.value)}
+                      placeholder="Escribe manualmente el número o código de guía..."
+                      className="w-full text-xs font-mono font-bold px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-900 uppercase"
+                      id="input-edit-tracking-number"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Introduce el código de guía emitido por tu paquetería para que el comprador pueda rastrearlo.
+                  </p>
+                </div>
+
+                {/* Order Status Select Pills */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-800 block">
+                    Estado Actual del Pedido *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditOrderStatus("processing")}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer ${
+                        editOrderStatus === "processing"
+                          ? "bg-amber-50 border-amber-400 text-amber-900 ring-2 ring-amber-500/20"
+                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      <Package className="w-4 h-4 text-amber-500 shrink-0" />
+                      <div className="text-left">
+                        <p className="leading-tight">En preparación</p>
+                        <p className="text-[10px] font-normal text-slate-400">Empacando productos</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setEditOrderStatus("shipped")}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer ${
+                        editOrderStatus === "shipped"
+                          ? "bg-blue-50 border-blue-400 text-blue-900 ring-2 ring-blue-500/20"
+                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      <Truck className="w-4 h-4 text-blue-500 shrink-0" />
+                      <div className="text-left">
+                        <p className="leading-tight">En camino / Enviado</p>
+                        <p className="text-[10px] font-normal text-slate-400">Entregado a paquetería</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setEditOrderStatus("delivered")}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer ${
+                        editOrderStatus === "delivered"
+                          ? "bg-emerald-50 border-emerald-400 text-emerald-900 ring-2 ring-emerald-500/20"
+                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div className="text-left">
+                        <p className="leading-tight">Entregado</p>
+                        <p className="text-[10px] font-normal text-slate-400">Recibido por el cliente</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setEditOrderStatus("cancelled")}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer ${
+                        editOrderStatus === "cancelled"
+                          ? "bg-rose-50 border-rose-400 text-rose-900 ring-2 ring-rose-500/20"
+                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                      <div className="text-left">
+                        <p className="leading-tight">Cancelado</p>
+                        <p className="text-[10px] font-normal text-slate-400">Orden anulada</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Estimated Delivery Date */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-800 flex items-center space-x-1">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Fecha Estimada de Entrega</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={editEstimatedDelivery}
+                    onChange={(e) => setEditEstimatedDelivery(e.target.value)}
+                    className="w-full text-xs font-medium px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-800"
+                  />
+                </div>
+
+                {/* Courier Web Tracking URL */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-800 flex items-center space-x-1">
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Enlace Web de Rastreo (Opcional)</span>
+                  </label>
+                  <input
+                    type="url"
+                    value={editTrackingUrl}
+                    onChange={(e) => setEditTrackingUrl(e.target.value)}
+                    placeholder="https://www.dhl.com o url del courier..."
+                    className="w-full text-xs font-medium px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-800"
+                  />
+                </div>
+
+                {/* Seller Dispatch Note for Customer */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-800 block">
+                    Mensaje / Nota de Despacho para el Comprador
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={editSellerNotes}
+                    onChange={(e) => setEditSellerNotes(e.target.value)}
+                    placeholder="Ej: Paquete despachado con embalaje reforzado y precinto de seguridad desde nuestra sede central..."
+                    className="w-full text-xs font-medium p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-800 resize-none"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    Esta nota se agregará a la cronología de eventos que verá el cliente al rastrear el paquete.
+                  </p>
+                </div>
+
+                {/* Form Buttons */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2.5">
+                  <button
+                    type="button"
+                    disabled={isUpdatingTracking}
+                    onClick={() => setEditingTrackingOrder(null)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isUpdatingTracking || !editTrackingNumber.trim()}
+                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold rounded-xl transition-all shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                    id="btn-submit-save-tracking"
+                  >
+                    {isUpdatingTracking ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Guardando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Guardar y Notificar al Comprador</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
+
