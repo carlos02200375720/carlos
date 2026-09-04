@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X, Video, Globe, PackageCheck, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Check } from "lucide-react";
+import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X, Video, Globe, PackageCheck, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Check, Eye } from "lucide-react";
 import { Product, CartItem, Order, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../config";
@@ -128,12 +128,19 @@ interface ShopViewProps {
   onAddToCart: (product: Product) => void;
   onRemoveFromCart: (productId: string, cartItemIndex?: number) => void;
   onUpdateCartQuantity: (productId: string, qty: number, cartItemIndex?: number) => void;
-  onCheckout: (address: string, shippingCost: number, onComplete: (newOrder: Order) => void, itemsToCheckout?: CartItem[]) => void;
+  onCheckout: (
+    address: string,
+    shippingCost: number,
+    onComplete: (newOrder: Order) => void,
+    itemsToCheckout?: CartItem[],
+    buyerInfo?: { buyerName?: string; buyerEmail?: string; buyerPhone?: string }
+  ) => void;
   onCreatorClick: (creatorId: string) => void;
   selectedProductDirectly: Product | null;
   clearDirectProduct: () => void;
   onNavigateToHistory: () => void;
   onToggleDetailView?: (isOpen: boolean) => void;
+  onLoginSuccess?: (user: User) => void;
   initialStep?: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou';
   initialSelectedCartIndices?: number[];
   onClearInitialStep?: () => void;
@@ -153,6 +160,7 @@ export default function ShopView({
   clearDirectProduct,
   onNavigateToHistory,
   onToggleDetailView,
+  onLoginSuccess,
   initialStep,
   initialSelectedCartIndices,
   onClearInitialStep
@@ -259,13 +267,28 @@ export default function ShopView({
     ).filter(Boolean);
   }, [selectedProduct]);
 
+  // Cleanup all gallery videos on unmount to prevent ghost background audio
+  useEffect(() => {
+    return () => {
+      Object.keys(galleryVideoRefs.current).forEach((key) => {
+        const videoEl = galleryVideoRefs.current[Number(key)];
+        if (videoEl) {
+          try {
+            videoEl.pause();
+            videoEl.muted = true;
+          } catch {}
+        }
+      });
+    };
+  }, []);
+
   // Sync video playback with active gallery slide
   useEffect(() => {
     productGalleryMedia.forEach((mediaUrl, idx) => {
       const isVideo = checkIsVideo(mediaUrl);
       const videoEl = galleryVideoRefs.current[idx];
       if (isVideo && videoEl) {
-        if (idx === activeGalleryIndex) {
+        if (activeStep === 'detail' && idx === activeGalleryIndex) {
           videoEl.muted = isGalleryVideoMuted;
           if (isGalleryVideoPlaying) {
             videoEl.play().catch((err) => {
@@ -277,10 +300,11 @@ export default function ShopView({
           }
         } else {
           videoEl.pause();
+          videoEl.muted = true;
         }
       }
     });
-  }, [activeGalleryIndex, productGalleryMedia, isGalleryVideoPlaying, isGalleryVideoMuted]);
+  }, [activeStep, activeGalleryIndex, productGalleryMedia, isGalleryVideoPlaying, isGalleryVideoMuted]);
 
   // Sync thumbnail container scroll with active gallery index
   useEffect(() => {
@@ -620,6 +644,21 @@ export default function ShopView({
     setActiveStep('detail');
   };
 
+  // Track and count views when a product's detail page is visited
+  useEffect(() => {
+    if (activeStep === 'detail' && selectedProduct?.id) {
+      const prodId = selectedProduct.id;
+      apiFetch(`/api/products/${encodeURIComponent(prodId)}/view`, { method: "POST" })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && typeof data.views === "number") {
+            setSelectedProduct((prev) => (prev && prev.id === prodId ? { ...prev, views: data.views } : prev));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [activeStep, selectedProduct?.id]);
+
   // Cart selection state
   const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>([]);
 
@@ -698,10 +737,20 @@ export default function ShopView({
           : (item.product.shippingCost !== undefined ? item.product.shippingCost : 0);
         return acc + ((shippingFee || 0) * item.quantity);
       }, 0);
-      onCheckout(fullShippingAddress, totalShippingCost, (newOrder) => {
-        setCompletedOrder(newOrder);
-        setActiveStep('thankyou');
-      }, effectiveCheckoutItems);
+      onCheckout(
+        fullShippingAddress,
+        totalShippingCost,
+        (newOrder) => {
+          setCompletedOrder(newOrder);
+          setActiveStep('thankyou');
+        },
+        effectiveCheckoutItems,
+        {
+          buyerName: name.trim(),
+          buyerEmail: email.trim().toLowerCase(),
+          buyerPhone: phone.trim()
+        }
+      );
     }, 2500);
   };
 
@@ -1281,13 +1330,25 @@ export default function ShopView({
                     
                     {/* Rating Stars & Price Section */}
                     <div className="flex items-center justify-between gap-3 mt-3 flex-wrap bg-slate-50/80 p-3 rounded-xl border border-slate-100">
-                      <div className="flex items-center space-x-1.5">
-                        <div className="flex items-center text-amber-400">
-                          {[...Array(5)].map((_, i) => (
-                            <Star key={i} className="w-4 h-4 fill-amber-400" />
-                          ))}
+                      <div className="flex items-center space-x-3 flex-wrap gap-y-1">
+                        <div className="flex items-center space-x-1.5">
+                          <div className="flex items-center text-amber-400">
+                            {[...Array(5)].map((_, i) => (
+                              <Star key={i} className="w-4 h-4 fill-amber-400" />
+                            ))}
+                          </div>
+                          <span className="text-xs font-bold text-slate-700">{selectedProduct.rating} (Verificado)</span>
                         </div>
-                        <span className="text-xs font-bold text-slate-700">{selectedProduct.rating} (Verificado)</span>
+
+                        {/* Views Badge */}
+                        <div
+                          className="flex items-center space-x-1 text-xs font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80"
+                          id="product-detail-views-badge"
+                          title="Visualizaciones en la página de detalle"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-sky-600" />
+                          <span>{selectedProduct.views ?? 0} {selectedProduct.views === 1 ? "visualización" : "visualizaciones"}</span>
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-2.5">
@@ -1966,6 +2027,50 @@ export default function ShopView({
                     <span className="text-emerald-600 font-mono text-base">${completedOrder.total.toFixed(2)}</span>
                   </div>
                 </div>
+
+                {/* Auto-Created User Profile Card for Guest Checkout */}
+                {completedOrder.autoCreatedUser && completedOrder.autoCreatedUser.created && (
+                  <div className="bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-slate-50 border-2 border-amber-500/40 rounded-2xl p-4 sm:p-5 mt-4 text-left shadow-sm">
+                    <div className="flex items-center space-x-2 text-amber-600 font-extrabold text-xs uppercase tracking-wider mb-2">
+                      <span className="text-base">🎉</span>
+                      <span>¡Cuenta Creada Automáticamente!</span>
+                    </div>
+                    <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                      Como eres un comprador nuevo, registramos automáticamente tu perfil con tu correo{" "}
+                      <strong className="text-slate-900 font-bold">{completedOrder.autoCreatedUser.email}</strong>.
+                    </p>
+                    <div className="bg-white rounded-xl p-3 border border-amber-200/60 my-3 space-y-2 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 font-medium">Usuario asignado:</span>
+                        <span className="font-bold text-slate-900 font-mono">@{completedOrder.autoCreatedUser.username}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 font-medium">Contraseña enviada a tu correo:</span>
+                        <span className="font-black text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-200 font-mono text-sm tracking-wider">
+                          {completedOrder.autoCreatedUser.tempPassword}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-2.5 bg-amber-500/10 rounded-xl border border-amber-500/20 text-[11px] text-slate-600 leading-relaxed mb-3.5">
+                      <p className="font-bold text-slate-800 mb-0.5">🔒 Notificación de Seguridad:</p>
+                      Te enviamos los datos de acceso a tu correo. Te recomendamos iniciar sesión para hacer el seguimiento de tus pedidos y actualizar tu contraseña por una más segura en tu perfil.
+                    </div>
+                    {completedOrder.autoCreatedUser.user && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onLoginSuccess && completedOrder.autoCreatedUser?.user) {
+                            onLoginSuccess(completedOrder.autoCreatedUser.user);
+                          }
+                        }}
+                        className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                        id="activate-auto-user-btn"
+                      >
+                        <span>Iniciar Sesión con esta Cuenta Ahora</span>
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div className="mt-6 flex space-x-3">
                   <button

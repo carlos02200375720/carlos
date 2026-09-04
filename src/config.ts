@@ -177,8 +177,8 @@ export const apiFetch = async (
       throw new Error(`La carga o conexión ha tardado más de ${Math.round(effectiveTimeout / 1000)} segundos. Por favor, verifica tu conexión a internet e inténtalo de nuevo.`);
     }
 
-    // Fallback: If primary targetUrl failed and was NOT aborted by user, attempt alternate URL
-    if (!signal.aborted) {
+    // Fallback: only if running in external static host or native mobile wrapper
+    if (!signal.aborted && (isNativeMobileWrapper() || isExternalStaticHost())) {
       const alternateUrl = targetUrl === cleanPath 
         ? `${CLOUD_RUN_BACKEND_URL.replace(/\/$/, "")}${cleanPath}`
         : cleanPath;

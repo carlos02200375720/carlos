@@ -218,7 +218,9 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     formData.append("file", fileToUpload);
     formData.append("title", fileToUpload.name);
     formData.append("description", "Uploaded via publishing portal");
-    formData.append("creatorId", currentUser.id);
+    formData.append("creatorId", currentUser.originalId || currentUser.id);
+    formData.append("creatorOriginalId", currentUser.originalId || "");
+    formData.append("creatorUsername", currentUser.username);
 
     // Provide 5 minutes (300,000ms) for videos and 2 minutes for photos
     const timeoutMs = isVideo ? 300000 : 120000;
@@ -227,13 +229,19 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
       body: formData,
     }, timeoutMs);
 
-    if (!response.ok) {
-      throw new Error(`Error subiendo archivo: ${fileToUpload.name}`);
+    let data: any = null;
+    const rawText = await response.text();
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      if (!response.ok) {
+        throw new Error(`Error en el servidor (${response.status}) al subir ${fileToUpload.name}.`);
+      }
+      throw new Error(`Respuesta inválida del servidor al subir ${fileToUpload.name}`);
     }
 
-    const data = await response.json();
-    if (!data.success || !data.url) {
-      throw new Error(data.error || "No se recibió URL del archivo subido");
+    if (!response.ok || !data?.success || !data?.url) {
+      throw new Error(data?.error || data?.message || `Error subiendo archivo: ${fileToUpload.name}`);
     }
 
     return { url: data.url, hlsUrl: data.hlsUrl };
@@ -318,6 +326,12 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     setErrorMessage(null);
     setSuccessMessage(null);
 
+    // Validate authenticated user
+    if (currentUser.isGuest || !currentUser.username || currentUser.username === "invitado" || currentUser.username === "guest") {
+      setErrorMessage("Debes iniciar sesión con una cuenta para poder publicar contenido o registrar productos.");
+      return;
+    }
+
     // Validate 35 character max limit
     if (publishType !== "product" && description.length > 35) {
       setErrorMessage("La descripción excede el límite permitido de máximo 35 caracteres.");
@@ -374,14 +388,24 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
             hlsUrl,
             thumbnailUrl,
             description,
-            creatorId: currentUser.id,
+            creatorId: currentUser.originalId || currentUser.id,
+            creatorOriginalId: currentUser.originalId || "",
+            creatorUsername: currentUser.username,
+            creatorName: currentUser.name,
+            creatorAvatar: currentUser.avatar,
             type: "video",
             productId: taggedProductId || undefined
           }),
         });
 
-        if (!response.ok) {
-          throw new Error("Error al guardar la publicación en el servidor");
+        let resData: any = null;
+        const resText = await response.text();
+        try {
+          resData = JSON.parse(resText);
+        } catch {}
+
+        if (!response.ok || (resData && resData.success === false)) {
+          throw new Error(resData?.error || resData?.message || "Error al guardar la publicación en el servidor");
         }
 
         setSuccessMessage("¡Tu video se ha procesado a H.264 ultra-compatible y publicado con éxito!");
@@ -408,15 +432,25 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
             videoUrl: "",
             thumbnailUrl: imageUrl,
             description,
-            creatorId: currentUser.id,
+            creatorId: currentUser.originalId || currentUser.id,
+            creatorOriginalId: currentUser.originalId || "",
+            creatorUsername: currentUser.username,
+            creatorName: currentUser.name,
+            creatorAvatar: currentUser.avatar,
             type: "image",
             images: [imageUrl],
             productId: taggedProductId || undefined
           }),
         });
 
-        if (!response.ok) {
-          throw new Error("Error al guardar la publicación en el servidor");
+        let resData: any = null;
+        const resText = await response.text();
+        try {
+          resData = JSON.parse(resText);
+        } catch {}
+
+        if (!response.ok || (resData && resData.success === false)) {
+          throw new Error(resData?.error || resData?.message || "Error al guardar la publicación en el servidor");
         }
 
         setSuccessMessage("¡Tu imagen se ha publicado con éxito!");
@@ -448,15 +482,25 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
             videoUrl: "",
             thumbnailUrl: imageUrls[0],
             description,
-            creatorId: currentUser.id,
+            creatorId: currentUser.originalId || currentUser.id,
+            creatorOriginalId: currentUser.originalId || "",
+            creatorUsername: currentUser.username,
+            creatorName: currentUser.name,
+            creatorAvatar: currentUser.avatar,
             type: "carousel",
             images: imageUrls,
             productId: taggedProductId || undefined
           }),
         });
 
-        if (!response.ok) {
-          throw new Error("Error al guardar la publicación en el servidor");
+        let resData: any = null;
+        const resText = await response.text();
+        try {
+          resData = JSON.parse(resText);
+        } catch {}
+
+        if (!response.ok || (resData && resData.success === false)) {
+          throw new Error(resData?.error || resData?.message || "Error al guardar la publicación en el servidor");
         }
 
         setSuccessMessage("¡Tu carrusel se ha publicado con éxito!");
@@ -507,7 +551,11 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
             price: parseFloat(prodPrice),
             imageUrl: photoUrls[0],
             stock: parseInt(prodQuantity),
-            sellerId: currentUser.id,
+            sellerId: currentUser.originalId || currentUser.id,
+            sellerOriginalId: currentUser.originalId || "",
+            sellerUsername: currentUser.username,
+            sellerName: currentUser.name,
+            sellerAvatar: currentUser.avatar,
             shippingCost: parseFloat(prodShipping) || 0,
             images: photoUrls,
             videos: videoUrl ? [videoUrl] : [],
@@ -519,8 +567,14 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
           }),
         });
 
-        if (!response.ok) {
-          throw new Error("Error al guardar el producto en el servidor");
+        let resData: any = null;
+        const resText = await response.text();
+        try {
+          resData = JSON.parse(resText);
+        } catch {}
+
+        if (!response.ok || (resData && resData.success === false)) {
+          throw new Error(resData?.error || resData?.message || "Error al guardar el producto en el servidor");
         }
 
         setSuccessMessage("¡Tu producto se ha registrado para la venta con éxito!");

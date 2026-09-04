@@ -67,6 +67,42 @@ export default function ReelsView({
     };
   }, []);
 
+  // Cleanup all videos on unmount to prevent ghost background audio
+  useEffect(() => {
+    return () => {
+      Object.keys(videoRefs.current).forEach((key) => {
+        const video = videoRefs.current[Number(key)];
+        if (video) {
+          try {
+            video.pause();
+            video.muted = true;
+          } catch {}
+        }
+      });
+    };
+  }, []);
+
+  // Pause playback when browser tab or app window is hidden/minimized
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        const activeVideo = videoRefs.current[activeReelIndex];
+        if (activeVideo) {
+          activeVideo.pause();
+        }
+      } else if (isPlaying) {
+        const activeVideo = videoRefs.current[activeReelIndex];
+        if (activeVideo) {
+          playVideoSafely(activeVideo);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeReelIndex, isPlaying]);
+
   // Reset or extend displayCount when reels source changes
   useEffect(() => {
     if (reels.length > 0) {
@@ -165,31 +201,6 @@ export default function ReelsView({
     });
   }, [activeReelIndex, isPlaying, isMuted]);
 
-  // Ensure unmuted playback unlocks seamlessly upon first user touch/click/gesture
-  useEffect(() => {
-    const handleFirstGesture = () => {
-      setHasUserInteracted(true);
-      const activeVideo = videoRefs.current[activeReelIndex];
-      if (activeVideo) {
-        activeVideo.muted = isMuted;
-        activeVideo.volume = isMuted ? 0 : 1.0;
-        if (isPlaying && activeVideo.paused) {
-          activeVideo.play().catch(() => {});
-        }
-      }
-    };
-    window.addEventListener('touchstart', handleFirstGesture, { passive: true });
-    window.addEventListener('pointerdown', handleFirstGesture, { passive: true });
-    window.addEventListener('click', handleFirstGesture);
-    window.addEventListener('keydown', handleFirstGesture);
-    return () => {
-      window.removeEventListener('touchstart', handleFirstGesture);
-      window.removeEventListener('pointerdown', handleFirstGesture);
-      window.removeEventListener('click', handleFirstGesture);
-      window.removeEventListener('keydown', handleFirstGesture);
-    };
-  }, [activeReelIndex, isMuted, isPlaying]);
-
   // Handle scroll detection for snap scroll & continuous infinite expansion with INSTANT response
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const container = e.currentTarget;
@@ -198,11 +209,19 @@ export default function ReelsView({
     if (!childHeight) return;
     const index = Math.round(scrollPos / childHeight);
     if (index !== activeReelIndex && index >= 0 && index < displayedReels.length) {
-      // 1. Immediately pause previous video to avoid overlapping sound & conserve hardware decoder
-      const prevVideo = videoRefs.current[activeReelIndex];
-      if (prevVideo && prevVideo !== videoRefs.current[index]) {
-        try { prevVideo.pause(); } catch {}
-      }
+      // 1. Immediately pause ALL other videos to ensure no ghost audio in the background
+      Object.keys(videoRefs.current).forEach((key) => {
+        const k = Number(key);
+        if (k !== index) {
+          const v = videoRefs.current[k];
+          if (v) {
+            try {
+              v.pause();
+              v.muted = true;
+            } catch {}
+          }
+        }
+      });
 
       // 2. Instantly start playing the target video directly within the scroll gesture
       const nextVideo = videoRefs.current[index];
@@ -256,13 +275,27 @@ export default function ReelsView({
     }
   };
 
-  const handleVideoClick = (index: number) => {
+  const handleVideoClick = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
     const video = videoRefs.current[index];
     if (video) {
       if (isPlaying) {
         video.pause();
         setIsPlaying(false);
       } else {
+        // When resuming, ensure all other videos are paused
+        Object.keys(videoRefs.current).forEach((key) => {
+          const k = Number(key);
+          if (k !== index) {
+            const other = videoRefs.current[k];
+            if (other) {
+              try {
+                other.pause();
+                other.muted = true;
+              } catch {}
+            }
+          }
+        });
         video.muted = isMuted;
         video.volume = isMuted ? 0 : 1.0;
         video.play().catch(() => {});
@@ -573,6 +606,12 @@ export default function ReelsView({
                       <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
                         <video
                           ref={(el) => {
+                            if (!el && videoRefs.current[index]) {
+                              try {
+                                videoRefs.current[index]?.pause();
+                                videoRefs.current[index]!.muted = true;
+                              } catch {}
+                            }
                             videoRefs.current[index] = el;
                           }}
                           src={(() => {
@@ -586,14 +625,14 @@ export default function ReelsView({
                           }
                           playsInline
                           loop
-                          muted={isMuted}
-                          autoPlay={isCurrent}
+                          muted={!isCurrent || isMuted}
+                          autoPlay={false}
                           preload={isCurrent ? "auto" : Math.abs(index - activeReelIndex) <= 1 ? "metadata" : "none"}
                           className={`w-full h-full block relative z-10 select-none cursor-pointer ${
                             mediaAspectRatios[reel.id] === "horizontal_or_square" ? "object-contain" : "object-cover"
                           }`}
                           style={{ touchAction: "pan-y" }}
-                          onClick={() => handleVideoClick(index)}
+                          onClick={(e) => handleVideoClick(e, index)}
                           onDoubleClick={(e) => {
                             e.stopPropagation();
                             handleDoubleTap(reel.id);

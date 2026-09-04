@@ -160,6 +160,7 @@ export default function ProfileView({
     return null;
   });
   const [userProducts, setUserProducts] = useState<Product[]>([]);
+  const totalProductViews = userProducts.reduce((acc, p) => acc + (p.views || 0), 0);
   const [userReels, setUserReels] = useState<Reel[]>([]);
   const [userOrders, setUserOrders] = useState<Order[]>([]);
   const [userSales, setUserSales] = useState<Order[]>([]);
@@ -167,6 +168,11 @@ export default function ProfileView({
   const [orderFilterTab, setOrderFilterTab] = useState<"purchases" | "sales">("purchases");
   const [orderSearchQuery, setOrderSearchQuery] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
+
+  // Sub-section for product management panel: "catalog" (Mis Productos) or "sales" (Ventas Entrantes)
+  const [productManagementSection, setProductManagementSection] = useState<"catalog" | "sales">("catalog");
+  const [salesSearchQuery, setSalesSearchQuery] = useState("");
+  const [salesStatusFilter, setSalesStatusFilter] = useState<string>("all");
 
   // Tracking inspection modal
   const [selectedTrackingOrder, setSelectedTrackingOrder] = useState<Order | null>(null);
@@ -1035,17 +1041,28 @@ export default function ProfileView({
             </button>
 
             <button
-              onClick={() => setActiveSubTab("products")}
+              onClick={() => {
+                setActiveSubTab("products");
+                fetchOrders();
+              }}
               className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
                 activeSubTab === "products"
                   ? "text-amber-500 font-bold scale-105"
                   : "text-slate-400 hover:text-slate-600"
               }`}
-              title={`Mis Productos Publicados (${userProducts.length})`}
+              title={`Gestión de Productos y Ventas (${userProducts.length} productos, ${userSales.length} ventas)`}
               id="profile-subtab-products"
             >
               <div className="relative flex items-center justify-center">
                 <Package className="w-4.5 h-4.5 stroke-[2]" />
+                {userSales.filter((o) => o.status === "processing" || !o.trackingNumber).length > 0 && (
+                  <span
+                    className="absolute -top-1.5 -right-2 bg-emerald-500 text-white text-[8px] font-black px-1 rounded-full min-w-3 h-3 flex items-center justify-center border border-white leading-none shadow-xs"
+                    title="Ventas pendientes por despachar"
+                  >
+                    {userSales.filter((o) => o.status === "processing" || !o.trackingNumber).length}
+                  </span>
+                )}
               </div>
               {activeSubTab === "products" && (
                 <motion.div
@@ -1084,14 +1101,14 @@ export default function ProfileView({
                   ? "text-amber-500 font-bold scale-105"
                   : "text-slate-400 hover:text-slate-600"
               }`}
-              title="Historial de Compras y Ventas"
+              title="Historial de Mis Compras"
               id="profile-subtab-orders"
             >
               <div className="relative flex items-center justify-center">
                 <ShoppingBag className="w-4.5 h-4.5 stroke-[2]" />
-                {(userOrders.length > 0 || userSales.length > 0) && (
+                {userOrders.length > 0 && (
                   <span className="absolute -top-1.5 -right-2 bg-amber-500 text-slate-950 text-[8px] font-black px-1 rounded-full min-w-3 h-3 flex items-center justify-center border border-white leading-none shadow-xs">
-                    {userOrders.length + userSales.length}
+                    {userOrders.length}
                   </span>
                 )}
               </div>
@@ -1295,27 +1312,85 @@ export default function ProfileView({
                     className="space-y-4"
                     id="admin-products-management-panel"
                   >
-                    {/* Header & Quick Actions Bar */}
-                    <div className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-100 p-3.5 rounded-2xl">
-                      <div className="flex items-center space-x-2">
-                        <Package className="w-5 h-5 text-amber-500" />
-                        <span className="bg-amber-100 text-amber-800 text-xs font-black px-2.5 py-1 rounded-full border border-amber-200">
-                          {userProducts.length} {userProducts.length === 1 ? "producto" : "productos"}
+                    {/* Sub-navigation Switcher: Mis Productos vs Ventas Entrantes */}
+                    <div className="flex items-center space-x-2 bg-slate-100/90 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setProductManagementSection("catalog")}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
+                          productManagementSection === "catalog"
+                            ? "bg-white text-slate-900 shadow-xs scale-[1.01]"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                        id="tab-btn-admin-productos"
+                      >
+                        <Package className="w-4 h-4 text-amber-500" />
+                        <span>Mis Productos</span>
+                        <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+                          {userProducts.length}
                         </span>
-                      </div>
+                      </button>
 
-                      <div className="flex items-center space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => setActiveSubTab("publish")}
-                          className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs flex items-center space-x-1.5 transition-all shadow-xs shrink-0 cursor-pointer"
-                          id="btn-add-new-product"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>Publicar Producto</span>
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProductManagementSection("sales");
+                          fetchOrders();
+                        }}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer relative ${
+                          productManagementSection === "sales"
+                            ? "bg-white text-slate-900 shadow-xs scale-[1.01]"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                        id="tab-btn-admin-ventas"
+                      >
+                        <Truck className="w-4 h-4 text-emerald-600" />
+                        <span>Ventas Entrantes</span>
+                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+                          {userSales.length}
+                        </span>
+                        {userSales.filter((o) => o.status === "processing" || !o.trackingNumber).length > 0 && (
+                          <span
+                            className="bg-amber-500 text-slate-950 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-white leading-none shadow-2xs"
+                            title="Ventas pendientes por despachar"
+                          >
+                            {userSales.filter((o) => o.status === "processing" || !o.trackingNumber).length} por despachar
+                          </span>
+                        )}
+                      </button>
                     </div>
+
+                    {productManagementSection === "catalog" ? (
+                      <>
+                        {/* Header & Quick Actions Bar */}
+                        <div className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-100 p-3.5 rounded-2xl">
+                          <div className="flex items-center space-x-2 flex-wrap gap-y-1.5" id="products-summary-metrics">
+                            <Package className="w-5 h-5 text-amber-500 shrink-0" />
+                            <span className="bg-amber-100 text-amber-800 text-xs font-black px-2.5 py-1 rounded-full border border-amber-200">
+                              {userProducts.length} {userProducts.length === 1 ? "producto" : "productos"}
+                            </span>
+                            <span
+                              className="bg-sky-100 text-sky-800 text-xs font-black px-2.5 py-1 rounded-full border border-sky-200 flex items-center space-x-1"
+                              title="Visualizaciones acumuladas en páginas de detalle"
+                              id="products-total-views-counter"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-sky-600" />
+                              <span>{totalProductViews} {totalProductViews === 1 ? "visualización" : "visualizaciones"}</span>
+                            </span>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => setActiveSubTab("publish")}
+                              className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs flex items-center space-x-1.5 transition-all shadow-xs shrink-0 cursor-pointer"
+                              id="btn-add-new-product"
+                            >
+                              <Plus className="w-4 h-4" />
+                              <span>Publicar Producto</span>
+                            </button>
+                          </div>
+                        </div>
 
                     {/* Notice / Feedback Banner */}
                     {productActionSuccess && (
@@ -1478,16 +1553,25 @@ export default function ProfileView({
                                 </div>
 
                                 {/* Action Buttons Footer */}
-                                <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => onSelectProduct(prod)}
-                                    className="text-[11px] font-bold text-slate-500 hover:text-slate-800 flex items-center space-x-1 transition-colors cursor-pointer py-1"
-                                    title="Ver vista pública del producto"
-                                  >
-                                    <Eye className="w-3.5 h-3.5" />
-                                    <span>Ver en tienda</span>
-                                  </button>
+                                <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => onSelectProduct(prod)}
+                                      className="text-[11px] font-bold text-slate-500 hover:text-slate-800 flex items-center space-x-1 transition-colors cursor-pointer py-1"
+                                      title="Ver vista pública del producto"
+                                    >
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                      <span>Ver en tienda</span>
+                                    </button>
+                                    <span
+                                      className="flex items-center space-x-1 text-[11px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80"
+                                      title="Visualizaciones en la página de detalle"
+                                    >
+                                      <Eye className="w-3 h-3 text-sky-600" />
+                                      <span>{prod.views || 0} {prod.views === 1 ? "vista" : "vistas"}</span>
+                                    </span>
+                                  </div>
 
                                   <div className="flex items-center space-x-2">
                                     <button
@@ -1522,6 +1606,477 @@ export default function ProfileView({
                         </div>
                       );
                     })()}
+                      </>
+                    ) : (
+                      /* Panel de Ventas Entrantes */
+                      <div className="space-y-4" id="admin-incoming-sales-panel">
+                        {/* Header with refresh button */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 border border-slate-150 p-3.5 rounded-2xl">
+                          <div>
+                            <h4 className="font-display font-extrabold text-sm text-slate-900 flex items-center space-x-2">
+                              <Truck className="w-4.5 h-4.5 text-emerald-600" />
+                              <span>Gestión de Ventas Entrantes & Despachos</span>
+                            </h4>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Supervisa las ventas de tus productos, asigna transportadoras y guías de rastreo a tus compradores.
+                            </p>
+                          </div>
+
+                          <div className="flex items-center space-x-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={fetchOrders}
+                              disabled={ordersLoading}
+                              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-60 shadow-2xs"
+                              title="Actualizar ventas"
+                              id="btn-refresh-sales"
+                            >
+                              <RefreshCw className={`w-3.5 h-3.5 ${ordersLoading ? "animate-spin text-emerald-600" : ""}`} />
+                              <span>Actualizar</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Quick Stats Summary Banner */}
+                        <div className="grid grid-cols-3 gap-2 p-3 bg-emerald-50/70 border border-emerald-200/70 rounded-xl">
+                          <div className="text-center">
+                            <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-800">Total Ventas</p>
+                            <p className="text-sm font-black text-slate-900 mt-0.5 font-mono">{userSales.length}</p>
+                          </div>
+                          <div className="text-center border-x border-emerald-200/70">
+                            <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-800">Por Despachar</p>
+                            <p className="text-sm font-black text-amber-600 mt-0.5 font-mono">
+                              {userSales.filter((o) => o.status === "processing" || !o.trackingNumber).length}
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-800">Ingresos Totales</p>
+                            <p className="text-sm font-black text-emerald-700 mt-0.5 font-mono">
+                              ${userSales.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Search and Status Filters */}
+                        <div className="flex flex-col sm:flex-row items-center gap-2">
+                          <div className="relative flex-1 w-full">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              value={salesSearchQuery}
+                              onChange={(e) => setSalesSearchQuery(e.target.value)}
+                              placeholder="Buscar por referencia, cliente, dirección, producto o guía..."
+                              className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:bg-white transition-all text-slate-800 placeholder-slate-400"
+                            />
+                            {salesSearchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => setSalesSearchQuery("")}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          <select
+                            value={salesStatusFilter}
+                            onChange={(e) => setSalesStatusFilter(e.target.value)}
+                            className="w-full sm:w-auto px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                          >
+                            <option value="all">Todos los estados</option>
+                            <option value="processing">🟡 En preparación</option>
+                            <option value="shipped">🚚 En camino / Despachado</option>
+                            <option value="delivered">🟢 Entregado</option>
+                            <option value="cancelled">🔴 Cancelado</option>
+                          </select>
+                        </div>
+
+                        {/* Incoming Sales List */}
+                        <div className="space-y-4">
+                          {(() => {
+                            const filtered = userSales.filter((order) => {
+                              if (salesStatusFilter !== "all" && order.status !== salesStatusFilter) {
+                                return false;
+                              }
+                              if (!salesSearchQuery.trim()) return true;
+                              const q = salesSearchQuery.toLowerCase();
+                              const matchesId = order.id?.toLowerCase().includes(q);
+                              const matchesTracking = order.trackingNumber?.toLowerCase().includes(q);
+                              const matchesCarrier = order.carrier?.toLowerCase().includes(q);
+                              const matchesAddress = order.shippingAddress?.toLowerCase().includes(q);
+                              const matchesBuyer =
+                                order.buyerName?.toLowerCase().includes(q) ||
+                                order.buyerUsername?.toLowerCase().includes(q);
+                              const matchesItem = order.items?.some((it) =>
+                                it.name?.toLowerCase().includes(q)
+                              );
+                              return matchesId || matchesTracking || matchesCarrier || matchesAddress || matchesBuyer || matchesItem;
+                            });
+
+                            if (filtered.length === 0) {
+                              return (
+                                <div className="border border-dashed border-slate-200 rounded-2xl p-10 flex flex-col items-center justify-center text-center text-slate-400 bg-slate-50/40">
+                                  <Truck className="w-12 h-12 stroke-1 text-slate-300 mb-2" />
+                                  <p className="text-sm font-extrabold text-slate-700">
+                                    No se encontraron ventas registradas
+                                  </p>
+                                  <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                                    {salesSearchQuery || salesStatusFilter !== "all"
+                                      ? "Intenta modificar el término de búsqueda o quitar los filtros de estado."
+                                      : "Cuando otros usuarios compren productos de tu negocio, aquí podrás gestionar sus envíos y asignar guías de seguimiento."}
+                                  </p>
+                                  {(salesSearchQuery || salesStatusFilter !== "all") && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSalesSearchQuery("");
+                                        setSalesStatusFilter("all");
+                                      }}
+                                      className="mt-3 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                                    >
+                                      Limpiar filtros
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            return filtered.map((order, index) => {
+                              const isShipped = order.status === "shipped";
+                              const isDelivered = order.status === "delivered";
+                              const isProcessing = order.status === "processing" || !order.status;
+                              const isCancelled = order.status === "cancelled";
+
+                              const stepProgress = isDelivered ? 4 : isShipped ? 3 : isProcessing ? 2 : 1;
+
+                              return (
+                                <div
+                                  key={order.id || `sale-${index}`}
+                                  className="border border-slate-200 rounded-2xl p-4 sm:p-5 bg-white shadow-xs transition-all hover:border-slate-300 flex flex-col space-y-4"
+                                  id={`admin-sale-card-${order.id}`}
+                                >
+                                  {/* Order Card Top: Reference, Date, Status Badge */}
+                                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                    <div className="flex items-center space-x-2">
+                                      <span className="text-xs font-black font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">
+                                        Ref: {order.id}
+                                      </span>
+                                      <span className="text-[11px] text-slate-400 font-medium flex items-center space-x-1">
+                                        <Clock className="w-3 h-3" />
+                                        <span>
+                                          {order.createdAt
+                                            ? new Date(order.createdAt).toLocaleDateString("es-ES", {
+                                                day: "2-digit",
+                                                month: "short",
+                                                year: "numeric",
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                              })
+                                            : "Fecha no disponible"}
+                                        </span>
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center space-x-1.5">
+                                      {isDelivered && (
+                                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-1 rounded-full flex items-center space-x-1">
+                                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                          <span>Entregado</span>
+                                        </span>
+                                      )}
+                                      {isShipped && (
+                                        <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2.5 py-1 rounded-full flex items-center space-x-1">
+                                          <Truck className="w-3 h-3 text-blue-600 animate-pulse" />
+                                          <span>En Camino / Despachado</span>
+                                        </span>
+                                      )}
+                                      {isProcessing && (
+                                        <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-1 rounded-full flex items-center space-x-1">
+                                          <Clock className="w-3 h-3 text-amber-600" />
+                                          <span>En Preparación</span>
+                                        </span>
+                                      )}
+                                      {isCancelled && (
+                                        <span className="bg-rose-100 text-rose-800 text-[10px] font-black px-2.5 py-1 rounded-full flex items-center space-x-1">
+                                          <AlertCircle className="w-3 h-3 text-rose-600" />
+                                          <span>Cancelado</span>
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Buyer metadata */}
+                                  <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                                    <div className="flex items-center space-x-3">
+                                      <img
+                                        src={
+                                          order.buyerAvatar ||
+                                          "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=400&q=80"
+                                        }
+                                        alt={order.buyerName || "Cliente"}
+                                        className="w-9 h-9 rounded-full object-cover border border-emerald-200"
+                                      />
+                                      <div>
+                                        <p className="font-extrabold text-slate-900">
+                                          Cliente: {order.buyerName || "Cliente"}
+                                        </p>
+                                        <p className="text-[11px] text-slate-500">
+                                          {order.buyerUsername ? `@${order.buyerUsername}` : order.buyerEmail || "Cliente registrado"}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center space-x-2 text-slate-600 text-[11px]">
+                                      <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                      <span className="font-medium line-clamp-1">{order.shippingAddress}</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Tracking Progress Stepper (4 Steps) */}
+                                  {!isCancelled && (
+                                    <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-150">
+                                      <div className="flex items-center justify-between mb-2">
+                                        <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 flex items-center space-x-1">
+                                          <Truck className="w-3 h-3 text-amber-500" />
+                                          <span>Progreso del Despacho</span>
+                                        </span>
+                                        {order.estimatedDelivery && (
+                                          <span className="text-[11px] font-bold text-slate-600 flex items-center space-x-1">
+                                            <Calendar className="w-3 h-3 text-amber-500" />
+                                            <span>Entrega estimada: {order.estimatedDelivery}</span>
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <div className="relative flex items-center justify-between mt-3 mb-2 px-3">
+                                        {/* Background Connecting Line */}
+                                        <div className="absolute left-6 right-6 top-1/2 -translate-y-1/2 h-1 bg-slate-200 z-0" />
+                                        {/* Active Progress Line */}
+                                        <div
+                                          className="absolute left-6 top-1/2 -translate-y-1/2 h-1 bg-emerald-500 transition-all duration-500 z-0"
+                                          style={{
+                                            width:
+                                              stepProgress === 1
+                                                ? "0%"
+                                                : stepProgress === 2
+                                                ? "33%"
+                                                : stepProgress === 3
+                                                ? "66%"
+                                                : "100%",
+                                          }}
+                                        />
+
+                                        {/* Step 1: Pago Aprobado */}
+                                        <div className="relative z-10 flex flex-col items-center">
+                                          <div
+                                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                              stepProgress >= 1
+                                                ? "bg-emerald-500 text-white ring-4 ring-emerald-100"
+                                                : "bg-slate-200 text-slate-500"
+                                            }`}
+                                          >
+                                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                          </div>
+                                          <span className="text-[9px] font-bold text-slate-600 mt-1">Confirmado</span>
+                                        </div>
+
+                                        {/* Step 2: En Preparación */}
+                                        <div className="relative z-10 flex flex-col items-center">
+                                          <div
+                                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                              stepProgress >= 2
+                                                ? "bg-emerald-500 text-white ring-4 ring-emerald-100"
+                                                : "bg-slate-200 text-slate-500"
+                                            }`}
+                                          >
+                                            {stepProgress > 2 ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : "2"}
+                                          </div>
+                                          <span className="text-[9px] font-bold text-slate-600 mt-1">Preparando</span>
+                                        </div>
+
+                                        {/* Step 3: En Camino */}
+                                        <div className="relative z-10 flex flex-col items-center">
+                                          <div
+                                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                              stepProgress >= 3
+                                                ? "bg-emerald-500 text-white ring-4 ring-emerald-100"
+                                                : "bg-slate-200 text-slate-500"
+                                            }`}
+                                          >
+                                            {stepProgress > 3 ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : "3"}
+                                          </div>
+                                          <span className="text-[9px] font-bold text-slate-600 mt-1">En Camino</span>
+                                        </div>
+
+                                        {/* Step 4: Entregado */}
+                                        <div className="relative z-10 flex flex-col items-center">
+                                          <div
+                                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                              stepProgress === 4
+                                                ? "bg-emerald-500 text-white ring-4 ring-emerald-100"
+                                                : "bg-slate-200 text-slate-500"
+                                            }`}
+                                          >
+                                            {stepProgress === 4 ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : "4"}
+                                          </div>
+                                          <span className="text-[9px] font-bold text-slate-600 mt-1">Entregado</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Prominent Tracking Information Banner */}
+                                  <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-50/70 via-slate-50 to-emerald-50/40 border border-emerald-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div className="space-y-1">
+                                      <div className="flex items-center space-x-2">
+                                        <span className="bg-emerald-600 text-white font-black text-[10px] px-2 py-0.5 rounded-md flex items-center space-x-1">
+                                          <Truck className="w-3 h-3" />
+                                          <span>{order.carrier || "Transportadora"}</span>
+                                        </span>
+                                        <span className="text-[11px] font-extrabold text-slate-700">
+                                          Guía de Seguimiento:
+                                        </span>
+                                      </div>
+
+                                      {order.trackingNumber ? (
+                                        <div className="flex items-center space-x-2 pt-0.5">
+                                          <span className="font-mono font-black text-sm text-slate-900 tracking-wide bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                            {order.trackingNumber}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleCopyTrackingNumber(order.trackingNumber!, order.id, e)}
+                                            className="p-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 hover:text-slate-900 transition-colors cursor-pointer text-xs flex items-center space-x-1"
+                                            title="Copiar número de guía"
+                                          >
+                                            {copiedTrackingId === order.id ? (
+                                              <>
+                                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                                <span className="text-[10px] font-black text-emerald-700">¡Copiado!</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Copy className="w-3.5 h-3.5" />
+                                                <span className="text-[10px] font-bold">Copiar</span>
+                                              </>
+                                            )}
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-amber-700 font-semibold pt-0.5">
+                                          ⚠️ Pendiente de generar número de guía para el comprador.
+                                        </p>
+                                      )}
+
+                                      {order.sellerNotes && (
+                                        <p className="text-[11px] text-slate-500 italic pt-0.5">
+                                          Nota: "{order.sellerNotes}"
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    <div className="flex flex-wrap sm:flex-col items-stretch sm:items-end gap-2 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => openEditTrackingModal(order, e)}
+                                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl transition-all shadow-xs flex items-center justify-center space-x-1.5 cursor-pointer"
+                                        id={`btn-manage-tracking-sales-${order.id}`}
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" />
+                                        <span>Gestionar Guía & Envío</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedTrackingOrder(order)}
+                                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold rounded-xl transition-all shadow-xs flex items-center justify-center space-x-1.5 cursor-pointer"
+                                      >
+                                        <PackageSearch className="w-3.5 h-3.5 text-amber-400" />
+                                        <span>Ver Rastreo en Vivo</span>
+                                      </button>
+
+                                      {order.trackingUrl && (
+                                        <a
+                                          href={order.trackingUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-bold rounded-xl border border-slate-200 transition-colors flex items-center justify-center space-x-1"
+                                        >
+                                          <span>Web del transportista</span>
+                                          <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Items Sold Details */}
+                                  <div className="space-y-2 pt-1">
+                                    <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400">
+                                      Artículos vendidos en este pedido ({order.items.length})
+                                    </span>
+                                    <div className="divide-y divide-slate-100">
+                                      {order.items.map((item, itIdx) => (
+                                        <div key={itIdx} className="py-2 flex items-center justify-between gap-3">
+                                          <div className="flex items-center space-x-3 min-w-0">
+                                            <img
+                                              src={item.imageUrl || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"}
+                                              alt={item.name}
+                                              className="w-10 h-10 rounded-lg object-cover bg-slate-100 border border-slate-200 shrink-0"
+                                            />
+                                            <div className="min-w-0">
+                                              <p className="text-xs font-bold text-slate-800 truncate">{item.name}</p>
+                                              <p className="text-[10px] text-slate-500">
+                                                <span className="font-mono">Cantidad: {item.quantity}</span>
+                                              </p>
+                                            </div>
+                                          </div>
+
+                                          <div className="text-right shrink-0">
+                                            <p className="text-xs font-extrabold font-mono text-slate-900">
+                                              ${(item.price * item.quantity).toFixed(2)}
+                                            </p>
+                                            {item.quantity > 1 && (
+                                              <p className="text-[10px] text-slate-400 font-mono">
+                                                ${item.price.toFixed(2)} c/u
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {/* Footer: Address and Total Summary */}
+                                  <div className="pt-3 border-t border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                    <div className="flex items-center space-x-1.5 text-slate-500 text-[11px]">
+                                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                      <span className="truncate">Dirección de entrega: {order.shippingAddress}</span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between sm:justify-end space-x-4">
+                                      {order.shippingCost !== undefined && order.shippingCost > 0 && (
+                                        <span className="text-[11px] text-slate-500">
+                                          Envío: <span className="font-mono font-bold">${order.shippingCost.toFixed(2)}</span>
+                                        </span>
+                                      )}
+                                      <div className="text-right">
+                                        <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mr-1.5">
+                                          Ingreso Venta:
+                                        </span>
+                                        <span className="text-sm font-black font-mono text-emerald-700">
+                                          ${order.total.toFixed(2)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </motion.div>
                 )}
 
@@ -1635,19 +2190,20 @@ export default function ProfileView({
                       <div>
                         <h3 className="font-display font-extrabold text-base text-slate-900 flex items-center space-x-2">
                           <ShoppingBag className="w-5 h-5 text-amber-500" />
-                          <span>Historial de Compras & Gestión de Ventas</span>
+                          <span>Historial de Mis Compras</span>
                         </h3>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          Rastrea los envíos de tus compras en tiempo real y gestiona las guías y despachos de tus ventas.
+                          Rastrea los envíos de tus compras en tiempo real y consulta los detalles de tus pedidos.
                         </p>
                       </div>
 
                       <div className="flex items-center space-x-2 shrink-0">
                         <button
+                          type="button"
                           onClick={fetchOrders}
                           disabled={ordersLoading}
                           className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-60"
-                          title="Actualizar pedidos"
+                          title="Actualizar compras"
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${ordersLoading ? "animate-spin text-amber-500" : ""}`} />
                           <span>Actualizar</span>
@@ -1655,39 +2211,47 @@ export default function ProfileView({
                       </div>
                     </div>
 
-                    {/* Sub-tabs: Mis Compras vs Mis Ventas */}
-                    <div className="flex items-center space-x-2 bg-slate-100/90 p-1 rounded-xl">
-                      <button
-                        onClick={() => setOrderFilterTab("purchases")}
-                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
-                          orderFilterTab === "purchases"
-                            ? "bg-white text-slate-900 shadow-xs scale-[1.01]"
-                            : "text-slate-500 hover:text-slate-800"
-                        }`}
-                        id="tab-btn-mis-compras"
-                      >
-                        <ShoppingBag className="w-4 h-4 text-amber-500" />
-                        <span>Mis Compras</span>
-                        <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2 py-0.5 rounded-full">
-                          {userOrders.length}
-                        </span>
-                      </button>
+                    {/* Notification/Banner redirecting to sales in Products tab if user has sales */}
+                    {userSales.length > 0 && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center space-x-2 text-emerald-800">
+                          <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span className="font-semibold">
+                            ¿Deseas gestionar las ventas de tus productos? Ahora están en la pestaña <strong>Productos &gt; Ventas Entrantes</strong>.
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveSubTab("products");
+                            setProductManagementSection("sales");
+                            fetchOrders();
+                          }}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition-colors cursor-pointer shrink-0"
+                        >
+                          Ir a Ventas ({userSales.length})
+                        </button>
+                      </div>
+                    )}
 
-                      <button
-                        onClick={() => setOrderFilterTab("sales")}
-                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
-                          orderFilterTab === "sales"
-                            ? "bg-white text-slate-900 shadow-xs scale-[1.01]"
-                            : "text-slate-500 hover:text-slate-800"
-                        }`}
-                        id="tab-btn-mis-ventas"
-                      >
-                        <Truck className="w-4 h-4 text-emerald-600" />
-                        <span>Ventas</span>
-                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
-                          {userSales.length}
-                        </span>
-                      </button>
+                    {/* Quick Stats Summary Banner */}
+                    <div className="grid grid-cols-3 gap-2 p-3 bg-amber-50/60 border border-amber-200/60 rounded-xl">
+                      <div className="text-center">
+                        <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700">Total Compras</p>
+                        <p className="text-sm font-black text-slate-900 mt-0.5 font-mono">{userOrders.length}</p>
+                      </div>
+                      <div className="text-center border-x border-amber-200/60">
+                        <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700">En Tránsito</p>
+                        <p className="text-sm font-black text-amber-600 mt-0.5 font-mono">
+                          {userOrders.filter((o) => o.status === "shipped" || o.status === "processing").length}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700">Total Invertido</p>
+                        <p className="text-sm font-black text-slate-900 mt-0.5 font-mono">
+                          ${userOrders.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(2)}
+                        </p>
+                      </div>
                     </div>
 
                     {/* Search and Status Filters */}
@@ -1698,15 +2262,12 @@ export default function ProfileView({
                           type="text"
                           value={orderSearchQuery}
                           onChange={(e) => setOrderSearchQuery(e.target.value)}
-                          placeholder={
-                            orderFilterTab === "purchases"
-                              ? "Buscar por referencia, producto, vendedor o guía de rastreo..."
-                              : "Buscar por ref, producto vendido, cliente o guía..."
-                          }
+                          placeholder="Buscar por referencia, producto, vendedor o guía de rastreo..."
                           className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 focus:bg-white transition-all text-slate-800 placeholder-slate-400"
                         />
                         {orderSearchQuery && (
                           <button
+                            type="button"
                             onClick={() => setOrderSearchQuery("")}
                             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
                           >
@@ -1728,95 +2289,41 @@ export default function ProfileView({
                       </select>
                     </div>
 
-                    {/* Quick Stats Summary Banner */}
-                    {orderFilterTab === "purchases" ? (
-                      <div className="grid grid-cols-3 gap-2 p-3 bg-amber-50/60 border border-amber-200/60 rounded-xl">
-                        <div className="text-center">
-                          <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700">Total Compras</p>
-                          <p className="text-sm font-black text-slate-900 mt-0.5 font-mono">{userOrders.length}</p>
-                        </div>
-                        <div className="text-center border-x border-amber-200/60">
-                          <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700">En Tránsito</p>
-                          <p className="text-sm font-black text-amber-600 mt-0.5 font-mono">
-                            {userOrders.filter((o) => o.status === "shipped" || o.status === "processing").length}
-                          </p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700">Total Invertido</p>
-                          <p className="text-sm font-black text-slate-900 mt-0.5 font-mono">
-                            ${userOrders.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(2)}
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-2 p-3 bg-emerald-50/60 border border-emerald-200/60 rounded-xl">
-                        <div className="text-center">
-                          <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-800">Total Ventas</p>
-                          <p className="text-sm font-black text-slate-900 mt-0.5 font-mono">{userSales.length}</p>
-                        </div>
-                        <div className="text-center border-x border-emerald-200/60">
-                          <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-800">Por Despachar</p>
-                          <p className="text-sm font-black text-amber-600 mt-0.5 font-mono">
-                            {userSales.filter((o) => o.status === "processing" || !o.trackingNumber).length}
-                          </p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-800">Ingresos Totales</p>
-                          <p className="text-sm font-black text-emerald-700 mt-0.5 font-mono">
-                            ${userSales.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(2)}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
                     {/* Orders List */}
                     <div className="space-y-4">
                       {(() => {
-                        const targetList = orderFilterTab === "purchases" ? userOrders : userSales;
-                        const filtered = targetList.filter((order) => {
-                          // Filter by status
+                        const filtered = userOrders.filter((order) => {
                           if (orderStatusFilter !== "all" && order.status !== orderStatusFilter) {
                             return false;
                           }
-                          // Filter by query
                           if (!orderSearchQuery.trim()) return true;
                           const q = orderSearchQuery.toLowerCase();
                           const matchesId = order.id?.toLowerCase().includes(q);
                           const matchesTracking = order.trackingNumber?.toLowerCase().includes(q);
                           const matchesCarrier = order.carrier?.toLowerCase().includes(q);
                           const matchesAddress = order.shippingAddress?.toLowerCase().includes(q);
-                          const matchesBuyer =
-                            order.buyerName?.toLowerCase().includes(q) ||
-                            order.buyerUsername?.toLowerCase().includes(q);
                           const matchesItem = order.items?.some((it) =>
                             it.name?.toLowerCase().includes(q) ||
                             it.sellerName?.toLowerCase().includes(q)
                           );
-                          return matchesId || matchesTracking || matchesCarrier || matchesAddress || matchesBuyer || matchesItem;
+                          return matchesId || matchesTracking || matchesCarrier || matchesAddress || matchesItem;
                         });
 
                         if (filtered.length === 0) {
                           return (
                             <div className="border border-dashed border-slate-200 rounded-2xl p-10 flex flex-col items-center justify-center text-center text-slate-400 bg-slate-50/40">
-                              {orderFilterTab === "purchases" ? (
-                                <ShoppingBag className="w-12 h-12 stroke-1 text-slate-300 mb-2" />
-                              ) : (
-                                <Truck className="w-12 h-12 stroke-1 text-slate-300 mb-2" />
-                              )}
+                              <ShoppingBag className="w-12 h-12 stroke-1 text-slate-300 mb-2" />
                               <p className="text-sm font-extrabold text-slate-700">
-                                {orderFilterTab === "purchases"
-                                  ? "No se encontraron compras registradas"
-                                  : "No se encontraron ventas registradas"}
+                                No se encontraron compras registradas
                               </p>
                               <p className="text-xs text-slate-400 mt-1 max-w-sm">
                                 {orderSearchQuery || orderStatusFilter !== "all"
                                   ? "Intenta modificar el término de búsqueda o quitar los filtros de estado."
-                                  : orderFilterTab === "purchases"
-                                  ? "Cuando compres productos en la plataforma, aparecerán aquí con su código de guía y rastreo en vivo."
-                                  : "Cuando otros usuarios compren productos de tu negocio, aquí podrás gestionar sus envíos y asignar guías de seguimiento."}
+                                  : "Cuando compres productos en la plataforma, aparecerán aquí con su código de guía y rastreo en vivo."}
                               </p>
                               {(orderSearchQuery || orderStatusFilter !== "all") && (
                                 <button
+                                  type="button"
                                   onClick={() => {
                                     setOrderSearchQuery("");
                                     setOrderStatusFilter("all");
@@ -1883,35 +2390,6 @@ export default function ProfileView({
                                   )}
                                 </div>
                               </div>
-
-                              {/* Buyer metadata (If on Sales tab) */}
-                              {orderFilterTab === "sales" && (
-                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                                  <div className="flex items-center space-x-3">
-                                    <img
-                                      src={
-                                        order.buyerAvatar ||
-                                        "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=400&q=80"
-                                      }
-                                      alt={order.buyerName || "Comprador"}
-                                      className="w-9 h-9 rounded-full object-cover border border-slate-200"
-                                    />
-                                    <div>
-                                      <p className="font-extrabold text-slate-900">
-                                        Cliente: {order.buyerName || "Cliente"}
-                                      </p>
-                                      <p className="text-[11px] text-slate-500">
-                                        {order.buyerUsername ? `@${order.buyerUsername}` : order.buyerEmail || "Cliente registrado"}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex items-center space-x-2 text-slate-600 text-[11px]">
-                                    <MapPin className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                    <span className="font-medium line-clamp-1">{order.shippingAddress}</span>
-                                  </div>
-                                </div>
-                              )}
 
                               {/* Tracking Progress Stepper (4 Steps) */}
                               {!isCancelled && (
@@ -2025,6 +2503,7 @@ export default function ProfileView({
                                         {order.trackingNumber}
                                       </span>
                                       <button
+                                        type="button"
                                         onClick={(e) => handleCopyTrackingNumber(order.trackingNumber!, order.id, e)}
                                         className="p-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 hover:text-slate-900 transition-colors cursor-pointer text-xs flex items-center space-x-1"
                                         title="Copiar número de guía"
@@ -2057,23 +2536,13 @@ export default function ProfileView({
 
                                 <div className="flex flex-wrap sm:flex-col items-stretch sm:items-end gap-2 shrink-0">
                                   <button
+                                    type="button"
                                     onClick={() => setSelectedTrackingOrder(order)}
                                     className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold rounded-xl transition-all shadow-xs flex items-center justify-center space-x-1.5 cursor-pointer"
                                   >
                                     <PackageSearch className="w-3.5 h-3.5 text-amber-400" />
                                     <span>Ver Rastreo en Vivo</span>
                                   </button>
-
-                                  {orderFilterTab === "sales" && (
-                                    <button
-                                      onClick={(e) => openEditTrackingModal(order, e)}
-                                      className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl transition-all shadow-xs flex items-center justify-center space-x-1.5 cursor-pointer"
-                                      id={`btn-manage-tracking-${order.id}`}
-                                    >
-                                      <Edit3 className="w-3.5 h-3.5" />
-                                      <span>Gestionar Guía & Envío</span>
-                                    </button>
-                                  )}
 
                                   {order.trackingUrl && (
                                     <a
@@ -2089,7 +2558,7 @@ export default function ProfileView({
                                 </div>
                               </div>
 
-                              {/* Items Purchased/Sold Details */}
+                              {/* Items Purchased Details */}
                               <div className="space-y-2 pt-1">
                                 <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400">
                                   Artículos en este pedido ({order.items.length})
@@ -2144,7 +2613,7 @@ export default function ProfileView({
                                   )}
                                   <div className="text-right">
                                     <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mr-1.5">
-                                      {orderFilterTab === "purchases" ? "Total Pagado:" : "Ingreso Venta:"}
+                                      Total Pagado:
                                     </span>
                                     <span className="text-sm font-black font-mono text-slate-900">
                                       ${order.total.toFixed(2)}

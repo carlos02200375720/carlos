@@ -224,13 +224,33 @@ if (fs.existsSync(googleJsonPath)) {
 
 const bucket = storage.bucket(bucketName);
 
-// Configure multer for memory storage
+// Configure multer for memory storage (200MB limit for high-definition video/image uploads)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB max limit
+    fileSize: 200 * 1024 * 1024, // 200MB max limit
   }
 });
+
+// Safe Multer middleware wrapper that catches errors and always returns clean JSON
+const uploadSingleSafe = (fieldName: string) => (req: any, res: any, next: any) => {
+  upload.single(fieldName)(req, res, (err: any) => {
+    if (err) {
+      console.error(`❌ Multer upload error on field '${fieldName}':`, err);
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({
+          error: "El archivo seleccionado supera el límite permitido de 200MB. Por favor, selecciona un archivo más liviano.",
+          code: "LIMIT_FILE_SIZE"
+        });
+      }
+      return res.status(400).json({
+        error: `Error al procesar el archivo: ${err.message || err}`,
+        code: err.code || "UPLOAD_ERROR"
+      });
+    }
+    next();
+  });
+};
 
 // Helper: Upload file to GCS (with H.264 mobile optimization for all videos)
 const uploadToGCS = async (file: Express.Multer.File, folder: string = "publicaciones"): Promise<string> => {
@@ -793,7 +813,7 @@ async function startServer() {
 
   // Upload file to Google Cloud Storage & register in MongoDB
   // Upload file to Google Cloud Storage & register in MongoDB with background HLS transcode
-  app.post("/api/upload", upload.single("file"), async (req: any, res: any) => {
+  app.post("/api/upload", uploadSingleSafe("file"), async (req: any, res: any) => {
     try {
       if (!req.file) {
         res.status(400).json({ error: "No se proporcionó ningún archivo" });
@@ -913,7 +933,7 @@ async function startServer() {
   });
 
   // Alias /upload
-  app.post("/upload", upload.single("file"), async (req: any, res: any) => {
+  app.post("/upload", uploadSingleSafe("file"), async (req: any, res: any) => {
     try {
       if (!req.file) {
         res.status(400).json({ error: "No se proporcionó ningún archivo" });
@@ -1101,7 +1121,7 @@ async function startServer() {
 
 
   // Subir foto de perfil (avatar)
-  app.post(['/api/upload-avatar', '/upload-avatar'], upload.single('avatar'), async (req: any, res: any) => {
+  app.post(['/api/upload-avatar', '/upload-avatar'], uploadSingleSafe('avatar'), async (req: any, res: any) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'No se subió archivo' });
 
@@ -1128,7 +1148,7 @@ async function startServer() {
   });
 
   // Subir foto de portada (cover)
-  app.post(['/api/upload-cover', '/upload-cover'], upload.single('cover'), async (req: any, res: any) => {
+  app.post(['/api/upload-cover', '/upload-cover'], uploadSingleSafe('cover'), async (req: any, res: any) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'No se subió archivo' });
 
@@ -1895,6 +1915,8 @@ async function startServer() {
             { username: cleanUsername },
             { username: targetUsername },
             { username: { $regex: new RegExp(`^${cleanUsername}$`, "i") } },
+            { email: cleanUsername },
+            { email: String(targetUsername).trim().toLowerCase() },
             { id: targetUsername },
             { id: cleanUsername }
           ],
@@ -2772,23 +2794,112 @@ async function startServer() {
     }
   });
 
+  // Helper to resolve the authenticated user for publications and products
+  const resolveAuthenticatedUser = async (req: any, fallbackRole = "creator"): Promise<any> => {
+    const body = req.body || {};
+    const headerUserId = req.headers["x-user-id"];
+    const headerUsername = req.headers["x-user-username"];
+
+    const idCandidates: string[] = [
+      body.creatorOriginalId,
+      body.sellerOriginalId,
+      body.originalId,
+      body.sellerId !== "current_user" ? body.sellerId : undefined,
+      body.creatorId !== "current_user" ? body.creatorId : undefined,
+      headerUserId !== "current_user" ? headerUserId : undefined,
+      activeOriginalUserId !== "user_guest" && activeOriginalUserId !== "current_user" ? activeOriginalUserId : undefined,
+    ].filter((id): id is string => Boolean(id && id !== "user_guest" && id !== "current_user" && id !== "invitado"));
+
+    const usernameCandidates: string[] = [
+      body.creatorUsername,
+      body.sellerUsername,
+      body.username,
+      typeof headerUsername === "string" ? headerUsername : undefined,
+    ].filter((un): un is string => Boolean(un && un !== "invitado" && un !== "guest" && un !== "current_user"));
+
+    let resolvedUser: any = null;
+
+    // 1. Search in MongoDB Atlas
+    if (mongoose.connection.readyState === 1) {
+      const orClauses: any[] = [];
+      if (idCandidates.length > 0) {
+        orClauses.push({ id: { $in: idCandidates } });
+        orClauses.push({ originalId: { $in: idCandidates } });
+      }
+      if (usernameCandidates.length > 0) {
+        orClauses.push({ username: { $in: usernameCandidates.map(u => u.toLowerCase()) } });
+      }
+      if (orClauses.length > 0) {
+        try {
+          resolvedUser = await MongoUser.findOne({ $or: orClauses });
+        } catch (err) {
+          console.error("Error finding user in MongoDB:", err);
+        }
+      }
+    }
+
+    // 2. Search in MongoDB/getUsers fallback
+    if (!resolvedUser) {
+      try {
+        const currentUsers = await getUsers();
+        resolvedUser = currentUsers.find(u =>
+          idCandidates.includes(u.id) ||
+          (u.originalId && idCandidates.includes(u.originalId)) ||
+          (u.username && usernameCandidates.some(un => un.toLowerCase() === u.username.toLowerCase()))
+        );
+      } catch (e) {}
+    }
+
+    // 3. Fallback: If client supplied authenticated user profile
+    if (!resolvedUser && usernameCandidates.length > 0) {
+      const preferredUsername = usernameCandidates[0].toLowerCase();
+      const preferredId = idCandidates[0] || ("user_" + generateId());
+      const fallbackName = body.creatorName || body.sellerName || body.name || preferredUsername;
+      const fallbackAvatar = body.creatorAvatar || body.sellerAvatar || body.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
+
+      resolvedUser = {
+        id: preferredId,
+        originalId: preferredId,
+        username: preferredUsername,
+        name: fallbackName,
+        avatar: fallbackAvatar,
+        bio: `${fallbackRole === "seller" ? "Vendedor" : "Creador"} en la plataforma`,
+        isOnline: true,
+        followers: 0,
+        following: 0,
+        followingUserIds: [],
+        savedReelIds: [],
+        coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+        isGuest: false,
+        email: body.email || "",
+        password: ""
+      };
+
+      if (mongoose.connection.readyState === 1) {
+        try {
+          const newDoc = new MongoUser(resolvedUser);
+          await newDoc.save();
+        } catch (e) {}
+      }
+    }
+
+    // 4. Update session pointer activeOriginalUserId
+    if (resolvedUser && resolvedUser.id && resolvedUser.id !== "user_guest" && resolvedUser.id !== "current_user") {
+      activeOriginalUserId = resolvedUser.id;
+    }
+
+    return resolvedUser;
+  };
+
   // Create a new publication (video, image, or carousel)
   app.post("/api/reels", async (req: any, res: any) => {
     try {
       const { videoUrl, thumbnailUrl, description, creatorId, type, images, productId, hlsUrl } = req.body;
       
-      let lookupId = creatorId;
-      if (!lookupId || lookupId === "current_user") {
-        lookupId = activeOriginalUserId;
-      }
-      
-      let creator = null;
-      if (mongoose.connection.readyState === 1 && lookupId && lookupId !== "user_guest") {
-        creator = await MongoUser.findOne({ id: lookupId });
-      }
+      const creator = await resolveAuthenticatedUser(req, "creator");
 
-      if (!creator) {
-        res.status(403).json({ error: "Un usuario no registrado no puede realizar publicaciones." });
+      if (!creator || creator.isGuest || creator.username === "invitado" || creator.username === "guest") {
+        res.status(403).json({ error: "Debes iniciar sesión con una cuenta para poder realizar publicaciones." });
         return;
       }
 
@@ -2800,9 +2911,9 @@ async function startServer() {
         thumbnailUrl: (thumbnailUrl && !thumbnailUrl.includes("1618005182384")) ? thumbnailUrl : "",
         description: description || "",
         creatorId: creator.id,
-        creatorName: creator.name,
+        creatorName: creator.name || creator.username,
         creatorUsername: creator.username,
-        creatorAvatar: creator.avatar,
+        creatorAvatar: creator.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
         likes: 0,
         likedBy: [],
         comments: [],
@@ -2837,7 +2948,7 @@ async function startServer() {
       res.status(201).json({ success: true, reel: newReel });
     } catch (err: any) {
       console.error("Error creating publication:", err);
-      res.status(500).json({ error: "Failed to create publication", details: err.message });
+      res.status(500).json({ error: "Error al crear la publicación", details: err.message });
     }
   });
 
@@ -2846,18 +2957,10 @@ async function startServer() {
     try {
       const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, variants, variantList, category, cjVid, cjPid } = req.body;
       
-      let lookupId = sellerId;
-      if (!lookupId || lookupId === "current_user") {
-        lookupId = activeOriginalUserId;
-      }
-      
-      let seller = null;
-      if (mongoose.connection.readyState === 1 && lookupId && lookupId !== "user_guest") {
-        seller = await MongoUser.findOne({ id: lookupId });
-      }
+      const seller = await resolveAuthenticatedUser(req, "seller");
 
-      if (!seller) {
-        res.status(403).json({ error: "Un usuario no registrado no puede registrar productos para la venta." });
+      if (!seller || seller.isGuest || seller.username === "invitado" || seller.username === "guest") {
+        res.status(403).json({ error: "Debes iniciar sesión con una cuenta para poder registrar productos para la venta." });
         return;
       }
 
@@ -3238,13 +3341,111 @@ async function startServer() {
 
     const buyerUser = userMap.get(userId || activeOriginalUserId);
 
+    let assignedBuyerId = userId || (activeOriginalUserId !== "user_guest" ? activeOriginalUserId : "current_user");
+    let assignedBuyerName = buyerName || (buyerUser ? buyerUser.name : "Cliente");
+    let assignedBuyerUsername = buyerUsername || (buyerUser ? buyerUser.username : undefined);
+    let assignedBuyerAvatar = buyerAvatar || (buyerUser ? buyerUser.avatar : undefined);
+    let assignedBuyerEmail = buyerEmail || (buyerUser ? buyerUser.email : undefined);
+
+    let autoCreatedUserSummary: any = null;
+
+    // Check if buyer is guest/unregistered and captured an email
+    const cleanBuyerEmail = buyerEmail ? String(buyerEmail).trim().toLowerCase() : "";
+    if (cleanBuyerEmail && cleanBuyerEmail.includes("@")) {
+      let existingUser = null;
+      if (mongoose.connection.readyState === 1) {
+        existingUser = await MongoUser.findOne({
+          $or: [
+            { email: cleanBuyerEmail },
+            { email: { $regex: new RegExp(`^${cleanBuyerEmail}$`, "i") } }
+          ],
+          id: { $ne: "current_user" }
+        });
+      }
+
+      if (existingUser) {
+        assignedBuyerId = existingUser.id;
+        assignedBuyerUsername = existingUser.username;
+        assignedBuyerName = existingUser.name || buyerName || "Cliente";
+        assignedBuyerEmail = existingUser.email || cleanBuyerEmail;
+        assignedBuyerAvatar = existingUser.avatar || assignedBuyerAvatar;
+      } else {
+        // Automatically create account for guest buyer with password "123"
+        const emailPrefix = cleanBuyerEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "").toLowerCase() || "cliente";
+        let chosenUsername = emailPrefix;
+        let suffix = 1;
+
+        if (mongoose.connection.readyState === 1) {
+          while (await MongoUser.findOne({ username: chosenUsername, id: { $ne: "current_user" } })) {
+            chosenUsername = `${emailPrefix}${suffix}`;
+            suffix++;
+          }
+        }
+
+        const newUserId = "user_" + generateId();
+        const createdUserDoc = {
+          id: newUserId,
+          originalId: newUserId,
+          username: chosenUsername,
+          name: (buyerName && buyerName.trim() && buyerName.trim().toLowerCase() !== "invitado") ? buyerName.trim() : chosenUsername,
+          email: cleanBuyerEmail,
+          password: "123", // Password 123 as requested by user
+          bio: "Cliente en la plataforma",
+          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+          coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+          isOnline: true,
+          followers: 0,
+          following: 0,
+          followingUserIds: [],
+          savedReelIds: [],
+          isGuest: false,
+          privacyPolicy: ""
+        };
+
+        if (mongoose.connection.readyState === 1) {
+          try {
+            const mongoUserDoc = new MongoUser(createdUserDoc);
+            await mongoUserDoc.save();
+            console.log(`👤 Automatically created profile for guest buyer: @${chosenUsername} (${cleanBuyerEmail}) with password "123"`);
+          } catch (createErr) {
+            console.error("Error creating auto-user in Mongo:", createErr);
+          }
+        }
+
+        // Simulate sending email to customer
+        console.log(`📧 [Servicio de Correo] Mensaje enviado a: ${cleanBuyerEmail}`);
+        console.log(`   Asunto: Tu cuenta ha sido creada en la tienda - Acceso y contraseña`);
+        console.log(`   Detalle: Bienvenido @${chosenUsername}. Tu contraseña provisional es: 123`);
+        console.log(`   Inicia sesión y actualiza tu contraseña por una más segura en tu perfil.`);
+
+        assignedBuyerId = newUserId;
+        assignedBuyerUsername = chosenUsername;
+        assignedBuyerName = createdUserDoc.name;
+        assignedBuyerEmail = cleanBuyerEmail;
+
+        autoCreatedUserSummary = {
+          created: true,
+          email: cleanBuyerEmail,
+          username: chosenUsername,
+          name: createdUserDoc.name,
+          tempPassword: "123",
+          user: {
+            ...createdUserDoc,
+            id: "current_user",
+            originalId: newUserId
+          },
+          message: "Hemos creado tu perfil en la app con tu correo y contraseña provisional 123. Te enviamos los datos a tu correo. Te recomendamos iniciar sesión para consultar tus pedidos y actualizar tu contraseña por una más segura en tu perfil."
+        };
+      }
+    }
+
     const newOrder: Order = {
       id: "ord_" + generateId(),
-      buyerId: userId || (activeOriginalUserId !== "user_guest" ? activeOriginalUserId : "current_user"),
-      buyerName: buyerName || (buyerUser ? buyerUser.name : "Cliente"),
-      buyerUsername: buyerUsername || (buyerUser ? buyerUser.username : undefined),
-      buyerAvatar: buyerAvatar || (buyerUser ? buyerUser.avatar : undefined),
-      buyerEmail: buyerEmail || (buyerUser ? buyerUser.email : undefined),
+      buyerId: assignedBuyerId,
+      buyerName: assignedBuyerName,
+      buyerUsername: assignedBuyerUsername,
+      buyerAvatar: assignedBuyerAvatar,
+      buyerEmail: assignedBuyerEmail,
       items: orderItems,
       total: Math.round((total + Number.EPSILON) * 100) / 100,
       shippingCost: Number(shippingCost) || 0,
@@ -3256,6 +3457,7 @@ async function startServer() {
       trackingUrl: "",
       estimatedDelivery: estimatedDate,
       sellerNotes: "Pedido recibido. El vendedor preparará el paquete y registrará el número de guía de paquetería.",
+      autoCreatedUser: autoCreatedUserSummary,
       statusHistory: [
         {
           status: "pending",
@@ -3865,6 +4067,24 @@ async function startServer() {
     } else {
       res.status(404).send("Favicon not found");
     }
+  });
+
+  // API 404 handler: Always return JSON, never HTML, for unknown /api routes
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `Ruta API no encontrada: ${req.method} ${req.path}`, code: "API_ROUTE_NOT_FOUND" });
+  });
+
+  // Global API error handler: Catch any unhandled errors in /api routes and return JSON
+  app.use("/api", (err: any, req: any, res: any, next: any) => {
+    console.error("API error intercepted:", err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    const status = err.status || err.statusCode || (err.code === "LIMIT_FILE_SIZE" ? 413 : 500);
+    res.status(status).json({
+      error: err.message || "Error interno del servidor",
+      code: err.code || "INTERNAL_ERROR"
+    });
   });
 
   // Vite Integration

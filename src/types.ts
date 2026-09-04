@@ -114,6 +114,16 @@ export interface OrderStatusHistoryItem {
   carrier?: string;
 }
 
+export interface AutoCreatedUserSummary {
+  created: boolean;
+  email: string;
+  username: string;
+  name: string;
+  tempPassword: string;
+  user?: User;
+  message?: string;
+}
+
 export interface Order {
   id: string;
   buyerId?: string;
@@ -133,6 +143,7 @@ export interface Order {
   estimatedDelivery?: string;
   sellerNotes?: string;
   statusHistory?: OrderStatusHistoryItem[];
+  autoCreatedUser?: AutoCreatedUserSummary;
   createdAt: string;
   updatedAt?: string;
 }

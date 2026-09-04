@@ -5,6 +5,7 @@ import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession } from "
 import { WebApp } from "./app/web";
 import { MobileApp } from "./app/mobile";
 import SplashScreen from "./components/SplashScreen";
+import { AuthModal } from "./components/AuthModal";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 
 const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
@@ -417,6 +418,17 @@ export default function App() {
             break;
           }
 
+          case "product_viewed": {
+            if (payload.productId && typeof payload.views === "number") {
+              setProducts((prev) =>
+                prev.map((p) =>
+                  p.id === payload.productId ? { ...p, views: payload.views } : p
+                )
+              );
+            }
+            break;
+          }
+
           case "reel_created": {
             if (payload.reel) {
               setReels((prev) => {
@@ -737,46 +749,85 @@ export default function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: updatedCart }),
     })
-      .then((res) => res.json())
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.success) {
           console.log(`💾 Cart persisted to MongoDB Atlas for user ${userId} (${updatedCart.length} items)`);
         }
       })
-      .catch((err) => console.error("Error saving cart to MongoDB:", err));
+      .catch((err) => console.warn("Notice: Cart stored locally, background sync pending:", err?.message || err));
   };
 
   // Sync persistent shopping cart from MongoDB when user changes or app boots
   useEffect(() => {
+    let isCancelled = false;
     const userId = getCartUserId(currentUser);
     if (!userId) return;
 
-    apiFetch(`/api/cart/${encodeURIComponent(userId)}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && Array.isArray(data.items)) {
-          if (data.items.length > 0) {
-            setCart(data.items);
-            try {
-              localStorage.setItem(`saved_cart_${userId}`, JSON.stringify(data.items));
-            } catch (e) {}
-          } else {
-            // If MongoDB returned 0 items, check if we have local items to sync UP to MongoDB
-            const localKey = `saved_cart_${userId}`;
-            const rawLocal = localStorage.getItem(localKey);
-            if (rawLocal) {
+    // Load from local storage immediately for zero-latency UI
+    try {
+      const localKey = `saved_cart_${userId}`;
+      const rawLocal = localStorage.getItem(localKey);
+      if (rawLocal) {
+        const parsedLocal = JSON.parse(rawLocal);
+        if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+          setCart(parsedLocal);
+        }
+      }
+    } catch (e) {
+      // Ignore localStorage parse errors
+    }
+
+    // Resilient background sync with retry
+    let retryTimer: any = null;
+    const syncRemoteCart = (attemptsLeft: number = 3, delayMs: number = 1000) => {
+      apiFetch(`/api/cart/${encodeURIComponent(userId)}`)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then((data) => {
+          if (isCancelled) return;
+          if (data && Array.isArray(data.items)) {
+            if (data.items.length > 0) {
+              setCart(data.items);
               try {
-                const parsedLocal = JSON.parse(rawLocal);
-                if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
-                  setCart(parsedLocal);
-                  saveCartToMongo(parsedLocal, currentUser);
-                }
+                localStorage.setItem(`saved_cart_${userId}`, JSON.stringify(data.items));
               } catch (e) {}
+            } else {
+              // If MongoDB returned 0 items, check if we have local items to sync UP to MongoDB
+              const localKey = `saved_cart_${userId}`;
+              const rawLocal = localStorage.getItem(localKey);
+              if (rawLocal) {
+                try {
+                  const parsedLocal = JSON.parse(rawLocal);
+                  if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+                    setCart(parsedLocal);
+                    saveCartToMongo(parsedLocal, currentUser);
+                  }
+                } catch (e) {}
+              }
             }
           }
-        }
-      })
-      .catch((err) => console.error("Error loading cart from MongoDB:", err));
+        })
+        .catch((err) => {
+          if (isCancelled) return;
+          if (attemptsLeft > 1) {
+            retryTimer = setTimeout(() => {
+              if (!isCancelled) syncRemoteCart(attemptsLeft - 1, delayMs * 2);
+            }, delayMs);
+          } else {
+            console.info("Using local cart cache:", err?.message || err);
+          }
+        });
+    };
+
+    syncRemoteCart(3, 1000);
+
+    return () => {
+      isCancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [currentUser.id, currentUser.username, currentUser.originalId]);
 
   // Cart operations
@@ -832,7 +883,8 @@ export default function App() {
     address: string,
     shippingCost: number = 0,
     onComplete: (newOrder: Order) => void,
-    itemsToCheckout?: CartItem[]
+    itemsToCheckout?: CartItem[],
+    buyerInfo?: { buyerName?: string; buyerEmail?: string; buyerPhone?: string }
   ) => {
     const userId = getCartUserId(currentUser);
     const checkoutItems = itemsToCheckout && itemsToCheckout.length > 0 ? itemsToCheckout : cart;
@@ -844,15 +896,23 @@ export default function App() {
         items: checkoutItems,
         shippingAddress: address,
         shippingCost: shippingCost,
-        buyerName: currentUser.name,
+        buyerName: buyerInfo?.buyerName || currentUser.name,
         buyerUsername: currentUser.username,
         buyerAvatar: currentUser.avatar,
-        buyerEmail: currentUser.email,
+        buyerEmail: buyerInfo?.buyerEmail || currentUser.email,
+        buyerPhone: buyerInfo?.buyerPhone,
       }),
     })
       .then((res) => res.json())
       .then((data) => {
         if (!data.error) {
+          if (data.autoCreatedUser?.user) {
+            setUsers((prev) => {
+              const existingIdx = prev.findIndex((u) => u.id === data.autoCreatedUser.user.id || u.username === data.autoCreatedUser.username);
+              if (existingIdx >= 0) return prev;
+              return [...prev, data.autoCreatedUser.user];
+            });
+          }
           // If partial checkout, only remove the selected items that were purchased
           setCart((prev) => {
             let updated: CartItem[];
@@ -1317,46 +1377,26 @@ export default function App() {
       )}
 
       {/* Elegant Guest Notification Modal */}
-      {guestInteractionAlert && (
-        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in" id="guest-alert-modal">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-sm w-full shadow-2xl relative overflow-hidden text-center">
-            
-            {/* Ambient amber glow decoration */}
-            <div className="absolute -top-12 -left-12 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
-            <div className="absolute -bottom-12 -right-12 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
-
-            <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-4 border border-amber-500/20">
-              <span className="text-xl">🔒</span>
-            </div>
-
-            <h3 className="text-lg font-bold text-white tracking-tight font-display">Acceso Restringido</h3>
-            <p className="text-slate-400 text-xs mt-2 leading-relaxed">
-              {guestInteractionAlert}
-            </p>
-
-            <div className="mt-6 space-y-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setGuestInteractionAlert(null);
-                  setActiveTab('profile');
-                }}
-                className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center space-x-2 shadow-lg hover:shadow-amber-500/10 transition-all cursor-pointer"
-              >
-                <span>Ir a Registro / Login</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setGuestInteractionAlert(null)}
-                className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-extrabold text-xs rounded-xl flex items-center justify-center space-x-2 transition-all cursor-pointer"
-              >
-                <span>Seguir Explorando</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Forced Registration Auth Modal for Guest Interactions */}
+      <AuthModal
+        isOpen={Boolean(guestInteractionAlert)}
+        actionDescription={guestInteractionAlert || "interactuar con las publicaciones"}
+        onClose={() => setGuestInteractionAlert(null)}
+        onLoginSuccess={(loggedUser) => {
+          setCurrentUser(loggedUser);
+          setIsLoggedIn(true);
+          setUsers((prev) => {
+            const idx = prev.findIndex((u) => u.id === loggedUser.id || u.username === loggedUser.username);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = loggedUser;
+              return next;
+            }
+            return [...prev, loggedUser];
+          });
+          setGuestInteractionAlert(null);
+        }}
+      />
 
     </div>
   );
