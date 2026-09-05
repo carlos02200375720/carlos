@@ -1,7 +1,6 @@
 /**
  * Video Preloader Utility
- * Provides preload strategies for adjacent reels in the feed using preload="auto"
- * and manual buffer warm-up on hidden video components to eliminate scroll lag.
+ * Provides a conservative preload strategy for an adjacent reel in the feed.
  */
 
 class VideoPreloader {
@@ -37,7 +36,7 @@ class VideoPreloader {
         this.warmupVideo.style.display = "none";
       }
 
-      this.warmupVideo.preload = "auto";
+      this.warmupVideo.preload = "metadata";
       if (this.warmupVideo.src !== videoUrl) {
         this.warmupVideo.src = videoUrl;
         this.warmupVideo.load();

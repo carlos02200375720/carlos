@@ -247,6 +247,14 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     return { url: data.url, hlsUrl: data.hlsUrl };
   };
 
+  const uploadFilesSequentially = async (files: File[]) => {
+    const uploaded: { url: string; hlsUrl?: string }[] = [];
+    for (const file of files) {
+      uploaded.push(await uploadFileToGCS(file));
+    }
+    return uploaded;
+  };
+
   // Add custom variant
   const handleAddVariant = () => {
     if (!newVarName.trim() || !newVarValue.trim()) return;
@@ -470,8 +478,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
           }
         }
 
-        // 1. Upload all carousel images in parallel
-        const uploadedImages = await Promise.all(carouselImageFiles.map(file => uploadFileToGCS(file)));
+        // 1. Upload one file at a time to avoid saturating the device and connection
+        const uploadedImages = await uploadFilesSequentially(carouselImageFiles);
         const imageUrls = uploadedImages.map(img => img.url);
 
         // 2. Register publication of type 'carousel'
@@ -526,7 +534,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         }
 
         // 1. Upload new product photos and combine with imported CJ photos
-        const uploadedPhotoObjs = await Promise.all(productPhotoFiles.map(file => uploadFileToGCS(file)));
+        const uploadedPhotoObjs = await uploadFilesSequentially(productPhotoFiles);
         const uploadedPhotoUrls = uploadedPhotoObjs.map(p => p.url);
         const photoUrls = [...importedPhotoUrls, ...uploadedPhotoUrls];
 

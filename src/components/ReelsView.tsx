@@ -41,7 +41,7 @@ export default function ReelsView({
   onGuestInteraction,
 }: ReelsViewProps) {
   const [activeReelIndex, setActiveReelIndex] = useState(0);
-  const [displayCount, setDisplayCount] = useState<number>(() => Math.max(reels.length * 2, 8));
+  const [displayCount, setDisplayCount] = useState<number>(8);
   const [isMuted, setIsMuted] = useState(false);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -106,7 +106,7 @@ export default function ReelsView({
   // Reset or extend displayCount when reels source changes
   useEffect(() => {
     if (reels.length > 0) {
-      setDisplayCount((prev) => Math.max(prev, reels.length * 2, 8));
+      setDisplayCount((prev) => Math.max(prev, 8));
     }
   }, [reels.length]);
 
@@ -237,24 +237,13 @@ export default function ReelsView({
         }
       }
 
-      // 3. Immediately prime future video buffers
-      [index + 1, index + 2].forEach((futureIdx) => {
-        const futureVideo = videoRefs.current[futureIdx];
-        if (futureVideo) {
-          futureVideo.preload = "auto";
-          if (futureVideo.readyState < 2) {
-            try { futureVideo.load(); } catch {}
-          }
-        }
-      });
-
       setActiveReelIndex(index);
       setIsPlaying(true);
     }
 
     // Trigger infinite scroll expansion as we approach the end of the loaded reel batch
     if (index >= displayedReels.length - 2 && reels.length > 0) {
-      setDisplayCount((prev) => prev + Math.max(reels.length, 6));
+      setDisplayCount((prev) => prev + 6);
     }
   };
 
@@ -529,6 +518,7 @@ export default function ReelsView({
         ) : (
           displayedReels.map((reel, index) => {
             const isCurrent = index === activeReelIndex;
+            const shouldRenderMedia = Math.abs(index - activeReelIndex) <= 1;
             const reelProduct = reel.productId ? taggedProductsMap[reel.productId] : null;
             const isLiked = Boolean(
               currentUser && (
@@ -556,7 +546,9 @@ export default function ReelsView({
                     className="relative w-full h-full rounded-none overflow-hidden flex items-center justify-center bg-black"
                   >
                     {/* Media Element: Smart detection by videoUrl & type */}
-                    {(!reel.videoUrl || reel.videoUrl.trim() === "") && (!reel.thumbnailUrl || !reel.thumbnailUrl.endsWith(".mp4")) ? (
+                    {!shouldRenderMedia ? (
+                      <div className="w-full h-full bg-black" aria-hidden="true" />
+                    ) : (!reel.videoUrl || reel.videoUrl.trim() === "") && (!reel.thumbnailUrl || !reel.thumbnailUrl.endsWith(".mp4")) ? (
                       ((reel.images && reel.images.length > 1) || reel.type === "carousel") ? (
                         <div className="w-full h-full flex items-center justify-center bg-black">
                           <ReelCarousel 
