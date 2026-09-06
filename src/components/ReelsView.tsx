@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, memo } from "react";
 import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, VolumeX, Send, X, Play, Bookmark, Trash2, Check, ArrowLeft, Plus, Minus } from "lucide-react";
 import { Reel, Product, Comment, User, CartItem } from "../types";
 import { motion, AnimatePresence } from "motion/react";
@@ -41,7 +41,7 @@ export default function ReelsView({
   onGuestInteraction,
 }: ReelsViewProps) {
   const [activeReelIndex, setActiveReelIndex] = useState(0);
-  const [displayCount, setDisplayCount] = useState<number>(8);
+  const [displayCount, setDisplayCount] = useState<number>(() => (reels.length <= 2 ? Math.max(reels.length * 4, 4) : reels.length));
   const [isMuted, setIsMuted] = useState(false);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -52,7 +52,7 @@ export default function ReelsView({
   const [copiedLink, setCopiedLink] = useState(false);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [carouselIndices, setCarouselIndices] = useState<{ [key: string]: number }>({});
-  const [mediaAspectRatios, setMediaAspectRatios] = useState<{ [key: string]: 'vertical' | 'horizontal_or_square' }>({});
+  const [mediaAspectRatios, setMediaAspectRatios] = useState<{ [key: string]: 'vertical' | 'square' | 'horizontal' | 'horizontal_or_square' }>({});
 
   // Listen for user interaction to allow unmuting seamlessly according to browser policy
   useEffect(() => {
@@ -67,7 +67,7 @@ export default function ReelsView({
     };
   }, []);
 
-  // Cleanup all videos on unmount to prevent ghost background audio
+  // Cleanup all videos and release hardware decoders on unmount
   useEffect(() => {
     return () => {
       Object.keys(videoRefs.current).forEach((key) => {
@@ -75,12 +75,34 @@ export default function ReelsView({
         if (video) {
           try {
             video.pause();
-            video.muted = true;
+            video.removeAttribute("src");
+            video.load();
           } catch {}
         }
       });
+      videoRefs.current = {};
     };
   }, []);
+
+  // Helper to safely play active video with fallback to muted if autoplay audio is blocked
+  const playVideoSafely = useCallback((video: HTMLVideoElement) => {
+    if (!isPlaying) {
+      video.pause();
+      return;
+    }
+    video.muted = isMuted;
+    video.volume = isMuted ? 0 : 1.0;
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        if (err?.name === "AbortError" || !isPlaying) return;
+        if (err?.name === "NotAllowedError") {
+          video.muted = true;
+          video.play().catch(() => {});
+        }
+      });
+    }
+  }, [isMuted, isPlaying]);
 
   // Pause playback when browser tab or app window is hidden/minimized
   useEffect(() => {
@@ -101,12 +123,12 @@ export default function ReelsView({
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeReelIndex, isPlaying]);
+  }, [activeReelIndex, isPlaying, playVideoSafely]);
 
   // Reset or extend displayCount when reels source changes
   useEffect(() => {
     if (reels.length > 0) {
-      setDisplayCount((prev) => Math.max(prev, 8));
+      setDisplayCount((prev) => (reels.length <= 2 ? Math.max(reels.length * 4, 4) : Math.max(prev, reels.length)));
     }
   }, [reels.length]);
 
@@ -166,40 +188,20 @@ export default function ReelsView({
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
 
-  const playVideoSafely = (video: HTMLVideoElement) => {
-    video.muted = isMuted;
-    video.volume = isMuted ? 0 : 1.0;
-    const playPromise = video.play();
-    if (playPromise !== undefined) {
-      playPromise.catch(() => {
-        // If autoplay with sound is blocked by browser policy before user interaction, fallback to muted
-        video.muted = true;
-        video.play().catch(() => {});
-      });
+  const handleRegisterRef = useCallback((idx: number, el: HTMLVideoElement | null) => {
+    if (!el) {
+      delete videoRefs.current[idx];
+    } else {
+      videoRefs.current[idx] = el;
     }
-  };
+  }, []);
 
-  // Play active video smoothly, pause non-active videos without restarting or resetting buffers
-  useEffect(() => {
-    Object.keys(videoRefs.current).forEach((key) => {
-      const idx = Number(key);
-      const video = videoRefs.current[idx];
-      if (video) {
-        if (idx === activeReelIndex) {
-          video.muted = isMuted;
-          video.volume = isMuted ? 0 : 1.0;
-          if (isPlaying) {
-            playVideoSafely(video);
-          } else {
-            video.pause();
-          }
-        } else {
-          video.pause();
-          video.muted = true;
-        }
-      }
+  const handleAspectRatioDetected = useCallback((reelId: string, ratio: 'vertical' | 'square' | 'horizontal' | 'horizontal_or_square') => {
+    setMediaAspectRatios((prev) => {
+      if (prev[reelId] === ratio) return prev;
+      return { ...prev, [reelId]: ratio };
     });
-  }, [activeReelIndex, isPlaying, isMuted]);
+  }, []);
 
   // Handle scroll detection for snap scroll & continuous infinite expansion with INSTANT response
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -209,12 +211,21 @@ export default function ReelsView({
     if (!childHeight) return;
     const index = Math.round(scrollPos / childHeight);
     if (index !== activeReelIndex && index >= 0 && index < displayedReels.length) {
-      // 1. Immediately pause ALL other videos to ensure no ghost audio in the background
+      // 1. Immediately pause previous active video
+      const prevVideo = videoRefs.current[activeReelIndex];
+      if (prevVideo) {
+        try {
+          prevVideo.pause();
+          prevVideo.muted = true;
+        } catch {}
+      }
+
+      // Also ensure any non-target active videos in the small 3-item window are paused
       Object.keys(videoRefs.current).forEach((key) => {
         const k = Number(key);
         if (k !== index) {
           const v = videoRefs.current[k];
-          if (v) {
+          if (v && !v.paused) {
             try {
               v.pause();
               v.muted = true;
@@ -230,9 +241,12 @@ export default function ReelsView({
         nextVideo.volume = isMuted ? 0 : 1.0;
         const p = nextVideo.play();
         if (p !== undefined) {
-          p.catch(() => {
-            nextVideo.muted = true;
-            nextVideo.play().catch(() => {});
+          p.catch((err) => {
+            if (err?.name === "AbortError") return;
+            if (err?.name === "NotAllowedError") {
+              nextVideo.muted = true;
+              nextVideo.play().catch(() => {});
+            }
           });
         }
       }
@@ -243,7 +257,7 @@ export default function ReelsView({
 
     // Trigger infinite scroll expansion as we approach the end of the loaded reel batch
     if (index >= displayedReels.length - 2 && reels.length > 0) {
-      setDisplayCount((prev) => prev + 6);
+      setDisplayCount((prev) => prev + Math.min(reels.length, 10));
     }
   };
 
@@ -267,29 +281,50 @@ export default function ReelsView({
   const handleVideoClick = (e: React.MouseEvent, index: number) => {
     e.stopPropagation();
     const video = videoRefs.current[index];
-    if (video) {
-      if (isPlaying) {
-        video.pause();
-        setIsPlaying(false);
-      } else {
-        // When resuming, ensure all other videos are paused
-        Object.keys(videoRefs.current).forEach((key) => {
-          const k = Number(key);
-          if (k !== index) {
-            const other = videoRefs.current[k];
-            if (other) {
-              try {
-                other.pause();
-                other.muted = true;
-              } catch {}
-            }
+    if (isPlaying) {
+      if (video) {
+        try {
+          video.pause();
+        } catch {}
+      }
+      Object.keys(videoRefs.current).forEach((key) => {
+        const other = videoRefs.current[Number(key)];
+        if (other) {
+          try {
+            other.pause();
+          } catch {}
+        }
+      });
+      setIsPlaying(false);
+    } else {
+      // When resuming, ensure all other videos are paused
+      Object.keys(videoRefs.current).forEach((key) => {
+        const k = Number(key);
+        if (k !== index) {
+          const other = videoRefs.current[k];
+          if (other) {
+            try {
+              other.pause();
+              other.muted = true;
+            } catch {}
           }
-        });
+        }
+      });
+      if (video) {
         video.muted = isMuted;
         video.volume = isMuted ? 0 : 1.0;
-        video.play().catch(() => {});
-        setIsPlaying(true);
+        const p = video.play();
+        if (p !== undefined) {
+          p.catch((err) => {
+            if (err?.name === "AbortError") return;
+            if (err?.name === "NotAllowedError") {
+              video.muted = true;
+              video.play().catch(() => {});
+            }
+          });
+        }
       }
+      setIsPlaying(true);
     }
   };
 
@@ -518,7 +553,6 @@ export default function ReelsView({
         ) : (
           displayedReels.map((reel, index) => {
             const isCurrent = index === activeReelIndex;
-            const shouldRenderMedia = Math.abs(index - activeReelIndex) <= 1;
             const reelProduct = reel.productId ? taggedProductsMap[reel.productId] : null;
             const isLiked = Boolean(
               currentUser && (
@@ -530,7 +564,7 @@ export default function ReelsView({
             return (
               <div
                 key={`${reel.id}_${index}`}
-                className="w-full shrink-0 snap-start snap-always relative flex items-center justify-center bg-slate-950 overflow-hidden py-0 px-0"
+                className="w-full shrink-0 snap-start snap-always relative flex items-center justify-center bg-slate-950 overflow-hidden py-0 md:py-1 lg:py-1.5 px-0 md:px-3 lg:px-4"
                 style={{
                   height: containerHeight > 0 ? `${containerHeight}px` : "100%",
                   minHeight: containerHeight > 0 ? `${containerHeight}px` : "100%",
@@ -539,16 +573,33 @@ export default function ReelsView({
                   scrollSnapStop: "always",
                 }}
               >
-                {/* Full-Width Publication Container */}
+                {/* Publication Container */}
                 <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-                  {/* Publication Frame: 100% width and full viewport height */}
-                  <div
-                    className="relative w-full h-full rounded-none overflow-hidden flex items-center justify-center bg-black"
-                  >
+                  {/* Desktop Layout Wrapper: Holds the Video Frame and the Lateral Interaction Bar side-by-side */}
+                  <div className="relative flex items-end justify-center md:gap-3.5 lg:gap-5 w-full md:w-auto h-full md:max-h-[920px] lg:max-h-[980px] xl:max-h-[1050px] 2xl:max-h-[1140px] my-auto">
+                    {/* Publication Frame: Full width on mobile, expanded vertical card frame on desktop */}
+                    <div
+                      className="relative w-full h-full md:w-auto md:aspect-[9/16] md:h-full md:max-w-[520px] lg:max-w-[580px] xl:max-w-[640px] 2xl:max-w-[700px] md:rounded-2xl md:border md:border-white/15 md:shadow-[0_16px_50px_rgba(0,0,0,0.9)] overflow-hidden flex items-center justify-center bg-black select-none shrink-0"
+                      id={`reel-card-${reel.id}`}
+                    >
+                    {/* Desktop Sound Mute Button inside Frame */}
+                    <div className="hidden md:flex absolute top-3.5 right-3.5 z-30 items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={handleToggleMute}
+                        className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md hover:bg-black/70 active:scale-95 text-white flex items-center justify-center transition-all border border-white/20 cursor-pointer shadow-lg"
+                        title={isMuted ? "Activar sonido" : "Silenciar video"}
+                        id={`desktop-frame-mute-btn-${reel.id}`}
+                      >
+                        {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                      </button>
+                    </div>
+
+                    {/* Bottom gradient protector for readability */}
+                    <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none z-10" />
+
                     {/* Media Element: Smart detection by videoUrl & type */}
-                    {!shouldRenderMedia ? (
-                      <div className="w-full h-full bg-black" aria-hidden="true" />
-                    ) : (!reel.videoUrl || reel.videoUrl.trim() === "") && (!reel.thumbnailUrl || !reel.thumbnailUrl.endsWith(".mp4")) ? (
+                    {(!reel.videoUrl || reel.videoUrl.trim() === "") && (!reel.thumbnailUrl || !reel.thumbnailUrl.endsWith(".mp4")) ? (
                       ((reel.images && reel.images.length > 1) || reel.type === "carousel") ? (
                         <div className="w-full h-full flex items-center justify-center bg-black">
                           <ReelCarousel 
@@ -572,16 +623,25 @@ export default function ReelsView({
                                 onClick={() => setIsPlaying(!isPlaying)}
                                 onDoubleClick={() => handleDoubleTap(reel.id)}
                                 onLoad={(e) => {
-                                  const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.05;
+                                  const img = e.currentTarget;
+                                  const ratio = img.naturalWidth / img.naturalHeight;
+                                  let detected: 'vertical' | 'square' | 'horizontal' = 'vertical';
+                                  if (ratio > 1.15) {
+                                    detected = 'horizontal';
+                                  } else if (ratio >= 0.85 && ratio <= 1.15) {
+                                    detected = 'square';
+                                  } else {
+                                    detected = 'vertical';
+                                  }
                                   setMediaAspectRatios((prev) => ({
                                     ...prev,
-                                    [reel.id]: isVert ? "vertical" : "horizontal_or_square",
+                                    [reel.id]: detected,
                                   }));
                                 }}
-                                className={`w-full h-full cursor-pointer select-none block touch-auto ${
-                                  mediaAspectRatios[reel.id] === "horizontal_or_square"
-                                    ? "object-contain"
-                                    : "object-cover"
+                                className={`w-full h-full cursor-pointer select-none block touch-auto object-center ${
+                                  (mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id])
+                                    ? "object-cover md:object-contain"
+                                    : "object-contain"
                                 }`}
                                 style={{ touchAction: "pan-y" }}
                                 referrerPolicy="no-referrer"
@@ -596,54 +656,45 @@ export default function ReelsView({
                       })()
                     ) : (
                       <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
-                        <video
-                          ref={(el) => {
-                            if (!el && videoRefs.current[index]) {
-                              try {
-                                videoRefs.current[index]?.pause();
-                                videoRefs.current[index]!.muted = true;
-                              } catch {}
-                            }
-                            videoRefs.current[index] = el;
-                          }}
-                          src={(() => {
-                            const rawVid = reel.videoUrl || (reel.thumbnailUrl?.endsWith(".mp4") ? reel.thumbnailUrl : "");
-                            return rawVid && rawVid.trim().length > 0 ? rawVid.trim() : undefined;
-                          })()}
-                          poster={
-                            reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".mp4")
-                              ? reel.thumbnailUrl
-                              : undefined
-                          }
-                          playsInline
-                          loop
-                          muted={!isCurrent || isMuted}
-                          autoPlay={false}
-                          preload={isCurrent ? "auto" : Math.abs(index - activeReelIndex) <= 1 ? "metadata" : "none"}
-                          className={`w-full h-full block relative z-10 select-none cursor-pointer ${
-                            mediaAspectRatios[reel.id] === "horizontal_or_square" ? "object-contain" : "object-cover"
-                          }`}
-                          style={{ touchAction: "pan-y" }}
-                          onClick={(e) => handleVideoClick(e, index)}
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            handleDoubleTap(reel.id);
-                          }}
-                          onLoadedMetadata={(e) => {
-                            const video = e.currentTarget;
-                            if (video.videoHeight && video.videoWidth) {
-                              const isVert = video.videoHeight > video.videoWidth * 1.08;
-                              const aspectVal = isVert ? "vertical" : "horizontal_or_square";
-                              setMediaAspectRatios((prev) => {
-                                if (prev[reel.id] === aspectVal) return prev;
-                                return {
-                                  ...prev,
-                                  [reel.id]: aspectVal,
-                                };
-                              });
-                            }
-                          }}
-                        />
+                        {/* Virtualized Video Slot: Mount video player for current reel and nearby buffer (window <= 2) */}
+                        {Math.abs(index - activeReelIndex) <= 2 ? (
+                          <ReelVideoItem
+                            key={`${reel.id}_${index}`}
+                            reel={reel}
+                            index={index}
+                            isCurrent={isCurrent}
+                            isPlaying={isPlaying}
+                            isMuted={isMuted}
+                            mediaAspectRatio={mediaAspectRatios[reel.id]}
+                            onVideoClick={handleVideoClick}
+                            onDoubleTap={handleDoubleTap}
+                            onAspectRatioDetected={handleAspectRatioDetected}
+                            onRegisterRef={handleRegisterRef}
+                          />
+                        ) : (
+                          /* Faraway placeholder: Lightweight image poster with ZERO video decoder overhead */
+                          <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
+                            {reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".mp4") && !reel.thumbnailUrl.includes("1618005182384") ? (
+                              <img
+                                src={reel.thumbnailUrl}
+                                alt={reel.description || ""}
+                                draggable={false}
+                                className={`w-full h-full block relative z-10 select-none object-center ${
+                                  (mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id])
+                                    ? "object-cover md:object-contain"
+                                    : "object-contain"
+                                }`}
+                                referrerPolicy="no-referrer"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-500">
+                                <Play className="w-12 h-12 text-white/20 mb-2 fill-white/10" />
+                                <span className="text-xs text-white/30 font-medium">Video</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -672,7 +723,7 @@ export default function ReelsView({
 
 
                     {/* Bottom Info Banner (Creator, Description, Tagged Product) */}
-                    <div className="absolute left-4 sm:left-6 bottom-4 sm:bottom-6 right-20 sm:right-24 z-20 flex flex-col space-y-3 max-w-xl">
+                    <div className="absolute left-4 sm:left-6 bottom-4 sm:bottom-6 right-20 sm:right-24 md:right-6 lg:right-8 z-20 flex flex-col space-y-3 max-w-xl">
                       {/* Creator Info and Description */}
                       <div
                         className="text-white bg-transparent p-3 rounded-xl drop-shadow-md"
@@ -787,11 +838,147 @@ export default function ReelsView({
                         isActive={isCurrent}
                       />
                     )}
-                  </div>
 
-                  {/* Lateral Interaction Bar (Likes, Comments, Saves, Shares, Avatar) */}
+                    {/* Lateral Interaction Bar on Mobile (inside Frame) */}
+                    <div
+                      className="md:hidden absolute right-2.5 sm:right-3.5 bottom-6 sm:bottom-8 z-20 flex flex-col items-center space-y-3.5 select-none p-0 ml-0"
+                      id={`mobile-interaction-bar-${reel.id}`}
+                    >
+                      {/* Creator Avatar with follow button */}
+                      <div className="flex flex-col items-center">
+                        <button
+                          onClick={() => {
+                            const target = (reel.creatorUsername && reel.creatorUsername !== "invitado")
+                              ? reel.creatorUsername
+                              : (reel.creatorId && reel.creatorId !== "current_user" ? reel.creatorId : (reel.creatorName || "current_user"));
+                            onCreatorClick(target);
+                          }}
+                          className="relative rounded-full transform hover:scale-110 transition-transform cursor-pointer drop-shadow-sm"
+                          id={`mobile-creator-avatar-btn-${reel.id}`}
+                        >
+                          <img
+                            src={reel.creatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
+                            alt={reel.creatorName}
+                            referrerPolicy="no-referrer"
+                            className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover"
+                          />
+                        </button>
+                      </div>
+
+                      {/* Likes Button */}
+                      <div className="flex flex-col items-center">
+                        <button
+                          onClick={() => {
+                            if (isGuestUser) {
+                              onGuestInteraction("dar me gusta");
+                            } else {
+                              onLikeReel(reel.id);
+                            }
+                          }}
+                          className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${
+                            isLiked
+                              ? "text-rose-500"
+                              : "text-white hover:text-rose-400"
+                          }`}
+                          id={`mobile-like-btn-${reel.id}`}
+                        >
+                          <Heart
+                            strokeWidth={2.2}
+                            className={`w-8 h-7 sm:w-9 sm:h-8 scale-x-110 ${
+                              isLiked
+                                ? "fill-rose-500 text-rose-500 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                                : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                            }`}
+                          />
+                        </button>
+                        <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                          {reel.likes}
+                        </span>
+                      </div>
+
+                      {/* Comments Button */}
+                      <div className="flex flex-col items-center">
+                        <button
+                          onClick={() => {
+                            if (isGuestUser) {
+                              onGuestInteraction("comentar");
+                            } else {
+                              setShowComments(reel.id);
+                            }
+                          }}
+                          className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center text-white hover:text-amber-400 hover:scale-115 active:scale-95 transition-all cursor-pointer"
+                          id={`mobile-comment-btn-${reel.id}`}
+                        >
+                          <MessageCircle
+                            strokeWidth={2.2}
+                            className="w-8 h-7 sm:w-9 sm:h-8 scale-x-110 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                          />
+                        </button>
+                        <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                          {reel.comments.length}
+                        </span>
+                      </div>
+
+                      {/* Save (Bookmark) Button */}
+                      <div className="flex flex-col items-center">
+                        <button
+                          onClick={() => {
+                            if (isGuestUser) {
+                              onGuestInteraction("guardar publicaciones");
+                            } else {
+                              onToggleSaveReel(reel.id);
+                            }
+                          }}
+                          className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${
+                            savedReelIds.includes(reel.id)
+                              ? "text-amber-400"
+                              : "text-white hover:text-amber-300"
+                          }`}
+                          id={`mobile-save-btn-${reel.id}`}
+                        >
+                          <Bookmark
+                            strokeWidth={2.2}
+                            className={`w-8 h-7 sm:w-9 sm:h-8 scale-x-110 ${
+                              savedReelIds.includes(reel.id)
+                                ? "fill-amber-400 text-amber-400 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                                : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                            }`}
+                          />
+                        </button>
+                        <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                          {reel.saves ?? 0}
+                        </span>
+                      </div>
+
+                      {/* Share Button */}
+                      <div className="flex flex-col items-center">
+                        <button
+                          onClick={() => {
+                            if (isGuestUser) {
+                              onGuestInteraction("compartir");
+                            } else {
+                              handleShare(reel.id);
+                            }
+                          }}
+                          className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center text-white hover:text-cyan-400 hover:scale-115 active:scale-95 transition-all cursor-pointer"
+                          id={`mobile-share-btn-${reel.id}`}
+                        >
+                          <Share2
+                            strokeWidth={2.2}
+                            className="w-8 h-7 sm:w-9 sm:h-8 scale-x-110 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                          />
+                        </button>
+                        <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                          {reel.shares}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* End of Publication Frame */}
+
+                  {/* Lateral Interaction Bar on Desktop Web: OUTSIDE and on the right side of the video */}
                   <div
-                    className="absolute right-3.5 sm:right-6 bottom-6 sm:bottom-8 z-20 flex flex-col items-center space-y-3.5 select-none p-0 ml-0 -mr-[5px]"
+                    className="hidden md:flex flex-col items-center justify-end pb-3 lg:pb-5 space-y-4 lg:space-y-4.5 select-none shrink-0 z-20"
                     id={`interaction-bar-${reel.id}`}
                   >
                     {/* Creator Avatar with follow button */}
@@ -803,14 +990,15 @@ export default function ReelsView({
                             : (reel.creatorId && reel.creatorId !== "current_user" ? reel.creatorId : (reel.creatorName || "current_user"));
                           onCreatorClick(target);
                         }}
-                        className="relative rounded-full transform hover:scale-110 transition-transform cursor-pointer drop-shadow-sm"
+                        className="relative rounded-full transform hover:scale-110 active:scale-95 transition-transform cursor-pointer shadow-lg"
                         id={`creator-avatar-btn-${reel.id}`}
+                        title={reel.creatorName}
                       >
                         <img
                           src={reel.creatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                           alt={reel.creatorName}
                           referrerPolicy="no-referrer"
-                          className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover"
+                          className="w-12 h-12 rounded-full object-cover border-2 border-white/25 hover:border-amber-400 transition-colors shadow-md"
                         />
                       </button>
                     </div>
@@ -825,23 +1013,24 @@ export default function ReelsView({
                             onLikeReel(reel.id);
                           }
                         }}
-                        className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${
+                        className={`w-12 h-12 rounded-full flex items-center justify-center bg-slate-900/80 hover:bg-slate-800/90 active:scale-90 border border-white/15 backdrop-blur-md shadow-lg transition-all cursor-pointer ${
                           isLiked
                             ? "text-rose-500"
                             : "text-white hover:text-rose-400"
                         }`}
                         id={`like-btn-${reel.id}`}
+                        title="Me gusta"
                       >
                         <Heart
                           strokeWidth={2.2}
-                          className={`w-8 h-7 sm:w-9 sm:h-8 scale-x-110 ${
+                          className={`w-6 h-6 ${
                             isLiked
-                              ? "fill-rose-500 text-rose-500 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
-                              : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                              ? "fill-rose-500 text-rose-500"
+                              : "fill-white text-white"
                           }`}
                         />
                       </button>
-                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                      <span className="text-white/90 text-xs font-bold mt-1 drop-shadow-sm">
                         {reel.likes}
                       </span>
                     </div>
@@ -856,15 +1045,16 @@ export default function ReelsView({
                             setShowComments(reel.id);
                           }
                         }}
-                        className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center text-white hover:text-amber-400 hover:scale-115 active:scale-95 transition-all cursor-pointer"
+                        className="w-12 h-12 rounded-full flex items-center justify-center bg-slate-900/80 hover:bg-slate-800/90 active:scale-90 border border-white/15 backdrop-blur-md shadow-lg text-white hover:text-amber-400 transition-all cursor-pointer"
                         id={`comment-btn-${reel.id}`}
+                        title="Comentarios"
                       >
                         <MessageCircle
                           strokeWidth={2.2}
-                          className="w-8 h-7 sm:w-9 sm:h-8 scale-x-110 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                          className="w-6 h-6 fill-white text-white"
                         />
                       </button>
-                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                      <span className="text-white/90 text-xs font-bold mt-1 drop-shadow-sm">
                         {reel.comments.length}
                       </span>
                     </div>
@@ -879,23 +1069,24 @@ export default function ReelsView({
                             onToggleSaveReel(reel.id);
                           }
                         }}
-                        className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${
+                        className={`w-12 h-12 rounded-full flex items-center justify-center bg-slate-900/80 hover:bg-slate-800/90 active:scale-90 border border-white/15 backdrop-blur-md shadow-lg transition-all cursor-pointer ${
                           savedReelIds.includes(reel.id)
                             ? "text-amber-400"
                             : "text-white hover:text-amber-300"
                         }`}
                         id={`save-btn-${reel.id}`}
+                        title="Guardar"
                       >
                         <Bookmark
                           strokeWidth={2.2}
-                          className={`w-8 h-7 sm:w-9 sm:h-8 scale-x-110 ${
+                          className={`w-6 h-6 ${
                             savedReelIds.includes(reel.id)
-                              ? "fill-amber-400 text-amber-400 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
-                              : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                              ? "fill-amber-400 text-amber-400"
+                              : "fill-white text-white"
                           }`}
                         />
                       </button>
-                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                      <span className="text-white/90 text-xs font-bold mt-1 drop-shadow-sm">
                         {reel.saves ?? 0}
                       </span>
                     </div>
@@ -910,20 +1101,24 @@ export default function ReelsView({
                             handleShare(reel.id);
                           }
                         }}
-                        className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center text-white hover:text-cyan-400 hover:scale-115 active:scale-95 transition-all cursor-pointer"
+                        className="w-12 h-12 rounded-full flex items-center justify-center bg-slate-900/80 hover:bg-slate-800/90 active:scale-90 border border-white/15 backdrop-blur-md shadow-lg text-white hover:text-cyan-400 transition-all cursor-pointer"
                         id={`share-btn-${reel.id}`}
+                        title="Compartir"
                       >
                         <Share2
                           strokeWidth={2.2}
-                          className="w-8 h-7 sm:w-9 sm:h-8 scale-x-110 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                          className="w-6 h-6 fill-white text-white"
                         />
                       </button>
-                      <span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                      <span className="text-white/90 text-xs font-bold mt-1 drop-shadow-sm">
                         {reel.shares}
                       </span>
                     </div>
                   </div>
                 </div>
+                {/* End of Desktop Layout Wrapper */}
+              </div>
+              {/* End of Publication Container */}
             </div>
           );
         })
@@ -975,8 +1170,8 @@ export default function ReelsView({
                 ) : (
                   reels
                     .find((r) => r.id === showComments)
-                    ?.comments.map((comm) => (
-                      <div key={comm.id} className="flex space-x-3 items-start">
+                    ?.comments.map((comm, cIdx) => (
+                      <div key={`${comm.id || 'comment'}-${cIdx}`} className="flex space-x-3 items-start">
                         <img
                           src={comm.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                           alt={comm.username}
@@ -1436,8 +1631,10 @@ function ReelCarousel({
               const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.05;
               setSlideAspectRatios((prev) => ({ ...prev, [idx]: isVert }));
             }}
-            className={`w-full h-full pointer-events-none select-none block ${
-              slideAspectRatios[idx] ? "object-cover" : "object-contain"
+            className={`w-full h-full pointer-events-none select-none block object-center ${
+              slideAspectRatios[idx] !== false
+                ? "object-cover md:object-contain"
+                : "object-contain"
             }`}
             style={{ touchAction: "pan-x pan-y" }}
             referrerPolicy="no-referrer"
@@ -1447,3 +1644,127 @@ function ReelCarousel({
     </div>
   );
 }
+
+interface ReelVideoItemProps {
+  reel: Reel;
+  index: number;
+  isCurrent: boolean;
+  isPlaying: boolean;
+  isMuted: boolean;
+  mediaAspectRatio?: 'vertical' | 'square' | 'horizontal' | 'horizontal_or_square';
+  onVideoClick: (e: React.MouseEvent, index: number) => void;
+  onDoubleTap: (reelId: string) => void;
+  onAspectRatioDetected: (reelId: string, ratio: 'vertical' | 'square' | 'horizontal' | 'horizontal_or_square') => void;
+  onRegisterRef: (index: number, el: HTMLVideoElement | null) => void;
+}
+
+const ReelVideoItem = memo(function ReelVideoItem({
+  reel,
+  index,
+  isCurrent,
+  isPlaying,
+  isMuted,
+  mediaAspectRatio,
+  onVideoClick,
+  onDoubleTap,
+  onAspectRatioDetected,
+  onRegisterRef,
+}: ReelVideoItemProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
+
+  // Play or pause strictly based on whether this reel is in focus (isCurrent) and isPlaying
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isCurrent && isPlaying) {
+      video.muted = isMuted;
+      video.volume = isMuted ? 0 : 1.0;
+      const p = video.play();
+      if (p !== undefined) {
+        p.catch((err) => {
+          if (err?.name === "AbortError" || !isPlayingRef.current || !isCurrent) return;
+          if (err?.name === "NotAllowedError") {
+            video.muted = true;
+            video.play().catch(() => {});
+          }
+        });
+      }
+    } else {
+      video.pause();
+      if (!isCurrent) {
+        video.muted = true;
+      }
+    }
+  }, [isCurrent, isPlaying, isMuted]);
+
+  // Safely release hardware decoder when THIS component unmounts from the DOM
+  useEffect(() => {
+    return () => {
+      const video = videoRef.current;
+      if (video) {
+        try {
+          video.pause();
+          video.muted = true;
+          video.removeAttribute("src");
+          video.load(); // Vital: immediately releases hardware decoder context in browser/OS
+        } catch {}
+      }
+      onRegisterRef(index, null);
+    };
+  }, [index, onRegisterRef]);
+
+  const rawVid = reel.videoUrl || (reel.thumbnailUrl?.endsWith(".mp4") ? reel.thumbnailUrl : "");
+  const videoSrc = rawVid && rawVid.trim().length > 0 ? rawVid.trim() : undefined;
+  const posterUrl = reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".mp4")
+    ? reel.thumbnailUrl
+    : undefined;
+
+  const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = e.currentTarget;
+    if (video.videoHeight && video.videoWidth) {
+      const ratio = video.videoWidth / video.videoHeight;
+      let detected: 'vertical' | 'square' | 'horizontal' = 'vertical';
+      if (ratio > 1.15) {
+        detected = 'horizontal';
+      } else if (ratio >= 0.85 && ratio <= 1.15) {
+        detected = 'square';
+      } else {
+        detected = 'vertical';
+      }
+      onAspectRatioDetected(reel.id, detected);
+    }
+  };
+
+  return (
+    <video
+      ref={(el) => {
+        videoRef.current = el;
+        if (el) {
+          onRegisterRef(index, el);
+        }
+      }}
+      src={videoSrc}
+      poster={posterUrl}
+      playsInline
+      loop
+      muted={isMuted}
+      preload={isCurrent ? "auto" : "metadata"}
+      className={`w-full h-full block relative z-10 select-none cursor-pointer object-center ${
+        (mediaAspectRatio === 'vertical' || !mediaAspectRatio)
+          ? "object-cover md:object-contain"
+          : "object-contain"
+      }`}
+      style={{ touchAction: "pan-y" }}
+      onClick={(e) => onVideoClick(e, index)}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onDoubleTap(reel.id);
+      }}
+      onLoadedMetadata={handleLoadedMetadata}
+    />
+  );
+});
+

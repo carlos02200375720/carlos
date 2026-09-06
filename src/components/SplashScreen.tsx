@@ -118,6 +118,17 @@ export default function SplashScreen({
                     <Server className="w-3.5 h-3.5 text-purple-400 animate-spin" style={{ animationDuration: "3s" }} />
                     <span>{statusMessage}</span>
                   </div>
+
+                  {/* Manual entry button if taking more than a moment */}
+                  {onContinueAnyway && (
+                    <button
+                      onClick={onContinueAnyway}
+                      className="mt-4 text-[11px] text-white/50 hover:text-white/90 underline transition-colors cursor-pointer py-1 px-3 rounded-lg hover:bg-white/5"
+                      id="splash-quick-enter-btn"
+                    >
+                      Omitir y entrar directamente
+                    </button>
+                  )}
                 </>
               ) : (
                 <div className="flex flex-col items-center space-y-3 w-full animate-fadeIn">

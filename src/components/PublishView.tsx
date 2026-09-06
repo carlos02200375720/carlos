@@ -128,13 +128,22 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
       video.playsInline = true;
       // @ts-ignore
       video.webkitPlaysInline = true;
-      video.src = URL.createObjectURL(videoFile);
+      const objectUrl = URL.createObjectURL(videoFile);
+      video.src = objectUrl;
 
       let handled = false;
       const cleanup = () => {
+        if (handled) return;
         handled = true;
         clearTimeout(timer);
-        URL.revokeObjectURL(video.src);
+        try {
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+        } catch {}
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {}
       };
 
       const timer = setTimeout(() => {

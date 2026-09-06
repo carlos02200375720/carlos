@@ -6,6 +6,7 @@ import ShopView from "../../components/ShopView";
 import SocialPanel from "../../components/SocialPanel";
 import ProfileView from "../../components/ProfileView";
 import { motion, AnimatePresence } from "motion/react";
+import { safeStorage } from "../../utils/safeStorage";
 
 export interface WebAppProps {
   activeTab: 'reels' | 'shop' | 'messages' | 'profile';
@@ -126,7 +127,7 @@ export default function WebApp({
 
       {/* Main Web Views Canvas */}
       <main
-        className={`flex-1 w-full md:pl-60 lg:pl-64 min-h-screen ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
+        className={`flex-1 w-full md:pl-60 lg:pl-64 ${activeTab === 'reels' ? 'h-screen overflow-hidden' : 'min-h-screen'} ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
       >
         <AnimatePresence mode="wait">
           <motion.div
@@ -135,7 +136,7 @@ export default function WebApp({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.15 }}
-            className={`w-full ${activeTab === 'reels' ? 'h-full' : ''}`}
+            className={`w-full ${activeTab === 'reels' ? 'h-full flex flex-col' : ''}`}
           >
             {activeTab === 'reels' && (
               <ReelsView
@@ -200,12 +201,12 @@ export default function WebApp({
                   onToggleFollowUser={handleToggleFollowUser}
                   onProfileUpdate={(updatedUser) => {
                     setCurrentUser(updatedUser);
-                    localStorage.setItem("currentUserData", JSON.stringify(updatedUser));
+                    safeStorage.setItem("currentUserData", JSON.stringify(updatedUser));
                     setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
                     if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
                       setIsLoggedIn(true);
-                      localStorage.setItem("isLoggedIn", "true");
-                      localStorage.setItem("loggedInUsername", updatedUser.username);
+                      safeStorage.setItem("isLoggedIn", "true");
+                      safeStorage.setItem("loggedInUsername", updatedUser.username);
                       setSelectedCreatorProfileId(null);
                       setActiveTab('profile');
                     }

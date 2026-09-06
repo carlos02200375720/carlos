@@ -1,3 +1,5 @@
+import { safeStorage } from "./utils/safeStorage";
+
 /// <reference types="vite/client" />
 
 // Centralized Backend & API Configuration
@@ -7,18 +9,15 @@ export const BACKEND_URL: string =
   (import.meta as any).env?.VITE_BACKEND_URL || CLOUD_RUN_BACKEND_URL;
 
 /**
- * Helper to determine if we are running on an external static frontend host (Vercel, Netlify, GitHub Pages, etc.)
+ * Helper to determine if we are running on an external static frontend host without backend (GitHub Pages, etc.)
  */
 export const isExternalStaticHost = (): boolean => {
   if (typeof window === "undefined" || !window.location) return false;
   const host = window.location.hostname.toLowerCase();
   return (
-    host.includes("vercel.app") ||
-    host.includes("netlify.app") ||
     host.includes("pages.dev") ||
     host.includes("github.io") ||
-    host.includes("surge.sh") ||
-    host.includes("render.com")
+    host.includes("surge.sh")
   );
 };
 
@@ -53,20 +52,20 @@ export const isNativeMobileWrapper = (): boolean => {
 
 /**
  * Helper to get the correct API endpoint URL.
- * In web browsers (Dev, Preview, Production web hosting), relative paths (`/api/...`) connect directly
- * to the container's active server without CORS or cross-origin issues.
- * In native wrappers (Capacitor / Cordova on Android & iOS) or static hosting (Vercel), it prefixes with the remote Cloud Run backend URL.
+ * In any web browser (Dev, Preview, Cloud Run, Render, localhost), relative paths (`/api/...`) connect directly
+ * to the container's active full-stack server without CORS or cross-origin latency issues.
+ * In native wrappers (Capacitor / Cordova on Android & iOS) or purely static hosts, it prefixes with the remote backend URL.
  */
 export const getApiUrl = (path: string): string => {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
 
-  // In native Android/iOS wrappers or static hosts like Vercel, connect to the Cloud Run backend
+  // In native Android/iOS wrappers or purely static external hosts, connect to the Cloud Run backend
   if (isNativeMobileWrapper() || isExternalStaticHost()) {
     const trimmedBackend = (BACKEND_URL || CLOUD_RUN_BACKEND_URL).replace(/\/$/, "");
     return `${trimmedBackend}${cleanPath}`;
   }
 
-  // In standard container dev/preview/production servers, use relative URLs
+  // In all standard container dev/preview/production servers, use relative URLs
   return cleanPath;
 };
 
@@ -74,19 +73,12 @@ export const getApiUrl = (path: string): string => {
  * Helper to get the correct WebSocket server URL.
  */
 export const getWebSocketUrl = (): string => {
-  if (typeof window !== "undefined") {
-    // If not native mobile and not external static host (i.e. running on local dev or Cloud Run directly)
+  if (typeof window !== "undefined" && window.location && window.location.protocol.startsWith("http")) {
+    // In any web browser (local dev, Cloud Run, Render, container preview)
     if (!isNativeMobileWrapper() && !isExternalStaticHost()) {
-      const isLocalOrContainer =
-        window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1" ||
-        window.location.hostname.includes("run.app");
-
-      if (isLocalOrContainer && window.location.protocol.startsWith("http")) {
-        const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const host = window.location.host;
-        return `${wsProtocol}//${host}`;
-      }
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const host = window.location.host;
+      return `${wsProtocol}//${host}`;
     }
   }
 
@@ -120,8 +112,8 @@ export const apiFetch = async (
 
   if (typeof window !== "undefined") {
     try {
-      const loggedInUsername = localStorage.getItem("loggedInUsername");
-      const currentUserData = localStorage.getItem("currentUserData");
+      const loggedInUsername = safeStorage.getItem("loggedInUsername");
+      const currentUserData = safeStorage.getItem("currentUserData");
       if (loggedInUsername && loggedInUsername !== "invitado" && loggedInUsername !== "guest") {
         if (!headers.has("x-user-username")) {
           headers.set("x-user-username", loggedInUsername);

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { User as UserIcon, ShieldCheck, UserPlus, ArrowRight, Sparkles, Check, Play, ShoppingBag, MessageSquare, Radio } from "lucide-react";
 import { User } from "../types";
 import { apiFetch } from "../config";
+import { safeStorage } from "../utils/safeStorage";
 
 interface LoginViewProps {
   onLoginSuccess: (user: User) => void;
@@ -24,7 +25,7 @@ const PRESET_COVERS = [
 
 export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: LoginViewProps) {
   const [activeTab, setActiveTab] = useState<"login" | "register">(() => {
-    const saved = localStorage.getItem("authTab") as "login" | "register";
+    const saved = safeStorage.getItem("authTab") as "login" | "register";
     return saved || "login";
   });
   
@@ -73,10 +74,10 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
       
       const data = await response.json();
       if (response.ok && data.success) {
-        localStorage.setItem("isLoggedIn", "true");
-        localStorage.setItem("loggedInUsername", cleanUsername);
-        localStorage.setItem("loggedInPassword", passwordToUse || "");
-        localStorage.setItem("currentUserData", JSON.stringify(data.user));
+        safeStorage.setItem("isLoggedIn", "true");
+        safeStorage.setItem("loggedInUsername", cleanUsername);
+        safeStorage.setItem("loggedInPassword", passwordToUse || "");
+        safeStorage.setItem("currentUserData", JSON.stringify(data.user));
         onLoginSuccess(data.user);
       } else {
         setLoginError(data.error || "El usuario no existe. Intenta registrándote primero o verifica tu contraseña.");
@@ -135,10 +136,10 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
       const data = await response.json();
       if (response.ok && data.success) {
         // Automatically log in using the returned user session
-        localStorage.setItem("isLoggedIn", "true");
-        localStorage.setItem("loggedInUsername", cleanUsername);
-        localStorage.setItem("loggedInPassword", regPassword.trim());
-        localStorage.setItem("currentUserData", JSON.stringify(data.user));
+        safeStorage.setItem("isLoggedIn", "true");
+        safeStorage.setItem("loggedInUsername", cleanUsername);
+        safeStorage.setItem("loggedInPassword", regPassword.trim());
+        safeStorage.setItem("currentUserData", JSON.stringify(data.user));
         onRefreshUsers();
         onLoginSuccess(data.user);
       } else {
@@ -237,7 +238,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
             {/* Tab Swapping Header */}
             <div className="flex border-b border-slate-800 pb-3 mb-6">
               <button
-                onClick={() => { setActiveTab("login"); localStorage.setItem("authTab", "login"); setLoginError(""); }}
+                onClick={() => { setActiveTab("login"); safeStorage.setItem("authTab", "login"); setLoginError(""); }}
                 className={`text-xs font-bold px-4 py-2 rounded-xl transition-all mr-2 flex items-center space-x-2 ${
                   activeTab === "login"
                     ? "bg-amber-500 text-slate-950"
@@ -248,7 +249,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
                 <span>Iniciar Sesión</span>
               </button>
               <button
-                onClick={() => { setActiveTab("register"); localStorage.setItem("authTab", "register"); setRegisterError(""); }}
+                onClick={() => { setActiveTab("register"); safeStorage.setItem("authTab", "register"); setRegisterError(""); }}
                 className={`text-xs font-bold px-4 py-2 rounded-xl transition-all flex items-center space-x-2 ${
                   activeTab === "register"
                     ? "bg-amber-500 text-slate-950"
@@ -327,9 +328,9 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
                     <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Cuentas creadas en este servidor:</span>
                     <span className="block text-[9px] text-slate-500 mb-2.5">Haz clic para seleccionar un usuario, luego escribe su contraseña arriba.</span>
                     <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1 no-scrollbar">
-                      {displayUsers.map((user) => (
+                      {displayUsers.map((user, uIdx) => (
                         <button
-                          key={user.id}
+                          key={`${user.id}-${uIdx}`}
                           type="button"
                           onClick={() => {
                             setUsernameInput(user.username);

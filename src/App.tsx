@@ -7,6 +7,8 @@ import { MobileApp } from "./app/mobile";
 import SplashScreen from "./components/SplashScreen";
 import { AuthModal } from "./components/AuthModal";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
+import { safeStorage } from "./utils/safeStorage";
+import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
 
 const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -21,33 +23,44 @@ export default function App() {
   // Navigation states: 'reels' | 'shop' | 'messages' | 'profile'
   const [activeTab, setActiveTab] = useState<'reels' | 'shop' | 'messages' | 'profile'>('reels');
 
-  // Core Data State
-  const [users, setUsers] = useState<User[]>([]);
-  const [reels, setReels] = useState<Reel[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  // Stop all media playback when switching tabs (reels, shop, messages, profile)
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.querySelectorAll("video").forEach((v) => {
+        try {
+          v.pause();
+        } catch {}
+      });
+    }
+  }, [activeTab]);
+
+  // Core Data State - pre-seeded with verified fallback data so UI mounts instantly without blank screen
+  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [reels, setReels] = useState<Reel[]>(INITIAL_REELS);
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
-      const savedUsername = localStorage.getItem("loggedInUsername");
-      const guestId = localStorage.getItem("cartClientId");
+      const savedUsername = safeStorage.getItem("loggedInUsername");
+      const guestId = safeStorage.getItem("cartClientId");
       const key = savedUsername && savedUsername !== "invitado" && savedUsername !== "guest"
         ? `saved_cart_${savedUsername}`
         : (guestId ? `saved_cart_${guestId}` : "saved_cart_guest");
-      const raw = localStorage.getItem(key);
+      const raw = safeStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
-      console.error("Error reading initial cart from localStorage:", e);
+      console.error("Error reading initial cart from safeStorage:", e);
     }
     return [];
   });
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
 
   // Current User (Session source of truth)
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => localStorage.getItem("isLoggedIn") === "true");
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => safeStorage.getItem("isLoggedIn") === "true");
   const [currentUser, setCurrentUser] = useState<User>(() => {
-    const savedUserJson = localStorage.getItem("currentUserData");
+    const savedUserJson = safeStorage.getItem("currentUserData");
     if (savedUserJson) {
       try {
         const parsed = JSON.parse(savedUserJson);
@@ -56,7 +69,7 @@ export default function App() {
         }
       } catch (e) {}
     }
-    const savedUsername = localStorage.getItem("loggedInUsername");
+    const savedUsername = safeStorage.getItem("loggedInUsername");
     if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
       return {
         id: "current_user",
@@ -103,9 +116,16 @@ export default function App() {
   const [guestInteractionAlert, setGuestInteractionAlert] = useState<string | null>(null);
   const [isLiveViewerOpen, setIsLiveViewerOpen] = useState(false);
 
-  // App Startup & Server Connection Splash State
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [splashStatus, setSplashStatus] = useState("Conectando con el servidor...");
+  // App Startup & Server Connection Splash State (disabled by default on web for instant paint)
+  const [isInitialLoading, setIsInitialLoading] = useState(() => {
+    try {
+      if (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.isNativePlatform && Capacitor.isNativePlatform()) {
+        return true;
+      }
+    } catch {}
+    return false;
+  });
+  const [splashStatus, setSplashStatus] = useState("¡Bienvenido a MallSocial!");
   const [splashHasError, setSplashHasError] = useState(false);
   const loadAttemptsRef = useRef(0);
 
@@ -184,18 +204,15 @@ export default function App() {
 
   const loadInitialData = async () => {
     setSplashHasError(false);
-    setSplashStatus("Iniciando conexión con Cloud Run...");
+    setSplashStatus("Cargando contenido...");
     loadAttemptsRef.current += 1;
 
     try {
-      // Step 1: Health check ping to wake up Cloud Run container
-      try {
-        setSplashStatus("Despertando servidor en la nube...");
-        await apiFetch("/api/health").catch(() => null);
-      } catch (e) {}
+      // Step 1: Optional health check ping to wake up container
+      apiFetch("/api/health").catch(() => null);
 
       // Step 2: Fetch all core feed data in parallel
-      setSplashStatus("Cargando reels, catálogo y sesiones en vivo...");
+      setSplashStatus("Sincronizando reels, catálogo y sesiones...");
       const [usersRes, reelsRes, productsRes, liveRes] = await Promise.allSettled([
         apiFetch("/api/users").then(r => r.json()),
         apiFetch("/api/reels").then(r => r.json()),
@@ -205,18 +222,18 @@ export default function App() {
 
       let hasLoadedAnyCore = false;
 
-      if (usersRes.status === "fulfilled" && Array.isArray(usersRes.value) && usersRes.value.length > 0) {
-        setUsers(deduplicateById(usersRes.value));
+      if (usersRes.status === "fulfilled" && Array.isArray(usersRes.value)) {
+        if (usersRes.value.length > 0) setUsers(deduplicateById(usersRes.value));
         hasLoadedAnyCore = true;
       }
 
-      if (reelsRes.status === "fulfilled" && Array.isArray(reelsRes.value) && reelsRes.value.length > 0) {
-        setReels(deduplicateById(reelsRes.value));
+      if (reelsRes.status === "fulfilled" && Array.isArray(reelsRes.value)) {
+        if (reelsRes.value.length > 0) setReels(deduplicateById(reelsRes.value));
         hasLoadedAnyCore = true;
       }
 
-      if (productsRes.status === "fulfilled" && Array.isArray(productsRes.value) && productsRes.value.length > 0) {
-        setProducts(deduplicateById(productsRes.value));
+      if (productsRes.status === "fulfilled" && Array.isArray(productsRes.value)) {
+        if (productsRes.value.length > 0) setProducts(deduplicateById(productsRes.value));
         hasLoadedAnyCore = true;
       }
 
@@ -224,9 +241,9 @@ export default function App() {
         setLiveSessions(deduplicateById(liveRes.value));
       }
 
-      // Step 3: Restore session from localStorage if logged in
-      const savedUsername = localStorage.getItem("loggedInUsername");
-      const savedPassword = localStorage.getItem("loggedInPassword") || "";
+      // Step 3: Restore session from safeStorage if logged in
+      const savedUsername = safeStorage.getItem("loggedInUsername");
+      const savedPassword = safeStorage.getItem("loggedInPassword") || "";
       if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
         apiFetch("/api/users/current/switch", {
           method: "POST",
@@ -238,9 +255,9 @@ export default function App() {
             if (data && data.success && data.user) {
               setCurrentUser(data.user);
               setIsLoggedIn(true);
-              localStorage.setItem("isLoggedIn", "true");
-              localStorage.setItem("loggedInUsername", data.user.username);
-              localStorage.setItem("currentUserData", JSON.stringify(data.user));
+              safeStorage.setItem("isLoggedIn", "true");
+              safeStorage.setItem("loggedInUsername", data.user.username);
+              safeStorage.setItem("currentUserData", JSON.stringify(data.user));
               setSavedReelIds(data.user.savedReelIds || []);
             }
           })
@@ -263,40 +280,24 @@ export default function App() {
           .catch((err) => console.error("Error fetching current user details:", err));
       }
 
-      if (hasLoadedAnyCore) {
-        setSplashStatus("¡Servidor listo! Bienvenido a MallSocial...");
-        setTimeout(() => {
-          setIsInitialLoading(false);
-        }, 400);
-      } else {
-        // If the server didn't return reels/products yet, retry if under 6 attempts
-        if (loadAttemptsRef.current < 6) {
-          setSplashStatus(`Iniciando servicios (${loadAttemptsRef.current}/6)...`);
-          setTimeout(() => {
-            loadInitialData();
-          }, 1800);
-        } else {
-          // If tried multiple times, show error state with retry/continue options
-          setSplashHasError(true);
-        }
-      }
+      setIsInitialLoading(false);
     } catch (error) {
       console.error("Error initializing app data:", error);
-      if (loadAttemptsRef.current < 6) {
-        setSplashStatus(`Reconectando (${loadAttemptsRef.current}/6)...`);
-        setTimeout(() => {
-          loadInitialData();
-        }, 2000);
-      } else {
-        setSplashHasError(true);
-      }
+      setIsInitialLoading(false);
     }
   };
 
-  // Load initial catalog & files
+  // Load initial catalog & files with immediate safety timeout
   useEffect(() => {
     setActiveTab('reels');
     loadInitialData();
+
+    // Safety fallback: guaranteed to clear splash screen within 500ms under any condition
+    const safetyTimer = setTimeout(() => {
+      setIsInitialLoading(false);
+    }, 500);
+
+    return () => clearTimeout(safetyTimer);
   }, []);
 
   // Fetch Private Chats on Active User change
@@ -321,20 +322,23 @@ export default function App() {
   useEffect(() => {
     const socketUrl = getWebSocketUrl();
 
-    console.log("Attempting WebSocket connection to:", socketUrl);
-    const ws = new WebSocket(socketUrl);
-    socketRef.current = ws;
+    let ws: WebSocket | null = null;
+    try {
+      ws = new WebSocket(socketUrl);
+      socketRef.current = ws;
 
-    ws.onopen = () => {
-      console.log("WebSocket connected successfully!");
-      setSocketConnected(true);
-      
-      // Authenticate
-      ws.send(JSON.stringify({
-        type: "auth",
-        userId: currentUser.id
-      }));
-    };
+      ws.onopen = () => {
+        setSocketConnected(true);
+        ws?.send(JSON.stringify({
+          type: "auth",
+          userId: currentUser.id
+        }));
+      };
+
+      ws.onerror = (e) => {
+        // Non-blocking WebSocket warning (common in sandboxed or preview proxies)
+        console.warn("WebSocket non-fatal error event:", e);
+      };
 
     ws.onmessage = (event) => {
       try {
@@ -515,15 +519,21 @@ export default function App() {
       }
     };
 
-    ws.onclose = () => {
-      console.log("WebSocket disconnected.");
-      setSocketConnected(false);
-    };
+    if (ws) {
+      ws.onclose = () => {
+        setSocketConnected(false);
+      };
+    }
+  } catch (err) {
+    console.warn("WebSocket initialization warning:", err);
+  }
 
-    return () => {
-      ws.close();
-    };
-  }, [activeChatUser, currentUser.id]);
+  return () => {
+    try {
+      ws?.close();
+    } catch (e) {}
+  };
+}, [activeChatUser, currentUser.id]);
 
   // --- API HANDLERS ---
 
@@ -717,17 +727,17 @@ export default function App() {
   // Get persistent Cart User ID for MongoDB storage
   const getCartUserId = (userObj?: User) => {
     const target = userObj || currentUser;
-    const savedUsername = localStorage.getItem("loggedInUsername");
+    const savedUsername = safeStorage.getItem("loggedInUsername");
     if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
       return savedUsername;
     }
     if (target && target.username && target.username !== "invitado" && !target.isGuest && target.id !== "current_user") {
       return target.originalId || target.id || target.username;
     }
-    let guestId = localStorage.getItem("cartClientId");
+    let guestId = safeStorage.getItem("cartClientId");
     if (!guestId) {
       guestId = "guest_cart_" + Math.random().toString(36).substring(2, 11);
-      localStorage.setItem("cartClientId", guestId);
+      safeStorage.setItem("cartClientId", guestId);
     }
     return guestId;
   };
@@ -738,9 +748,9 @@ export default function App() {
 
     // Save locally immediately
     try {
-      localStorage.setItem(`saved_cart_${userId}`, JSON.stringify(updatedCart));
+      safeStorage.setItem(`saved_cart_${userId}`, JSON.stringify(updatedCart));
     } catch (e) {
-      console.error("Error writing cart to localStorage:", e);
+      console.error("Error writing cart to safeStorage:", e);
     }
 
     // Persist to MongoDB Atlas backend
@@ -767,7 +777,7 @@ export default function App() {
     // Load from local storage immediately for zero-latency UI
     try {
       const localKey = `saved_cart_${userId}`;
-      const rawLocal = localStorage.getItem(localKey);
+      const rawLocal = safeStorage.getItem(localKey);
       if (rawLocal) {
         const parsedLocal = JSON.parse(rawLocal);
         if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
@@ -775,7 +785,7 @@ export default function App() {
         }
       }
     } catch (e) {
-      // Ignore localStorage parse errors
+      // Ignore safeStorage parse errors
     }
 
     // Resilient background sync with retry
@@ -792,12 +802,12 @@ export default function App() {
             if (data.items.length > 0) {
               setCart(data.items);
               try {
-                localStorage.setItem(`saved_cart_${userId}`, JSON.stringify(data.items));
+                safeStorage.setItem(`saved_cart_${userId}`, JSON.stringify(data.items));
               } catch (e) {}
             } else {
               // If MongoDB returned 0 items, check if we have local items to sync UP to MongoDB
               const localKey = `saved_cart_${userId}`;
-              const rawLocal = localStorage.getItem(localKey);
+              const rawLocal = safeStorage.getItem(localKey);
               if (rawLocal) {
                 try {
                   const parsedLocal = JSON.parse(rawLocal);
@@ -1034,10 +1044,10 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("isLoggedIn");
-    localStorage.removeItem("loggedInUsername");
-    localStorage.removeItem("loggedInPassword");
-    localStorage.removeItem("currentUserData");
+    safeStorage.removeItem("isLoggedIn");
+    safeStorage.removeItem("loggedInUsername");
+    safeStorage.removeItem("loggedInPassword");
+    safeStorage.removeItem("currentUserData");
     setIsLoggedIn(false);
     
     // First notify server to clear session
@@ -1126,7 +1136,7 @@ export default function App() {
       />
 
       {/* Main Target Routing: Pure Mobile (Capacitor/Mobile build) vs Web (Vercel/Web build) vs Hybrid Responsive */}
-      {(import.meta.env.VITE_APP_TARGET === "mobile" || (typeof window !== "undefined" && Capacitor.isNativePlatform())) ? (
+      {(((import.meta as any).env?.VITE_APP_TARGET === "mobile") || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.isNativePlatform && Capacitor.isNativePlatform())) ? (
         <div className="flex flex-1 w-full min-h-screen" id="app-mobile-container">
           <MobileApp
             activeTab={activeTab}

@@ -31,6 +31,7 @@ export interface Reel {
   hlsUrl?: string; // Adaptive HLS Master Playlist (.m3u8) URL for smooth streaming
   thumbnailUrl: string;
   description: string;
+  caption?: string; // Optional alias for description
   creatorId: string;
   creatorName: string;
   creatorUsername?: string;
@@ -66,6 +67,7 @@ export interface Product {
   stock: number;
   sellerId: string;
   sellerName?: string;
+  sellerUsername?: string;
   sellerAvatar?: string;
   rating: number;
   shippingCost?: number;

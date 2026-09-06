@@ -6,6 +6,7 @@ import ShopView from "../../components/ShopView";
 import SocialPanel from "../../components/SocialPanel";
 import ProfileView from "../../components/ProfileView";
 import { motion, AnimatePresence } from "motion/react";
+import { safeStorage } from "../../utils/safeStorage";
 
 export interface MobileAppProps {
   activeTab: 'reels' | 'shop' | 'messages' | 'profile';
@@ -224,12 +225,12 @@ export default function MobileApp({
                   onToggleFollowUser={handleToggleFollowUser}
                   onProfileUpdate={(updatedUser) => {
                     setCurrentUser(updatedUser);
-                    localStorage.setItem("currentUserData", JSON.stringify(updatedUser));
+                    safeStorage.setItem("currentUserData", JSON.stringify(updatedUser));
                     setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
                     if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
                       setIsLoggedIn(true);
-                      localStorage.setItem("isLoggedIn", "true");
-                      localStorage.setItem("loggedInUsername", updatedUser.username);
+                      safeStorage.setItem("isLoggedIn", "true");
+                      safeStorage.setItem("loggedInUsername", updatedUser.username);
                       setSelectedCreatorProfileId(null);
                       setActiveTab('profile');
                     }

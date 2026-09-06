@@ -4,7 +4,9 @@ import { Eye, Heart, MessageCircle, BarChart3, ShoppingBag, ShieldCheck, Shield,
 import { motion, AnimatePresence } from "motion/react";
 import PublishView from "./PublishView";
 import LoginView from "./LoginView";
+import UserPublicationsFeed from "./UserPublicationsFeed";
 import { apiFetch } from "../config";
+import { safeStorage } from "../utils/safeStorage";
 
 const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -35,10 +37,11 @@ function PublicationCover({ reel }: { reel: Reel }) {
       let isCancelled = false;
       const video = document.createElement("video");
       video.crossOrigin = "anonymous";
-      video.src = reel.videoUrl;
       video.muted = true;
+      video.volume = 0;
       video.playsInline = true;
       video.preload = "metadata";
+      video.src = reel.videoUrl;
 
       const captureFrame = () => {
         if (isCancelled) return;
@@ -59,15 +62,22 @@ function PublicationCover({ reel }: { reel: Reel }) {
         }
       };
 
-      video.addEventListener("loadeddata", () => {
+      const handleLoadedData = () => {
         video.currentTime = 0.1;
-      });
+      };
+
+      video.addEventListener("loadeddata", handleLoadedData);
       video.addEventListener("seeked", captureFrame);
       video.load();
 
       return () => {
         isCancelled = true;
         try {
+          video.pause();
+          video.muted = true;
+          video.volume = 0;
+          video.removeEventListener("loadeddata", handleLoadedData);
+          video.removeEventListener("seeked", captureFrame);
           video.removeAttribute("src");
           video.load();
         } catch {
@@ -192,10 +202,40 @@ export default function ProfileView({
   const [loading, setLoading] = useState(true);
   const [activeSubTab, setActiveSubTab] = useState<"publications" | "products" | "saved" | "orders" | "performance" | "edit" | "publish">("publications");
   const [publicTab, setPublicTab] = useState<"publications" | "products" | "policies">("publications");
+  // Dedicated user publications feed state
+  const [activeFeedReelId, setActiveFeedReelId] = useState<string | null>(null);
+
+  // Whenever the active subtab/tarjeta changes or ProfileView unmounts, dismiss any active reel feed and pause all videos
+  useEffect(() => {
+    setActiveFeedReelId(null);
+    if (typeof document !== "undefined") {
+      document.querySelectorAll("video").forEach((v) => {
+        try {
+          v.pause();
+        } catch {}
+      });
+    }
+  }, [activeSubTab, publicTab]);
+
+  useEffect(() => {
+    return () => {
+      setActiveFeedReelId(null);
+      if (typeof document !== "undefined") {
+        document.querySelectorAll("video").forEach((v) => {
+          try {
+            v.pause();
+          } catch {}
+        });
+      }
+    };
+  }, []);
 
   // Product management states (for business owner)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [deletingReel, setDeletingReel] = useState<Reel | null>(null);
+  const [isDeletingReel, setIsDeletingReel] = useState(false);
+  const [reelActionMessage, setReelActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [productSearchQuery, setProductSearchQuery] = useState("");
   const [editProdForm, setEditProdForm] = useState({
     name: "",
@@ -348,11 +388,11 @@ export default function ProfileView({
         return;
       }
       if (response.ok && data.success) {
-        // Update localstorage so session matches the newly typed password
-        localStorage.setItem("isLoggedIn", "true");
-        localStorage.setItem("loggedInUsername", targetUsername);
-        localStorage.setItem("loggedInPassword", password || "");
-        localStorage.setItem("currentUserData", JSON.stringify(data.user));
+        // Update safeStorage so session matches the newly typed password
+        safeStorage.setItem("isLoggedIn", "true");
+        safeStorage.setItem("loggedInUsername", targetUsername);
+        safeStorage.setItem("loggedInPassword", password || "");
+        safeStorage.setItem("currentUserData", JSON.stringify(data.user));
 
         setProfileUser(data.user);
         if (onProfileUpdate) {
@@ -488,27 +528,55 @@ export default function ProfileView({
   const totalLikes = userReels.reduce((acc, r) => acc + r.likes, 0);
   const totalComments = userReels.reduce((acc, r) => acc + r.comments.length, 0);
 
-  const handleDeleteReel = async (reelId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!window.confirm("¿Deseas eliminar esta publicación permanentemente de MongoDB y Google Cloud Storage?")) {
-      return;
+  // Auto-clear publication feedback banner
+  useEffect(() => {
+    if (reelActionMessage) {
+      const timer = setTimeout(() => {
+        setReelActionMessage(null);
+      }, 4000);
+      return () => clearTimeout(timer);
     }
+  }, [reelActionMessage]);
+
+  const handleOpenDeleteReel = (reel: Reel, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setDeletingReel(reel);
+  };
+
+  const handleConfirmDeleteReel = async () => {
+    if (!deletingReel) return;
+    const reelId = deletingReel.id;
     try {
+      setIsDeletingReel(true);
       const res = await apiFetch(`/api/reels/${reelId}`, {
         method: "DELETE",
       });
       const data = await res.json();
       if (data.success) {
         setUserReels((prev) => prev.filter((r) => r.id !== reelId));
+        setReelActionMessage({
+          type: "success",
+          text: "Publicación eliminada permanentemente de MongoDB y Cloud Storage.",
+        });
+        setDeletingReel(null);
         if (onPublishSuccess) {
           onPublishSuccess();
         }
       } else {
-        alert("No se pudo eliminar la publicación: " + (data.error || "Error desconocido"));
+        setReelActionMessage({
+          type: "error",
+          text: "No se pudo eliminar la publicación: " + (data.error || "Error desconocido"),
+        });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error al eliminar la publicación:", err);
-      alert("Error de red al intentar eliminar la publicación.");
+      setReelActionMessage({
+        type: "error",
+        text: "Error de red al intentar eliminar la publicación.",
+      });
+    } finally {
+      setIsDeletingReel(false);
     }
   };
 
@@ -1268,21 +1336,23 @@ export default function ProfileView({
                         {userReels.map((reel, index) => (
                           <div
                             key={`${reel.id}-${index}`}
-                            onClick={() => onSelectReel(reel.id)}
+                            onClick={() => setActiveFeedReelId(reel.id)}
                             className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
                             id={`admin-my-reel-${reel.id}`}
                           >
                             <PublicationCover reel={reel} />
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
                             
-                            {/* Botón (X) para eliminar publicación de MongoDB y Google Cloud Storage */}
+                            {/* Botón (X) para eliminar publicación de MongoDB y Google Cloud Storage con fondo transparente */}
                             <button
                               type="button"
-                              onClick={(e) => handleDeleteReel(reel.id, e)}
-                              title="Eliminar publicación de MongoDB y Cloud Storage"
-                              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/75 hover:bg-rose-600 text-white flex items-center justify-center opacity-85 group-hover:opacity-100 transition-all z-20 shadow-md border border-white/20"
+                              onClick={(e) => handleOpenDeleteReel(reel, e)}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              title="Eliminar publicación"
+                              className="absolute top-1.5 right-1.5 w-8 h-8 bg-transparent hover:text-rose-400 active:scale-90 text-white flex items-center justify-center transition-all z-30 cursor-pointer drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
+                              id={`btn-delete-reel-${reel.id}`}
                             >
-                              <X className="w-4 h-4 stroke-[2.5]" />
+                              <X className="w-5 h-5 stroke-[2.5]" />
                             </button>
 
                             <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[10px] font-mono font-bold">
@@ -1484,11 +1554,11 @@ export default function ProfileView({
 
                       return (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5" id="business-products-list">
-                          {filtered.map((prod) => {
+                          {filtered.map((prod, prodIdx) => {
                             const isOutOfStock = prod.stock !== undefined && prod.stock <= 0;
                             return (
                               <div
-                                key={prod.id}
+                                key={`${prod.id}-${prodIdx}`}
                                 id={`product-manage-card-${prod.id}`}
                                 className="bg-white border border-slate-200/90 rounded-2xl p-3.5 flex flex-col justify-between hover:border-amber-400/80 hover:shadow-sm transition-all group relative"
                               >
@@ -2147,7 +2217,7 @@ export default function ProfileView({
                         {savedReels.map((reel, index) => (
                           <div
                             key={`${reel.id}-${index}`}
-                            onClick={() => onSelectReel(reel.id)}
+                            onClick={() => setActiveFeedReelId(reel.id)}
                             className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
                             id={`saved-reel-${reel.id}`}
                           >
@@ -3288,7 +3358,7 @@ export default function ProfileView({
                       {userReels.map((reel, index) => (
                         <div
                           key={`${reel.id}-${index}`}
-                          onClick={() => onSelectReel(reel.id)}
+                          onClick={() => setActiveFeedReelId(reel.id)}
                           className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
                           id={`profile-reel-${reel.id}`}
                         >
@@ -3911,6 +3981,114 @@ export default function ProfileView({
           </div>
         )}
 
+        {/* MODAL: CONFIRMACIÓN ELIMINAR PUBLICACIÓN / REEL */}
+        {deletingReel && (
+          <div
+            className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4"
+            id="modal-delete-reel-backdrop"
+            onClick={() => {
+              if (!isDeletingReel) setDeletingReel(null);
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center"
+              id="modal-delete-reel-content"
+            >
+              <div className="w-12 h-12 bg-rose-50 border border-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-3 text-rose-600">
+                <Trash2 className="w-6 h-6" />
+              </div>
+
+              <h3 className="font-display font-extrabold text-base text-slate-900">
+                ¿Eliminar esta publicación?
+              </h3>
+
+              <div className="my-3.5 p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center space-x-3 text-left">
+                {deletingReel.thumbnailUrl && !deletingReel.thumbnailUrl.endsWith(".mp4") ? (
+                  <img
+                    src={deletingReel.thumbnailUrl}
+                    alt={deletingReel.description || "Publicación"}
+                    referrerPolicy="no-referrer"
+                    className="w-12 h-12 rounded-lg object-cover bg-black border border-slate-200 shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-slate-900 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                    <Play className="w-5 h-5 text-white/40" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-xs text-slate-900 truncate">
+                    {deletingReel.description || "Publicación de video"}
+                  </p>
+                  <p className="text-slate-400 text-[11px] mt-0.5">
+                    {deletingReel.views || 0} vistas • {deletingReel.likes || 0} me gusta
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 leading-relaxed mb-5">
+                Esta acción eliminará el video y sus archivos permanentemente de MongoDB y Google Cloud Storage. No se puede deshacer.
+              </p>
+
+              <div className="flex items-center justify-center space-x-2.5">
+                <button
+                  type="button"
+                  disabled={isDeletingReel}
+                  onClick={() => setDeletingReel(null)}
+                  className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                  id="btn-cancel-delete-reel"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingReel}
+                  onClick={handleConfirmDeleteReel}
+                  className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl transition-all shadow-md flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  id="btn-confirm-delete-reel"
+                >
+                  {isDeletingReel ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Eliminando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Eliminar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* TOAST NOTIFICATION FOR REEL ACTIONS */}
+        {reelActionMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl shadow-xl flex items-center space-x-2 text-xs font-bold border ${
+              reelActionMessage.type === "success"
+                ? "bg-slate-900 text-white border-emerald-500/30"
+                : "bg-rose-600 text-white border-rose-400/30"
+            }`}
+          >
+            {reelActionMessage.type === "success" ? (
+              <Check className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-white" />
+            )}
+            <span>{reelActionMessage.text}</span>
+          </motion.div>
+        )}
+
         {/* MODAL 1: LIVE TRACKING & EXPANDED DISPATCH TIMELINE */}
         {selectedTrackingOrder && (
           <div
@@ -4431,6 +4609,41 @@ export default function ProfileView({
               </form>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* COMPONENTE EXCLUSIVO PARA MOSTRAR LA LISTA DE PUBLICACIONES DE UN USUARIO */}
+      <AnimatePresence>
+        {activeFeedReelId && (
+          <UserPublicationsFeed
+            user={profileUser || currentUser}
+            reels={activeSubTab === "saved" ? savedReels : userReels}
+            products={userProducts}
+            initialReelId={activeFeedReelId}
+            currentUser={currentUser}
+            onClose={() => setActiveFeedReelId(null)}
+            onSelectProduct={onSelectProduct}
+            onToggleFollowUser={onToggleFollowUser}
+            onDeleteReel={(reelId) => {
+              setUserReels((prev) => prev.filter((r) => r.id !== reelId));
+              if (onPublishSuccess) onPublishSuccess();
+            }}
+            onUpdateReels={(updatedReels) => {
+              if (activeSubTab === "saved") {
+                setSavedReels(updatedReels);
+              } else {
+                setUserReels(updatedReels);
+              }
+            }}
+            savedReelIds={currentUser.savedReelIds || []}
+            onToggleSaveReel={(reelId) => {
+              apiFetch(`/api/users/${currentUser.id}/save-reel`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reelId }),
+              }).catch(() => {});
+            }}
+          />
         )}
       </AnimatePresence>
     </div>

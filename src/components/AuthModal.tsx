@@ -3,6 +3,7 @@ import { Lock, UserPlus, LogIn, X, AlertCircle, Loader2, Sparkles, CheckCircle2 
 import { User } from "../types";
 import { apiFetch } from "../config";
 import { motion, AnimatePresence } from "motion/react";
+import { safeStorage } from "../utils/safeStorage";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -80,10 +81,10 @@ export function AuthModal({
 
       const data = await response.json();
       if (response.ok && data.success) {
-        localStorage.setItem("isLoggedIn", "true");
-        localStorage.setItem("loggedInUsername", cleanUsername);
-        localStorage.setItem("loggedInPassword", regPassword.trim());
-        localStorage.setItem("currentUserData", JSON.stringify(data.user));
+        safeStorage.setItem("isLoggedIn", "true");
+        safeStorage.setItem("loggedInUsername", cleanUsername);
+        safeStorage.setItem("loggedInPassword", regPassword.trim());
+        safeStorage.setItem("currentUserData", JSON.stringify(data.user));
 
         setSuccessMessage(`¡Cuenta creada con éxito! Bienvenido, @${cleanUsername}`);
         setTimeout(() => {
@@ -122,10 +123,10 @@ export function AuthModal({
 
       const data = await response.json();
       if (response.ok && data.success) {
-        localStorage.setItem("isLoggedIn", "true");
-        localStorage.setItem("loggedInUsername", data.user.username);
-        localStorage.setItem("loggedInPassword", loginPassword || "");
-        localStorage.setItem("currentUserData", JSON.stringify(data.user));
+        safeStorage.setItem("isLoggedIn", "true");
+        safeStorage.setItem("loggedInUsername", data.user.username);
+        safeStorage.setItem("loggedInPassword", loginPassword || "");
+        safeStorage.setItem("currentUserData", JSON.stringify(data.user));
 
         setSuccessMessage(`¡Bienvenido de vuelta, @${data.user.username}!`);
         setTimeout(() => {

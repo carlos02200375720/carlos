@@ -1060,38 +1060,63 @@ async function startServer() {
 
       console.log(`🗑️ [Batch Cleanup] Deleting publication / reel ${targetId}...`);
 
+      // Safe filter: only match _id if targetId is a valid ObjectId, otherwise query by id field
+      const isObjectId = mongoose.Types.ObjectId.isValid(targetId) && String(targetId).length === 24;
+      const mongoQuery = isObjectId ? { $or: [{ id: targetId }, { _id: targetId }] } : { id: targetId };
+
       // Find reel in memory or database
-      const existingReel = reels.find(r => r.id === targetId);
+      let existingReel = reels.find(r => r.id === targetId);
+      if (!existingReel && mongoose.connection.readyState === 1) {
+        try {
+          existingReel = await MongoReel.findOne(mongoQuery);
+        } catch {}
+      }
+
       const videoUrl = existingReel?.videoUrl || "";
       const hlsUrl = existingReel?.hlsUrl || "";
+      const thumbnailUrl = existingReel?.thumbnailUrl || "";
 
       let gcsCleanedFiles = 0;
 
       // 1. Batch delete all GCS HLS segments & playlists
       if (hlsUrl && hlsUrl.includes("storage.googleapis.com")) {
-        const cleanupResult = await deleteHlsStreamBatch(bucket, hlsUrl);
-        gcsCleanedFiles += cleanupResult.deletedCount;
+        try {
+          const cleanupResult = await deleteHlsStreamBatch(bucket, hlsUrl);
+          gcsCleanedFiles += cleanupResult.deletedCount;
+        } catch (hlsErr) {
+          console.warn("Could not delete HLS stream batch:", hlsErr);
+        }
       }
 
       // 2. Delete source MP4 video file from GCS if applicable
-      if (videoUrl && videoUrl.includes("storage.googleapis.com")) {
+      if (videoUrl) {
         try {
-          const videoMatch = videoUrl.match(/publicaciones\/([^/?#]+)/);
-          if (videoMatch && videoMatch[0]) {
-            await bucket.file(videoMatch[0]).delete({ ignoreNotFound: true });
-            gcsCleanedFiles++;
-            console.log(`🧹 Deleted source video file: ${videoMatch[0]}`);
-          }
+          await deleteFromGCS(videoUrl);
+          gcsCleanedFiles++;
         } catch (srcDelErr) {
-          console.warn("Could not delete source MP4 file from GCS:", srcDelErr);
+          console.warn("Could not delete source video file from GCS:", srcDelErr);
+        }
+      }
+
+      // Delete thumbnail and extra carousel images from GCS if applicable
+      if (thumbnailUrl) {
+        try {
+          await deleteFromGCS(thumbnailUrl);
+        } catch {}
+      }
+      if (Array.isArray(existingReel?.images)) {
+        for (const imgUrl of existingReel.images) {
+          try {
+            await deleteFromGCS(imgUrl);
+          } catch {}
         }
       }
 
       // 3. Remove from MongoDB
       if (mongoose.connection.readyState === 1) {
         try {
-          await MongoReel.deleteOne({ id: targetId });
-          await MongoPublicacion.deleteOne({ id: targetId });
+          await MongoReel.deleteMany(mongoQuery);
+          await MongoPublicacion.deleteMany(mongoQuery);
           console.log(`💾 Deleted ${targetId} from MongoDB`);
         } catch (dbErr) {
           console.error("Error deleting from MongoDB:", dbErr);
@@ -1109,7 +1134,7 @@ async function startServer() {
 
       res.json({
         success: true,
-        message: `Publicación eliminada correctamente con limpieza en lote de ${gcsCleanedFiles} archivos en GCS.`,
+        message: `Publicación eliminada correctamente con limpieza en GCS.`,
         deletedId: targetId,
         gcsCleanedFiles,
       });
@@ -2195,49 +2220,6 @@ async function startServer() {
     }
 
     res.json({ success: true, shares: reel.shares });
-  });
-
-  // Delete Reel (removes from GCS and MongoDB)
-  app.delete("/api/reels/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const reelIndex = reels.findIndex((r) => r.id === id);
-      const reel = reelIndex !== -1 ? reels[reelIndex] : null;
-
-      const deleteReelFiles = async (r: any) => {
-        if (!r) return;
-        if (r.videoUrl) await deleteFromGCS(r.videoUrl);
-        if (r.thumbnailUrl) await deleteFromGCS(r.thumbnailUrl);
-        if (Array.isArray(r.images)) {
-          for (const imgUrl of r.images) {
-            await deleteFromGCS(imgUrl);
-          }
-        }
-      };
-
-      if (reel) {
-        await deleteReelFiles(reel);
-      } else if (mongoose.connection.readyState === 1) {
-        const dbReel = await MongoReel.findOne({ id });
-        if (dbReel) {
-          await deleteReelFiles(dbReel);
-        }
-      }
-
-      if (reelIndex !== -1) {
-        reels.splice(reelIndex, 1);
-      }
-
-      if (mongoose.connection.readyState === 1) {
-        await MongoReel.deleteOne({ id });
-      }
-
-      console.log(`🗑️ Reel eliminado exitosamente de MongoDB y GCS: ${id}`);
-      res.json({ success: true, message: "Publicación eliminada de MongoDB y GCS" });
-    } catch (error) {
-      console.error("❌ Error al eliminar reel:", error);
-      res.status(500).json({ success: false, error: "Error al eliminar publicación" });
-    }
   });
 
   // CJ Dropshipping Freight Options API Route (Calculate shipping to any country)
