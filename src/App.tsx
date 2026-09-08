@@ -2,10 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { User as UserIcon, Camera, Upload, AlertTriangle } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession } from "./types";
-import { WebApp } from "./app/web";
-import { MobileApp } from "./app/mobile";
-import SplashScreen from "./components/SplashScreen";
-import { AuthModal } from "./components/AuthModal";
+import { WebApp, SplashScreen, AuthModal } from "./app/web";
+import { AndroidApp } from "./app/android";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { safeStorage } from "./utils/safeStorage";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
@@ -1135,10 +1133,10 @@ export default function App() {
         onContinueAnyway={() => setIsInitialLoading(false)}
       />
 
-      {/* Main Target Routing: Pure Mobile (Capacitor/Mobile build) vs Web (Vercel/Web build) vs Hybrid Responsive */}
-      {(((import.meta as any).env?.VITE_APP_TARGET === "mobile") || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.isNativePlatform && Capacitor.isNativePlatform())) ? (
-        <div className="flex flex-1 w-full min-h-screen" id="app-mobile-container">
-          <MobileApp
+      {/* Main Target Routing: Android vs iOS vs Web */}
+      {(((import.meta as any).env?.VITE_APP_TARGET === "android") || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.getPlatform && Capacitor.getPlatform() === "android") || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.isNativePlatform && Capacitor.isNativePlatform() && !/iPhone|iPad|iPod/.test(navigator.userAgent || ""))) ? (
+        <div className="flex flex-1 w-full min-h-screen" id="app-android-container">
+          <AndroidApp
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             users={users}
@@ -1188,109 +1186,56 @@ export default function App() {
           />
         </div>
       ) : (
-        <>
-          <div className="hidden md:flex flex-1 w-full min-h-screen" id="app-web-desktop-container">
-            <WebApp
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              users={users}
-              reels={reels}
-              products={products}
-              cart={cart}
-              currentUser={currentUser}
-              directSelectedProduct={directSelectedProduct}
-              setDirectSelectedProduct={setDirectSelectedProduct}
-              selectedCreatorProfileId={selectedCreatorProfileId}
-              setSelectedCreatorProfileId={setSelectedCreatorProfileId}
-              isProductDetailOpen={isProductDetailOpen}
-              setIsProductDetailOpen={setIsProductDetailOpen}
-              shopInitialStep={shopInitialStep}
-              setShopInitialStep={setShopInitialStep}
-              shopInitialSelectedIndices={shopInitialSelectedIndices}
-              setShopInitialSelectedIndices={setShopInitialSelectedIndices}
-              activeChatUser={activeChatUser}
-              setActiveChatUser={setActiveChatUser}
-              privateMessages={privateMessages}
-              unreadCounts={unreadCounts}
-              savedReelIds={savedReelIds}
-              isLiveViewerOpen={isLiveViewerOpen}
-              totalUnreads={totalUnreads}
-              handleAddToCart={handleAddToCart}
-              handleRemoveFromCart={handleRemoveFromCart}
-              handleUpdateCartQuantity={handleUpdateCartQuantity}
-              handleCheckoutCart={handleCheckoutCart}
-              handleCreatorProfileLink={handleCreatorProfileLink}
-              handleProductDetailsLink={handleProductDetailsLink}
-              handleReelLink={handleReelLink}
-              handleLikeReel={handleLikeReel}
-              handleAddComment={handleAddComment}
-              handleToggleSaveReel={handleToggleSaveReel}
-              handleToggleFollowUser={handleToggleFollowUser}
-              handleSendPrivateMessage={handleSendPrivateMessage}
-              handleClearUnreads={handleClearUnreads}
-              refreshReels={refreshReels}
-              refreshAllData={refreshAllData}
-              setCurrentUser={setCurrentUser}
-              setUsers={setUsers}
-              setIsLoggedIn={setIsLoggedIn}
-              handleLogout={handleLogout}
-              setGuestInteractionAlert={setGuestInteractionAlert}
-              openPrivateChatDirectly={openPrivateChatDirectly}
-              socket={socketRef.current}
-            />
-          </div>
-
-          <div className="flex md:hidden flex-1 w-full min-h-screen no-scrollbar" id="app-web-mobile-container" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-            <MobileApp
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              users={users}
-              reels={reels}
-              products={products}
-              cart={cart}
-              currentUser={currentUser}
-              directSelectedProduct={directSelectedProduct}
-              setDirectSelectedProduct={setDirectSelectedProduct}
-              selectedCreatorProfileId={selectedCreatorProfileId}
-              setSelectedCreatorProfileId={setSelectedCreatorProfileId}
-              isProductDetailOpen={isProductDetailOpen}
-              setIsProductDetailOpen={setIsProductDetailOpen}
-              shopInitialStep={shopInitialStep}
-              setShopInitialStep={setShopInitialStep}
-              shopInitialSelectedIndices={shopInitialSelectedIndices}
-              setShopInitialSelectedIndices={setShopInitialSelectedIndices}
-              activeChatUser={activeChatUser}
-              setActiveChatUser={setActiveChatUser}
-              privateMessages={privateMessages}
-              unreadCounts={unreadCounts}
-              savedReelIds={savedReelIds}
-              isLiveViewerOpen={isLiveViewerOpen}
-              totalUnreads={totalUnreads}
-              handleAddToCart={handleAddToCart}
-              handleRemoveFromCart={handleRemoveFromCart}
-              handleUpdateCartQuantity={handleUpdateCartQuantity}
-              handleCheckoutCart={handleCheckoutCart}
-              handleCreatorProfileLink={handleCreatorProfileLink}
-              handleProductDetailsLink={handleProductDetailsLink}
-              handleReelLink={handleReelLink}
-              handleLikeReel={handleLikeReel}
-              handleAddComment={handleAddComment}
-              handleToggleSaveReel={handleToggleSaveReel}
-              handleToggleFollowUser={handleToggleFollowUser}
-              handleSendPrivateMessage={handleSendPrivateMessage}
-              handleClearUnreads={handleClearUnreads}
-              refreshReels={refreshReels}
-              refreshAllData={refreshAllData}
-              setCurrentUser={setCurrentUser}
-              setUsers={setUsers}
-              setIsLoggedIn={setIsLoggedIn}
-              handleLogout={handleLogout}
-              setGuestInteractionAlert={setGuestInteractionAlert}
-              openPrivateChatDirectly={openPrivateChatDirectly}
-              socket={socketRef.current}
-            />
-          </div>
-        </>
+        <div className="flex flex-1 w-full min-h-screen" id="app-web-container">
+          <WebApp
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            users={users}
+            reels={reels}
+            products={products}
+            cart={cart}
+            currentUser={currentUser}
+            directSelectedProduct={directSelectedProduct}
+            setDirectSelectedProduct={setDirectSelectedProduct}
+            selectedCreatorProfileId={selectedCreatorProfileId}
+            setSelectedCreatorProfileId={setSelectedCreatorProfileId}
+            isProductDetailOpen={isProductDetailOpen}
+            setIsProductDetailOpen={setIsProductDetailOpen}
+            shopInitialStep={shopInitialStep}
+            setShopInitialStep={setShopInitialStep}
+            shopInitialSelectedIndices={shopInitialSelectedIndices}
+            setShopInitialSelectedIndices={setShopInitialSelectedIndices}
+            activeChatUser={activeChatUser}
+            setActiveChatUser={setActiveChatUser}
+            privateMessages={privateMessages}
+            unreadCounts={unreadCounts}
+            savedReelIds={savedReelIds}
+            isLiveViewerOpen={isLiveViewerOpen}
+            totalUnreads={totalUnreads}
+            handleAddToCart={handleAddToCart}
+            handleRemoveFromCart={handleRemoveFromCart}
+            handleUpdateCartQuantity={handleUpdateCartQuantity}
+            handleCheckoutCart={handleCheckoutCart}
+            handleCreatorProfileLink={handleCreatorProfileLink}
+            handleProductDetailsLink={handleProductDetailsLink}
+            handleReelLink={handleReelLink}
+            handleLikeReel={handleLikeReel}
+            handleAddComment={handleAddComment}
+            handleToggleSaveReel={handleToggleSaveReel}
+            handleToggleFollowUser={handleToggleFollowUser}
+            handleSendPrivateMessage={handleSendPrivateMessage}
+            handleClearUnreads={handleClearUnreads}
+            refreshReels={refreshReels}
+            refreshAllData={refreshAllData}
+            setCurrentUser={setCurrentUser}
+            setUsers={setUsers}
+            setIsLoggedIn={setIsLoggedIn}
+            handleLogout={handleLogout}
+            setGuestInteractionAlert={setGuestInteractionAlert}
+            openPrivateChatDirectly={openPrivateChatDirectly}
+            socket={socketRef.current}
+          />
+        </div>
       )}
 
       {/* Forced Avatar Upload Modal */}

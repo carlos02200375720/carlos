@@ -1,14 +1,14 @@
 import React from "react";
 import { Play, ShoppingBag, User as UserIcon, MessageSquare } from "lucide-react";
 import { User, Reel, Product, CartItem, Order, ChatMessage } from "../../types";
-import ReelsView from "../../components/ReelsView";
-import ShopView from "../../components/ShopView";
-import SocialPanel from "../../components/SocialPanel";
-import ProfileView from "../../components/ProfileView";
+import ReelsView from "./ReelsView";
+import ShopView from "./ShopView";
+import SocialPanel from "./SocialPanel";
+import ProfileView from "./ProfileView";
 import { motion, AnimatePresence } from "motion/react";
 import { safeStorage } from "../../utils/safeStorage";
 
-export interface MobileAppProps {
+export interface AndroidAppProps {
   activeTab: 'reels' | 'shop' | 'messages' | 'profile';
   setActiveTab: React.Dispatch<React.SetStateAction<'reels' | 'shop' | 'messages' | 'profile'>>;
   users: User[];
@@ -62,7 +62,7 @@ export interface MobileAppProps {
   socket: WebSocket | null;
 }
 
-export default function MobileApp({
+export default function AndroidApp({
   activeTab,
   setActiveTab,
   users,
@@ -109,20 +109,20 @@ export default function MobileApp({
   setGuestInteractionAlert,
   openPrivateChatDirectly,
   socket,
-}: MobileAppProps) {
+}: AndroidAppProps) {
   const isDarkNavActive = activeTab === 'reels';
   const [navBarHeight, setNavBarHeight] = React.useState(56);
 
   React.useEffect(() => {
     const updateNavHeight = () => {
-      const nav = document.getElementById("bottom-nav-bar");
+      const nav = document.getElementById("android-bottom-nav-bar");
       if (nav) {
         setNavBarHeight(nav.offsetHeight || nav.getBoundingClientRect().height || 56);
       }
     };
     updateNavHeight();
     window.addEventListener("resize", updateNavHeight);
-    const nav = document.getElementById("bottom-nav-bar");
+    const nav = document.getElementById("android-bottom-nav-bar");
     let ro: ResizeObserver | null = null;
     if (nav) {
       ro = new ResizeObserver(updateNavHeight);
@@ -135,8 +135,16 @@ export default function MobileApp({
   }, [activeTab]);
 
   return (
-    <div className="w-full flex-1 flex flex-col relative no-scrollbar" id="mobile-app-layout" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-      {/* Mobile Views Router Container */}
+    <div
+      className="w-full flex-1 flex flex-col relative no-scrollbar"
+      id="android-app-layout"
+      style={{
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+        fontFamily: 'Roboto, system-ui, -apple-system, sans-serif'
+      }}
+    >
+      {/* Main Content Router */}
       <main
         className={`flex-1 w-full no-scrollbar ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
         style={{
@@ -177,7 +185,7 @@ export default function MobileApp({
                 onToggleSaveReel={handleToggleSaveReel}
                 onToggleFollowUser={handleToggleFollowUser}
                 onGuestInteraction={(action) => {
-                  setGuestInteractionAlert(`Para ${action} en este reel, por favor inicia sesión o crea una cuenta de creador.`);
+                  setGuestInteractionAlert(`Para ${action} en este reel, por favor inicia sesión.`);
                 }}
               />
             )}
@@ -209,9 +217,9 @@ export default function MobileApp({
             {activeTab === 'profile' && (
               <div
                 className="w-full"
-                id="mobile-profile-container"
+                id="android-profile-container"
                 style={{
-                  paddingBottom: `${navBarHeight + 5}px`
+                  paddingBottom: `${navBarHeight + 6}px`
                 }}
               >
                 <ProfileView
@@ -260,17 +268,17 @@ export default function MobileApp({
         </AnimatePresence>
       </main>
 
-      {/* Mobile Bottom Floating Navigation Bar */}
+      {/* Android Material Design Navigation Bar */}
       {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && (
         <div
-          id="bottom-nav-bar"
-          className={`fixed bottom-0 inset-x-0 pt-1 px-1 z-30 border-0 shadow-none transition-colors ${
+          id="android-bottom-nav-bar"
+          className={`fixed bottom-0 inset-x-0 pt-1 px-1 z-30 transition-colors shadow-[0_-2px_10px_rgba(0,0,0,0.15)] ${
             activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages'
-               ? "bg-white text-slate-900"
-               : "bg-black text-white"
-          } md:hidden`}
+               ? "bg-white text-slate-900 border-t border-slate-100"
+               : "bg-black text-white border-t border-white/5"
+          }`}
           style={{
-            paddingBottom: 'max(0.2rem, calc(env(safe-area-inset-bottom, 0px) + 0.1rem))'
+            paddingBottom: 'max(0.2rem, calc(env(safe-area-inset-bottom, 0px) + 0.15rem))'
           }}
         >
           <div className="max-w-md mx-auto flex items-center justify-around">
@@ -278,31 +286,31 @@ export default function MobileApp({
             {/* Tab 1: Reels */}
             <button
               onClick={() => { refreshReels(); setActiveTab('reels'); }}
-              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
+              className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all active:bg-amber-500/10 cursor-pointer ${
                 activeTab === 'reels'
                   ? "text-amber-500 scale-105"
                   : "text-slate-400 hover:text-white"
               }`}
-              id="nav-reels"
+              id="android-nav-reels"
             >
               <Play className={`w-5 h-5 transition-all ${activeTab === 'reels' ? "fill-amber-500 stroke-amber-500" : ""}`} />
-              <span className="text-[9px] font-semibold mt-0.5 tracking-tight">Reels</span>
+              <span className="text-[10px] font-medium mt-0.5 tracking-tight">Reels</span>
             </button>
 
             {/* Tab 2: Shop */}
             <button
               onClick={() => setActiveTab('shop')}
-              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer relative ${
+              className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all active:bg-amber-500/10 cursor-pointer relative ${
                 activeTab === 'shop'
                   ? "text-amber-600 scale-105"
                   : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
               }`}
-              id="nav-shop"
+              id="android-nav-shop"
             >
               <ShoppingBag className={`w-5 h-5 transition-all ${activeTab === 'shop' ? "fill-amber-600 stroke-amber-600" : ""}`} />
-              <span className="text-[9px] font-semibold mt-0.5 tracking-tight">Tienda</span>
+              <span className="text-[10px] font-medium mt-0.5 tracking-tight">Tienda</span>
               {cart.length > 0 && (
-                <span className="absolute top-0.5 right-1.5 w-3.5 h-3.5 bg-amber-500 text-slate-950 font-mono font-black text-[8px] rounded-full flex items-center justify-center border border-black">
+                <span className="absolute top-0.5 right-2 w-4 h-4 bg-amber-500 text-slate-950 font-mono font-bold text-[9px] rounded-full flex items-center justify-center border border-black shadow-sm">
                   {cart.reduce((s, i) => s + (i.quantity || 1), 0)}
                 </span>
               )}
@@ -311,17 +319,17 @@ export default function MobileApp({
             {/* Tab 3: Messages */}
             <button
               onClick={() => setActiveTab('messages')}
-              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer relative ${
+              className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all active:bg-amber-500/10 cursor-pointer relative ${
                 activeTab === 'messages'
                   ? "text-amber-600 scale-105"
                   : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
               }`}
-              id="nav-messages"
+              id="android-nav-messages"
             >
               <MessageSquare className={`w-5 h-5 transition-all ${activeTab === 'messages' ? "fill-amber-600 stroke-amber-600" : ""}`} />
-              <span className="text-[9px] font-semibold mt-0.5 tracking-tight">Mensajes</span>
+              <span className="text-[10px] font-medium mt-0.5 tracking-tight">Mensajes</span>
               {totalUnreads > 0 && (
-                <span className="absolute top-0.5 right-1.5 w-3.5 h-3.5 bg-rose-500 text-white font-mono font-black text-[8px] rounded-full flex items-center justify-center border border-black animate-pulse">
+                <span className="absolute top-0.5 right-2 w-4 h-4 bg-rose-500 text-white font-mono font-bold text-[9px] rounded-full flex items-center justify-center border border-black animate-pulse shadow-sm">
                   {totalUnreads}
                 </span>
               )}
@@ -333,15 +341,15 @@ export default function MobileApp({
                 setSelectedCreatorProfileId(null);
                 setActiveTab('profile');
               }}
-              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
+              className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all active:bg-amber-500/10 cursor-pointer ${
                 activeTab === 'profile'
                   ? "text-amber-600 scale-105"
                   : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
               }`}
-              id="nav-profile"
+              id="android-nav-profile"
             >
               <UserIcon className={`w-5 h-5 transition-all ${activeTab === 'profile' ? "fill-amber-600 stroke-amber-600" : ""}`} />
-              <span className="text-[9px] font-semibold mt-0.5 tracking-tight">
+              <span className="text-[10px] font-medium mt-0.5 tracking-tight">
                 {currentUser.username === "invitado" ? "Cuenta" : "Perfil"}
               </span>
             </button>

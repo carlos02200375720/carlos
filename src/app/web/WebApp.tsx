@@ -1,10 +1,10 @@
 import React from "react";
 import { User, Reel, Product, CartItem, Order, ChatMessage } from "../../types";
 import WebSidebar from "./WebSidebar";
-import ReelsView from "../../components/ReelsView";
-import ShopView from "../../components/ShopView";
-import SocialPanel from "../../components/SocialPanel";
-import ProfileView from "../../components/ProfileView";
+import ReelsView from "./ReelsView";
+import ShopView from "./ShopView";
+import SocialPanel from "./SocialPanel";
+import ProfileView from "./ProfileView";
 import { motion, AnimatePresence } from "motion/react";
 import { safeStorage } from "../../utils/safeStorage";
 
@@ -127,7 +127,7 @@ export default function WebApp({
 
       {/* Main Web Views Canvas */}
       <main
-        className={`flex-1 w-full md:pl-60 lg:pl-64 ${activeTab === 'reels' ? 'h-screen overflow-hidden' : 'min-h-screen'} ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
+        className={`flex-1 w-full md:pl-60 lg:pl-64 ${activeTab === 'reels' ? 'h-screen overflow-hidden' : 'min-h-screen pb-16 md:pb-0'} ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
       >
         <AnimatePresence mode="wait">
           <motion.div

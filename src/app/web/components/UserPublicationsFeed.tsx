@@ -19,9 +19,9 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import { Reel, Product, Comment, User } from "../types";
+import { Reel, Product, Comment, User } from "../../../types";
 import { motion, AnimatePresence } from "motion/react";
-import { apiFetch } from "../config";
+import { apiFetch } from "../../../config";
 import { ReelProgressBar } from "./ReelProgressBar";
 
 interface UserPublicationsFeedProps {

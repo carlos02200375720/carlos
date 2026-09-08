@@ -1,4 +1,4 @@
-export { default as MobileApp } from "./MobileApp";
+export { default as AndroidApp } from "./AndroidApp";
 export { default as ReelsView } from "./ReelsView";
 export { default as ShopView } from "./ShopView";
 export { default as ProfileView } from "./ProfileView";

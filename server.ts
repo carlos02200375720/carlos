@@ -10,6 +10,7 @@ import { Storage } from "@google-cloud/storage";
 import multer from "multer";
 import fs from "fs";
 import { transcodeVideoToHLS, hlsQueue, deleteHlsStreamBatch, optimizeVideoToH264 } from "./src/server/hlsTranscoder";
+import { createAndroidRouter } from "./src/server/androidRouter";
 
 // Configure dotenv to read environment variables first
 dotenv.config();
@@ -799,6 +800,28 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // --- API ENDPOINTS ---
+
+  // --- DEDICATED ANDROID API ROUTER ---
+  app.use(
+    "/api/android",
+    createAndroidRouter({
+      MongoUser,
+      MongoProduct,
+      MongoReel,
+      MongoOrder,
+      MongoPublicacion,
+      getReels: () => reels,
+      setReels: (newReels) => { reels = newReels; },
+      getProducts: () => products,
+      getOrders: () => orders,
+      setOrders: (newOrders) => { orders = newOrders; },
+      uploadToGCS,
+      uploadSingleSafe,
+      uploadBase64ToGCS,
+      broadcastToAll,
+      generateId,
+    })
+  );
 
   // Health check endpoint for fast server wake-up & readiness verification
   app.get(["/api/health", "/health"], (req, res) => {
@@ -4019,12 +4042,12 @@ async function startServer() {
     });
   }
 
-  // Serve PWA manifest file directly
-  app.get(["/manifest.json", "/manifest (1).json"], (req, res) => {
+  // Serve PWA manifest file directly from web module
+  app.get("/manifest.json", (req, res) => {
     res.setHeader("Content-Type", "application/manifest+json");
-    const manifestPath = fs.existsSync(path.join(process.cwd(), "manifest.json"))
-      ? path.join(process.cwd(), "manifest.json")
-      : path.join(process.cwd(), "public", "manifest.json");
+    const webManifest = path.join(process.cwd(), "src", "app", "web", "manifest.json");
+    const distManifest = path.join(process.cwd(), "dist", "manifest.json");
+    const manifestPath = fs.existsSync(webManifest) ? webManifest : distManifest;
     res.sendFile(manifestPath);
   });
 

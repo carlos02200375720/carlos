@@ -4,7 +4,7 @@ import App from './App.tsx';
 import './index.css';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
-import ErrorBoundary from './components/ErrorBoundary';
+import ErrorBoundary from './app/web/components/ErrorBoundary';
 
 // Initialize Native Mobile Device adjustments safely
 try {

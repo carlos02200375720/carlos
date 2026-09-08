@@ -6,6 +6,12 @@
   "android": {
     "allowMixedContent": true
   },
+  "ios": {
+    "contentInset": "always",
+    "preferredContentMode": "mobile",
+    "allowsLinkPreview": false,
+    "handleApplicationURL": true
+  },
   "plugins": {
     "StatusBar": {
       "overlaysWebView": false,

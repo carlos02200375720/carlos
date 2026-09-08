@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { Lock, UserPlus, LogIn, X, AlertCircle, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
-import { User } from "../types";
-import { apiFetch } from "../config";
+import { User } from "../../../types";
+import { apiFetch } from "../../../config";
 import { motion, AnimatePresence } from "motion/react";
-import { safeStorage } from "../utils/safeStorage";
+import { safeStorage } from "../../../utils/safeStorage";
 
 interface AuthModalProps {
   isOpen: boolean;

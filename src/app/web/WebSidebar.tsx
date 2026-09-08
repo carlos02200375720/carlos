@@ -24,6 +24,7 @@ export default function WebSidebar({
   const isDarkNavActive = activeTab === 'reels';
 
   return (
+    <>
     <aside
       className={`hidden md:flex flex-col justify-between w-60 lg:w-64 fixed left-0 top-0 bottom-0 z-40 border-r p-4 select-none transition-colors duration-200 ${
         isDarkNavActive
@@ -163,5 +164,70 @@ export default function WebSidebar({
         </div>
       </div>
     </aside>
+
+    {/* Mobile Web Bottom Navigation Bar */}
+    <nav
+      className={`flex md:hidden fixed bottom-0 left-0 right-0 z-50 h-16 border-t px-4 items-center justify-around select-none backdrop-blur-lg ${
+        isDarkNavActive
+          ? "bg-slate-950/95 border-slate-800/80 text-white"
+          : "bg-white/95 border-slate-200 text-slate-900"
+      }`}
+      id="mobile-web-bottom-nav"
+    >
+      <button
+        onClick={() => { refreshReels(); setActiveTab('reels'); }}
+        className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
+          activeTab === 'reels' ? "text-amber-500" : isDarkNavActive ? "text-slate-400" : "text-slate-500"
+        }`}
+      >
+        <Play strokeWidth={2.4} className={`w-5 h-5 ${activeTab === 'reels' ? "fill-amber-500" : ""}`} />
+        <span className="text-[10px] font-bold mt-1">Reels</span>
+      </button>
+
+      <button
+        onClick={() => setActiveTab('shop')}
+        className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
+          activeTab === 'shop' ? "text-amber-500" : isDarkNavActive ? "text-slate-400" : "text-slate-500"
+        }`}
+      >
+        <ShoppingBag strokeWidth={2.4} className={`w-5 h-5 ${activeTab === 'shop' ? "fill-amber-500" : ""}`} />
+        <span className="text-[10px] font-bold mt-1">Tienda</span>
+      </button>
+
+      <button
+        onClick={() => setActiveTab('messages')}
+        className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors relative ${
+          activeTab === 'messages' ? "text-amber-500" : isDarkNavActive ? "text-slate-400" : "text-slate-500"
+        }`}
+      >
+        <div className="relative">
+          <MessageSquare strokeWidth={2.4} className={`w-5 h-5 ${activeTab === 'messages' ? "fill-amber-500" : ""}`} />
+          {totalUnreads > 0 && (
+            <span className="absolute -top-1.5 -right-2 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
+              {totalUnreads > 9 ? "9+" : totalUnreads}
+            </span>
+          )}
+        </div>
+        <span className="text-[10px] font-bold mt-1">Mensajes</span>
+      </button>
+
+      <button
+        onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
+        className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
+          activeTab === 'profile' ? "text-amber-500" : isDarkNavActive ? "text-slate-400" : "text-slate-500"
+        }`}
+      >
+        <img
+          src={currentUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
+          alt={currentUser.name}
+          referrerPolicy="no-referrer"
+          className={`w-6 h-6 rounded-full object-cover border ${
+            activeTab === 'profile' ? "border-amber-500 ring-2 ring-amber-500/20" : "border-slate-400/40"
+          }`}
+        />
+        <span className="text-[10px] font-bold mt-1">Perfil</span>
+      </button>
+    </nav>
+    </>
   );
 }
