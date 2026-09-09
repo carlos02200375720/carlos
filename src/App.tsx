@@ -220,19 +220,31 @@ export default function App() {
 
       let hasLoadedAnyCore = false;
 
-      if (usersRes.status === "fulfilled" && Array.isArray(usersRes.value)) {
-        if (usersRes.value.length > 0) setUsers(deduplicateById(usersRes.value));
-        hasLoadedAnyCore = true;
+      if (usersRes.status === "fulfilled") {
+        const val = usersRes.value;
+        const list = Array.isArray(val) ? val : (val && Array.isArray(val.users) ? val.users : []);
+        if (list.length > 0) {
+          setUsers(deduplicateById(list));
+          hasLoadedAnyCore = true;
+        }
       }
 
-      if (reelsRes.status === "fulfilled" && Array.isArray(reelsRes.value)) {
-        if (reelsRes.value.length > 0) setReels(deduplicateById(reelsRes.value));
-        hasLoadedAnyCore = true;
+      if (reelsRes.status === "fulfilled") {
+        const val = reelsRes.value;
+        const list = Array.isArray(val) ? val : (val && Array.isArray(val.reels) ? val.reels : []);
+        if (list.length > 0) {
+          setReels(deduplicateById(list));
+          hasLoadedAnyCore = true;
+        }
       }
 
-      if (productsRes.status === "fulfilled" && Array.isArray(productsRes.value)) {
-        if (productsRes.value.length > 0) setProducts(deduplicateById(productsRes.value));
-        hasLoadedAnyCore = true;
+      if (productsRes.status === "fulfilled") {
+        const val = productsRes.value;
+        const list = Array.isArray(val) ? val : (val && Array.isArray(val.products) ? val.products : []);
+        if (list.length > 0) {
+          setProducts(deduplicateById(list));
+          hasLoadedAnyCore = true;
+        }
       }
 
       if (liveRes.status === "fulfilled" && Array.isArray(liveRes.value)) {
@@ -240,7 +252,14 @@ export default function App() {
       }
 
       // Step 3: Restore session from safeStorage if logged in
-      const savedUsername = safeStorage.getItem("loggedInUsername");
+      let savedUsername = safeStorage.getItem("loggedInUsername");
+      if (savedUsername === "carlosg") {
+        savedUsername = "carlos";
+        safeStorage.setItem("loggedInUsername", "carlos");
+      } else if (savedUsername === "davidb") {
+        savedUsername = "david";
+        safeStorage.setItem("loggedInUsername", "david");
+      }
       const savedPassword = safeStorage.getItem("loggedInPassword") || "";
       if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
         apiFetch("/api/users/current/switch", {

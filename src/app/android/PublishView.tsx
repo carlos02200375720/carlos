@@ -40,10 +40,32 @@ export default function AndroidPublishView({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prodImgInputRef = useRef<HTMLInputElement>(null);
+  const [detectedAspect, setDetectedAspect] = useState<'vertical' | 'horizontal' | 'square'>('vertical');
 
   const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setVideoFile(e.target.files[0]);
+      const file = e.target.files[0];
+      setVideoFile(file);
+
+      // Detect aspect ratio of the selected video file
+      try {
+        const tempVideo = document.createElement("video");
+        tempVideo.preload = "metadata";
+        tempVideo.src = URL.createObjectURL(file);
+        tempVideo.onloadedmetadata = () => {
+          const w = tempVideo.videoWidth || 0;
+          const h = tempVideo.videoHeight || 0;
+          if (w > 0 && h > 0) {
+            const ratio = w / h;
+            if (ratio < 0.85) setDetectedAspect('vertical');
+            else if (ratio > 1.18) setDetectedAspect('horizontal');
+            else setDetectedAspect('square');
+          }
+          URL.revokeObjectURL(tempVideo.src);
+        };
+      } catch {
+        setDetectedAspect('vertical');
+      }
     }
   };
 
@@ -102,6 +124,7 @@ export default function AndroidPublishView({
           creatorName: currentUser.name,
           creatorAvatar: currentUser.avatar,
           taggedProductId: selectedProductId || undefined,
+          aspectRatio: detectedAspect,
         }),
       });
 

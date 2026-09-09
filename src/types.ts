@@ -45,6 +45,7 @@ export interface Reel {
   productId?: string; // Tagged product
   type?: 'video' | 'image' | 'carousel';
   images?: string[]; // For carrousels or single images
+  aspectRatio?: 'vertical' | 'horizontal' | 'square';
 }
 
 export interface ProductVariantItem {

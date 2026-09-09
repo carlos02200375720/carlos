@@ -168,6 +168,9 @@ export default function AndroidApp({
               <ReelsView
                 reels={reels}
                 currentUser={currentUser}
+                users={users}
+                products={products}
+                bottomNavHeight={navBarHeight}
                 cart={cart}
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}
@@ -226,6 +229,10 @@ export default function AndroidApp({
                   currentUser={currentUser}
                   selectedCreatorId={selectedCreatorProfileId}
                   users={users}
+                  reels={reels}
+                  products={products}
+                  savedReelIds={savedReelIds}
+                  onToggleSaveReel={handleToggleSaveReel}
                   onBackToSelf={() => setSelectedCreatorProfileId(null)}
                   onOpenDirectChat={openPrivateChatDirectly}
                   onSelectProduct={handleProductDetailsLink}

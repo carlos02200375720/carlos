@@ -83,8 +83,79 @@ export default function AndroidProfileView({
   const isMe = activeUser.id === currentUser.id || activeUser.username === currentUser.username;
   const isFollowing = currentUser?.followingUserIds?.includes(activeUser.id) || false;
 
-  const userReels = reels.filter((r) => r.creatorId === activeUser.id || r.creatorUsername === activeUser.username);
-  const userProducts = products.filter((p) => p.sellerId === activeUser.id);
+  const [extraPublications, setExtraPublications] = useState<Reel[]>([]);
+
+  // Fetch real publications and reels from MongoDB Atlas for this user
+  React.useEffect(() => {
+    const targetId = activeUser.originalId || activeUser.id || activeUser.username;
+    if (!targetId || targetId === "invitado") return;
+
+    androidApiFetch(`/users/${targetId}/publications`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data) {
+          const apiReels: Reel[] = [];
+          if (Array.isArray(data.reels)) {
+            apiReels.push(...data.reels);
+          }
+          if (Array.isArray(data.publicaciones)) {
+            data.publicaciones.forEach((pub: any) => {
+              if (pub.url) {
+                apiReels.push({
+                  id: pub.id,
+                  videoUrl: pub.url,
+                  thumbnailUrl: pub.thumbnailUrl || pub.url,
+                  description: pub.title || pub.description || "Publicación",
+                  creatorId: pub.creatorId || activeUser.id,
+                  creatorName: activeUser.name,
+                  creatorUsername: activeUser.username,
+                  creatorAvatar: activeUser.avatar,
+                  likes: pub.likes || 0,
+                  likedBy: [],
+                  comments: [],
+                  shares: 0,
+                  saves: 0,
+                  views: 0,
+                  type: "video",
+                });
+              }
+            });
+          }
+          if (apiReels.length > 0) {
+            setExtraPublications(apiReels);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [activeUser.id, activeUser.originalId, activeUser.username]);
+
+  const userReels = React.useMemo(() => {
+    const activeIds = [activeUser.id, activeUser.originalId].filter(Boolean);
+    const primary = reels.filter((r) => {
+      if (r.creatorId && activeIds.includes(r.creatorId)) return true;
+      if (r.creatorUsername && activeUser.username && r.creatorUsername.toLowerCase() === activeUser.username.toLowerCase()) return true;
+      if (isMe && (r.creatorId === "current_user" || (currentUser.username && r.creatorUsername?.toLowerCase() === currentUser.username.toLowerCase()))) return true;
+      return false;
+    });
+
+    const map = new Map<string, Reel>();
+    primary.forEach((r) => map.set(r.id, r));
+    extraPublications.forEach((r) => {
+      if (!map.has(r.id)) map.set(r.id, r);
+    });
+    return Array.from(map.values());
+  }, [reels, extraPublications, activeUser.id, activeUser.originalId, activeUser.username, isMe, currentUser.username]);
+
+  const userProducts = React.useMemo(() => {
+    const activeIds = [activeUser.id, activeUser.originalId].filter(Boolean);
+    return products.filter((p) => {
+      if (p.sellerId && activeIds.includes(p.sellerId)) return true;
+      if (p.sellerUsername && activeUser.username && p.sellerUsername.toLowerCase() === activeUser.username.toLowerCase()) return true;
+      if (isMe && (p.sellerId === "current_user" || (currentUser.username && p.sellerUsername?.toLowerCase() === currentUser.username.toLowerCase()))) return true;
+      return false;
+    });
+  }, [products, activeUser.id, activeUser.originalId, activeUser.username, isMe, currentUser.username]);
+
   const savedReels = reels.filter((r) => savedReelIds.includes(r.id));
   const userOrders = orders.filter((o) => o.buyerId === activeUser.id || o.buyerId === currentUser.id);
 

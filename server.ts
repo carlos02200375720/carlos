@@ -110,7 +110,8 @@ const ReelSchema = new mongoose.Schema({
   productId: { type: String },
   type: { type: String, default: "video" },
   images: { type: [String], default: [] },
-  hlsUrl: { type: String }
+  hlsUrl: { type: String },
+  aspectRatio: { type: String, default: "vertical" }
 });
 
 const MongoReel = (mongoose.models.Reel || mongoose.model("Reel", ReelSchema)) as any;
@@ -592,7 +593,9 @@ async function connectToMongoDB() {
       const dbReels = await MongoReel.find();
       const userMap = new Map<string, any>();
       dbUsers.forEach((u: any) => {
-        userMap.set(u.id, u);
+        if (u.id) userMap.set(u.id, u);
+        if (u.username) userMap.set(u.username.toLowerCase(), u);
+        if (u._id) userMap.set(u._id.toString(), u);
       });
       const seenReelIds = new Set<string>();
       const uniqueDbReels = dbReels.filter((r) => {
@@ -601,14 +604,16 @@ async function connectToMongoDB() {
         return true;
       });
       reels = uniqueDbReels.map(r => {
-        const creatorUser = userMap.get(r.creatorId);
+        const creatorUser =
+          userMap.get(r.creatorId) ||
+          (r.creatorUsername ? userMap.get(r.creatorUsername.toLowerCase()) : null);
         return {
           id: r.id,
           videoUrl: r.videoUrl || "",
           thumbnailUrl: (r.thumbnailUrl && !r.thumbnailUrl.includes("1618005182384")) ? r.thumbnailUrl : "",
           description: r.description || "",
-          creatorId: r.creatorId || "current_user",
-          creatorName: creatorUser ? creatorUser.name : (r.creatorName || "Carlos Gómez"),
+          creatorId: creatorUser ? creatorUser.id : (r.creatorId || "creator"),
+          creatorName: creatorUser ? creatorUser.name : (r.creatorName || "Creador"),
           creatorUsername: creatorUser ? creatorUser.username : (r.creatorUsername || undefined),
           creatorAvatar: creatorUser ? creatorUser.avatar : (r.creatorAvatar || ""),
           likes: r.likes || 0,
@@ -619,7 +624,8 @@ async function connectToMongoDB() {
           views: r.views || 0,
           productId: r.productId || undefined,
           type: r.type || "video",
-          images: (r.images || []).filter((img: string) => !img || !img.includes("1618005182384"))
+          images: (r.images || []).filter((img: string) => !img || !img.includes("1618005182384")),
+          aspectRatio: r.aspectRatio || "vertical"
         };
       });
       console.log(`📦 Loaded ${reels.length} unique reels successfully from MongoDB Atlas!`);
@@ -810,6 +816,7 @@ async function startServer() {
       MongoReel,
       MongoOrder,
       MongoPublicacion,
+      getUsers,
       getReels: () => reels,
       setReels: (newReels) => { reels = newReels; },
       getProducts: () => products,
@@ -2032,7 +2039,9 @@ async function startServer() {
         const dbUsers = await MongoUser.find();
         const userMap = new Map<string, any>();
         dbUsers.forEach((u: any) => {
-          userMap.set(u.id, u);
+          if (u.id) userMap.set(u.id, u);
+          if (u.username) userMap.set(u.username.toLowerCase(), u);
+          if (u._id) userMap.set(u._id.toString(), u);
         });
 
         const dbReels = await MongoReel.find();
@@ -2043,14 +2052,16 @@ async function startServer() {
           return true;
         });
         reels = uniqueDbReels.map(r => {
-          const creatorUser = userMap.get(r.creatorId);
+          const creatorUser =
+            userMap.get(r.creatorId) ||
+            (r.creatorUsername ? userMap.get(r.creatorUsername.toLowerCase()) : null);
           return {
             id: r.id,
             videoUrl: r.videoUrl || "",
             thumbnailUrl: r.thumbnailUrl || "",
             description: r.description || "",
-            creatorId: r.creatorId || "current_user",
-            creatorName: creatorUser ? creatorUser.name : (r.creatorName || "Carlos Gómez"),
+            creatorId: creatorUser ? creatorUser.id : (r.creatorId || "creator"),
+            creatorName: creatorUser ? creatorUser.name : (r.creatorName || "Creador"),
             creatorUsername: creatorUser ? creatorUser.username : (r.creatorUsername || undefined),
             creatorAvatar: creatorUser ? creatorUser.avatar : (r.creatorAvatar || ""),
             likes: r.likes || 0,
@@ -2062,7 +2073,8 @@ async function startServer() {
             productId: r.productId || undefined,
             type: r.type || "video",
             images: r.images || [],
-            hlsUrl: r.hlsUrl || (r.videoUrl ? `/api/hls/stream?url=${encodeURIComponent(r.videoUrl)}` : undefined)
+            hlsUrl: (r.hlsUrl && r.hlsUrl.includes(".m3u8")) ? r.hlsUrl : undefined,
+            aspectRatio: r.aspectRatio || "vertical",
           };
         });
       } catch (err) {

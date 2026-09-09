@@ -3,13 +3,15 @@ import React, { useRef, useEffect, useCallback } from "react";
 interface AndroidProgressBarProps {
   video: HTMLVideoElement | null;
   isActive: boolean;
+  bottomOffset?: number;
 }
 
 /**
  * Android Native Progress Bar
  * Isolated, high-performance seek bar with Android touch ergonomics.
+ * Always positioned at the bottom of the publication card, directly above the navigation bar.
  */
-export const AndroidProgressBar: React.FC<AndroidProgressBarProps> = React.memo(({ video, isActive }) => {
+export const AndroidProgressBar: React.FC<AndroidProgressBarProps> = React.memo(({ video, isActive, bottomOffset = 0 }) => {
   const progressBarRef = useRef<HTMLDivElement>(null);
   const fillBarRef = useRef<HTMLDivElement>(null);
   const isScrubbingRef = useRef(false);
@@ -54,6 +56,7 @@ export const AndroidProgressBar: React.FC<AndroidProgressBarProps> = React.memo(
   };
 
   const handleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
+    e.stopPropagation();
     isScrubbingRef.current = true;
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
     handleSeek(clientX);
@@ -83,20 +86,26 @@ export const AndroidProgressBar: React.FC<AndroidProgressBarProps> = React.memo(
   return (
     <div
       ref={progressBarRef}
-      className="absolute bottom-0 left-0 right-0 z-30 h-4 flex items-end cursor-pointer select-none touch-none"
-      style={{ touchAction: "none" }}
+      className="absolute left-0 right-0 z-30 h-5 flex items-end cursor-pointer select-none touch-none group"
+      style={{
+        bottom: `${bottomOffset}px`,
+        touchAction: "none",
+      }}
       onTouchStart={handleTouchStart}
       onMouseDown={handleTouchStart}
-      onClick={(e) => handleSeek(e.clientX)}
+      onClick={(e) => {
+        e.stopPropagation();
+        handleSeek(e.clientX);
+      }}
       id="android-reel-progress-bar"
     >
-      <div className="w-full h-[3px] bg-white/25 backdrop-blur-sm relative overflow-hidden">
+      <div className="w-full h-[3.5px] group-hover:h-[5px] bg-white/20 backdrop-blur-sm relative overflow-hidden transition-all duration-150">
         <div
           ref={fillBarRef}
-          className="h-full bg-amber-500 rounded-r-full shadow-[0_0_8px_rgba(245,158,11,0.8)] relative"
+          className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-r-full shadow-[0_0_10px_rgba(245,158,11,0.9)] relative"
           style={{ width: "0%" }}
         >
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-2.5 h-2.5 bg-amber-400 rounded-full shadow-md" />
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-3 h-3 bg-amber-300 border border-white/60 rounded-full shadow-lg scale-90 group-hover:scale-125 transition-transform" />
         </div>
       </div>
     </div>
