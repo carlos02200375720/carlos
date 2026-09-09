@@ -56,9 +56,13 @@ export default function AndroidReelsView({
   isFeedActive = true,
   onAuthRequired,
   onGuestInteraction,
+  onRefreshReels,
   isMuted: propIsMuted,
   onToggleMute: propOnToggleMute,
   bottomNavHeight = 56,
+  cart = [],
+  onNavigateToShop,
+  onNavigateToCheckout,
 }: AndroidReelsViewProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [localMuted, setLocalMuted] = useState(false);
@@ -69,6 +73,8 @@ export default function AndroidReelsView({
   const [authDescription, setAuthDescription] = useState("");
   const [actualNavHeight, setActualNavHeight] = useState<number>(bottomNavHeight || 56);
   const [imageAspect, setImageAspect] = useState<'vertical' | 'horizontal' | 'square'>('vertical');
+
+  const totalCartCount = (cart || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
 
   // Track bottom navigation bar height dynamically for pixel-perfect alignment
   useEffect(() => {
@@ -99,23 +105,27 @@ export default function AndroidReelsView({
 
   const playerRef = useRef<AndroidVideoPlayerHandle>(null);
   const touchStartY = useRef<number>(0);
+  const isMouseDownRef = useRef<boolean>(false);
   const isGuest = !currentUser || currentUser.isGuest || currentUser.username === "invitado";
 
   const currentReel = reels[currentIndex] || reels[0];
 
   const handleProductSelect = onProductClick || onSelectProduct;
 
+  // Infinite scroll: Next reel loops back to beginning seamlessly
   const handleNext = useCallback(() => {
-    if (currentIndex < reels.length - 1) {
-      setCurrentIndex((i) => i + 1);
+    if (reels.length === 0) return;
+    setCurrentIndex((i) => (i + 1) % reels.length);
+    if (currentIndex >= reels.length - 2 && onRefreshReels) {
+      onRefreshReels();
     }
-  }, [currentIndex, reels.length]);
+  }, [currentIndex, reels.length, onRefreshReels]);
 
+  // Infinite scroll: Prev reel loops back to end seamlessly
   const handlePrev = useCallback(() => {
-    if (currentIndex > 0) {
-      setCurrentIndex((i) => i - 1);
-    }
-  }, [currentIndex]);
+    if (reels.length === 0) return;
+    setCurrentIndex((i) => (i - 1 + reels.length) % reels.length);
+  }, [reels.length]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
@@ -124,7 +134,7 @@ export default function AndroidReelsView({
   const handleTouchEnd = (e: React.TouchEvent) => {
     const touchEndY = e.changedTouches[0].clientY;
     const diff = touchStartY.current - touchEndY;
-    const SWIPE_THRESHOLD = 50;
+    const SWIPE_THRESHOLD = 45;
 
     if (diff > SWIPE_THRESHOLD) {
       handleNext();
@@ -133,14 +143,58 @@ export default function AndroidReelsView({
     }
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    isMouseDownRef.current = true;
+    touchStartY.current = e.clientY;
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (!isMouseDownRef.current) return;
+    isMouseDownRef.current = false;
+    const diff = touchStartY.current - e.clientY;
+    const SWIPE_THRESHOLD = 45;
+    if (diff > SWIPE_THRESHOLD) {
+      handleNext();
+    } else if (diff < -SWIPE_THRESHOLD) {
+      handlePrev();
+    }
+  };
+
+  // Keyboard navigation (ArrowDown / ArrowUp)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (showComments) return;
       if (e.key === "ArrowDown") handleNext();
       if (e.key === "ArrowUp") handlePrev();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleNext, handlePrev]);
+  }, [handleNext, handlePrev, showComments]);
+
+  // Infinite mouse wheel scroll navigation
+  useEffect(() => {
+    let lastWheelTime = 0;
+    const handleWheel = (e: WheelEvent) => {
+      if (showComments) return;
+      const now = Date.now();
+      if (now - lastWheelTime < 400) return;
+      if (e.deltaY > 25) {
+        lastWheelTime = now;
+        handleNext();
+      } else if (e.deltaY < -25) {
+        lastWheelTime = now;
+        handlePrev();
+      }
+    };
+
+    const container = document.getElementById("android-reels-view");
+    if (container) {
+      container.addEventListener("wheel", handleWheel, { passive: true });
+    }
+    return () => {
+      if (container) container.removeEventListener("wheel", handleWheel);
+    };
+  }, [handleNext, handlePrev, showComments]);
 
   if (!currentReel) {
     return (
@@ -245,11 +299,14 @@ export default function AndroidReelsView({
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
       id="android-reels-view"
     >
       {/* Media Player Container: Dynamic Aspect Architecture (Vertical 100%, Horizontal 16:9, Square 1:1) */}
       {isVideo ? (
         <AndroidVideoPlayer
+          key={currentReel.id}
           ref={playerRef}
           src={currentReel.videoUrl}
           hlsUrl={currentReel.hlsUrl}
@@ -283,7 +340,7 @@ export default function AndroidReelsView({
               imageAspect === "vertical"
                 ? "w-full h-full flex items-center justify-center relative overflow-hidden"
                 : imageAspect === "horizontal"
-                ? "w-full max-h-[calc(100vh-140px)] relative z-10 flex items-center justify-center my-auto px-1 sm:px-4"
+                ? "w-full max-h-[calc(100vh-120px)] relative z-10 flex items-center justify-center my-auto px-0 rounded-none overflow-hidden"
                 : "w-full max-w-[min(94vw,calc(100vh-160px))] aspect-square relative z-10 mx-auto flex items-center justify-center my-auto rounded-2xl overflow-hidden shadow-2xl border border-white/10"
             }
           >
@@ -295,7 +352,7 @@ export default function AndroidReelsView({
                 imageAspect === "vertical"
                   ? "w-full h-full object-cover"
                   : imageAspect === "horizontal"
-                  ? "w-full max-h-full aspect-video sm:aspect-auto object-contain rounded-md shadow-2xl"
+                  ? "w-full max-h-full aspect-video object-cover rounded-none shadow-none"
                   : "w-full h-full object-cover"
               }
             />
@@ -326,45 +383,57 @@ export default function AndroidReelsView({
         )}
       </AnimatePresence>
 
-      {/* Floating Unmute Helper Badge */}
-      {isMuted && isVideo && (
+      {/* Top Transparent Header: Left Cart Icon, Right Audio Mute Toggle */}
+      <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 pt-3.5 pb-2 pointer-events-none bg-transparent">
+        {/* Left: Cart Button */}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setLocalMuted(false);
-            playerRef.current?.unmute();
+          onClick={() => {
+            if (onNavigateToShop) {
+              onNavigateToShop();
+            }
           }}
-          className="absolute top-4 left-4 z-30 flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white text-xs font-semibold backdrop-blur-md border border-white/20 active:scale-95 transition-transform shadow-lg"
-          id="android-unmute-badge"
+          className="pointer-events-auto relative p-1 text-white hover:text-amber-400 active:scale-90 transition-transform cursor-pointer"
+          title="Ver Carrito"
+          id="android-reels-cart-btn"
         >
-          <VolumeX className="w-4 h-4 text-amber-400 animate-pulse" />
-          <span>Toca para activar audio</span>
+          <ShoppingBag className="w-8 h-8 scale-x-120 stroke-[2.4] text-white hover:text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
+          {totalCartCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-black text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center shadow-lg border border-slate-900">
+              {totalCartCount > 99 ? "99+" : totalCartCount}
+            </span>
+          )}
         </button>
-      )}
 
-      {isVideo && (
-        <button
-          onClick={toggleMute}
-          className="absolute top-4 right-4 z-30 p-2.5 rounded-full bg-black/40 text-white backdrop-blur-md active:scale-95 transition-transform"
-          id="android-mute-toggle"
-        >
-          {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-        </button>
-      )}
+        {/* Right: Audio Toggle (Without background) */}
+        {isVideo && (
+          <button
+            onClick={toggleMute}
+            className="pointer-events-auto p-1 text-white hover:text-amber-400 active:scale-90 transition-transform cursor-pointer"
+            title={isMuted ? "Activar audio" : "Silenciar audio"}
+            id="android-mute-toggle"
+          >
+            {isMuted ? (
+              <VolumeX className="w-8 h-8 scale-x-120 stroke-[2.4] text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
+            ) : (
+              <Volume2 className="w-8 h-8 scale-x-120 stroke-[2.4] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
+            )}
+          </button>
+        )}
+      </div>
 
-      {/* Right Actions: Positioned above bottom navigation bar and progress bar */}
-      <div className="absolute right-3 bottom-16 z-30 flex flex-col items-center space-y-4 text-white">
-        <div className="relative mb-2">
+      {/* Right Actions: Positioned 5px above bottom navigation bar without black background */}
+      <div className="absolute right-2.5 bottom-[5px] z-30 flex flex-col items-center space-y-3.5 text-white pointer-events-auto">
+        <div className="relative mb-1">
           <img
             src={displayAvatar}
             alt={displayUsername}
             onClick={handleCreatorNav}
-            className="w-11 h-11 rounded-full object-cover border-2 border-amber-500 shadow-md cursor-pointer active:scale-95 transition-transform"
+            className="w-11 h-11 rounded-full object-cover border-2 border-amber-500 shadow-xl cursor-pointer active:scale-95 transition-transform"
           />
           {!isFollowing && currentUser?.id !== currentReel.creatorId && onToggleFollowUser && (
             <button
               onClick={() => onToggleFollowUser(currentReel.creatorId)}
-              className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-4 bg-amber-500 text-slate-950 rounded-full flex items-center justify-center shadow hover:scale-110 active:scale-90 transition-transform"
+              className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-4 bg-amber-500 text-slate-950 rounded-full flex items-center justify-center shadow-lg hover:scale-110 active:scale-90 transition-transform"
             >
               <Plus className="w-3 h-3 stroke-[3]" />
             </button>
@@ -381,22 +450,24 @@ export default function AndroidReelsView({
               onLikeReel(currentReel.id);
             }
           }}
-          className="flex flex-col items-center group cursor-pointer active:scale-90 transition-transform"
+          className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
+          id="android-reel-like-btn"
         >
-          <div className={`p-3 rounded-full backdrop-blur-md ${isLiked ? "bg-rose-500 text-white shadow-[0_0_12px_rgba(244,63,94,0.6)]" : "bg-black/40 text-white"}`}>
-            <Heart className={`w-6 h-6 ${isLiked ? "fill-white" : ""}`} />
-          </div>
-          <span className="text-[11px] font-bold mt-1 drop-shadow-md">{currentReel.likes || 0}</span>
+          <Heart
+            className={`w-8 h-8 scale-x-120 stroke-[2.4] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
+              isLiked ? "fill-rose-500 text-rose-500 filter drop-shadow-[0_0_12px_rgba(244,63,94,0.85)]" : "text-white group-hover:text-rose-400"
+            }`}
+          />
+          <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{currentReel.likes || 0}</span>
         </button>
 
         <button
           onClick={() => setShowComments(true)}
-          className="flex flex-col items-center group cursor-pointer active:scale-90 transition-transform"
+          className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
+          id="android-reel-comment-btn"
         >
-          <div className="p-3 rounded-full bg-black/40 text-white backdrop-blur-md">
-            <MessageCircle className="w-6 h-6" />
-          </div>
-          <span className="text-[11px] font-bold mt-1 drop-shadow-md">{currentReel.comments?.length || 0}</span>
+          <MessageCircle className="w-8 h-8 scale-x-120 stroke-[2.4] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
+          <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{currentReel.comments?.length || 0}</span>
         </button>
 
         <button
@@ -409,27 +480,29 @@ export default function AndroidReelsView({
               onToggleSaveReel(currentReel.id);
             }
           }}
-          className="flex flex-col items-center group cursor-pointer active:scale-90 transition-transform"
+          className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
+          id="android-reel-save-btn"
         >
-          <div className={`p-3 rounded-full backdrop-blur-md ${isSaved ? "bg-amber-500 text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.6)]" : "bg-black/40 text-white"}`}>
-            <Bookmark className={`w-6 h-6 ${isSaved ? "fill-slate-950" : ""}`} />
-          </div>
-          <span className="text-[11px] font-bold mt-1 drop-shadow-md">Guardar</span>
+          <Bookmark
+            className={`w-8 h-8 scale-x-120 stroke-[2.4] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
+              isSaved ? "fill-amber-400 text-amber-400 filter drop-shadow-[0_0_12px_rgba(245,158,11,0.85)]" : "text-white group-hover:text-amber-400"
+            }`}
+          />
+          <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Guardar</span>
         </button>
 
         <button
           onClick={handleShare}
-          className="flex flex-col items-center group cursor-pointer active:scale-90 transition-transform"
+          className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
+          id="android-reel-share-btn"
         >
-          <div className="p-3 rounded-full bg-black/40 text-white backdrop-blur-md">
-            <Share2 className="w-6 h-6" />
-          </div>
-          <span className="text-[11px] font-bold mt-1 drop-shadow-md">Compartir</span>
+          <Share2 className="w-8 h-8 scale-x-120 stroke-[2.4] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
+          <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Compartir</span>
         </button>
       </div>
 
-      {/* Bottom Info: Includes Username, Display Name, Product Tag and Caption */}
-      <div className="absolute bottom-2 left-0 right-0 z-20 pointer-events-none pb-4 pt-16 px-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
+      {/* Bottom Info: Clean, transparent overlay without dark shadow. Only displays username and caption */}
+      <div className="absolute bottom-2 left-0 right-0 z-20 pointer-events-none pb-2 px-4">
         <div className="max-w-[calc(100%-72px)]">
           {taggedProduct && handleProductSelect && (
             <div
@@ -442,25 +515,22 @@ export default function AndroidReelsView({
             </div>
           )}
 
-          {/* Author Username prominently displayed */}
+          {/* Author Username ONLY */}
           <div className="flex items-center space-x-2 mb-1 pointer-events-auto">
             <span
               onClick={handleCreatorNav}
-              className="text-sm font-black text-white hover:text-amber-400 cursor-pointer flex items-center space-x-1 drop-shadow-md tracking-tight"
+              className="text-sm font-black text-white hover:text-amber-400 cursor-pointer flex items-center space-x-1 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight"
             >
               <span>@{displayUsername}</span>
             </span>
-            {displayName && displayName !== `@${displayUsername}` && (
-              <span className="text-xs text-slate-300 font-medium truncate drop-shadow-md">
-                · {displayName}
-              </span>
-            )}
           </div>
 
           {/* Description */}
-          <p className="text-xs text-slate-100 font-normal line-clamp-2 drop-shadow-md leading-relaxed">
-            {currentReel.description}
-          </p>
+          {currentReel.description && (
+            <p className="text-xs text-white/95 font-medium line-clamp-2 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] leading-relaxed">
+              {currentReel.description}
+            </p>
+          )}
         </div>
       </div>
 

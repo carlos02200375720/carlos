@@ -5,6 +5,7 @@ import ReelsView from "./ReelsView";
 import ShopView from "./ShopView";
 import SocialPanel from "./SocialPanel";
 import ProfileView from "./ProfileView";
+import AndroidLoginView from "./LoginView";
 import { motion, AnimatePresence } from "motion/react";
 import { safeStorage } from "../../utils/safeStorage";
 
@@ -55,6 +56,7 @@ export interface AndroidAppProps {
   refreshAllData: () => void;
   setCurrentUser: React.Dispatch<React.SetStateAction<User>>;
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+  isLoggedIn?: boolean;
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
   handleLogout: () => void;
   setGuestInteractionAlert: (alert: string | null) => void;
@@ -104,12 +106,14 @@ export default function AndroidApp({
   refreshAllData,
   setCurrentUser,
   setUsers,
+  isLoggedIn,
   setIsLoggedIn,
   handleLogout,
   setGuestInteractionAlert,
   openPrivateChatDirectly,
   socket,
 }: AndroidAppProps) {
+  const isUserLoggedIn = (isLoggedIn && !currentUser.isGuest && currentUser.username !== "invitado" && currentUser.id !== "guest") || (!currentUser.isGuest && Boolean(currentUser.username) && currentUser.username !== "invitado" && currentUser.id !== "guest");
   const isDarkNavActive = activeTab === 'reels';
   const [navBarHeight, setNavBarHeight] = React.useState(56);
 
@@ -206,7 +210,14 @@ export default function AndroidApp({
                 onCreatorClick={handleCreatorProfileLink}
                 selectedProductDirectly={directSelectedProduct}
                 clearDirectProduct={() => setDirectSelectedProduct(null)}
-                onNavigateToHistory={() => { setSelectedCreatorProfileId(currentUser.id); setActiveTab('profile'); }}
+                onNavigateToHistory={() => {
+                  if (!isUserLoggedIn) {
+                    setSelectedCreatorProfileId(null);
+                  } else {
+                    setSelectedCreatorProfileId(currentUser.id);
+                  }
+                  setActiveTab('profile');
+                }}
                 onToggleDetailView={setIsProductDetailOpen}
                 initialStep={shopInitialStep}
                 initialSelectedCartIndices={shopInitialSelectedIndices}
@@ -219,42 +230,59 @@ export default function AndroidApp({
 
             {activeTab === 'profile' && (
               <div
-                className="w-full"
+                className="w-full bg-white min-h-screen"
                 id="android-profile-container"
                 style={{
                   paddingBottom: `${navBarHeight + 6}px`
                 }}
               >
-                <ProfileView
-                  currentUser={currentUser}
-                  selectedCreatorId={selectedCreatorProfileId}
-                  users={users}
-                  reels={reels}
-                  products={products}
-                  savedReelIds={savedReelIds}
-                  onToggleSaveReel={handleToggleSaveReel}
-                  onBackToSelf={() => setSelectedCreatorProfileId(null)}
-                  onOpenDirectChat={openPrivateChatDirectly}
-                  onSelectProduct={handleProductDetailsLink}
-                  onSelectReel={handleReelLink}
-                  onToggleFollowUser={handleToggleFollowUser}
-                  onProfileUpdate={(updatedUser) => {
-                    setCurrentUser(updatedUser);
-                    safeStorage.setItem("currentUserData", JSON.stringify(updatedUser));
-                    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-                    if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
+                {(!isUserLoggedIn && !selectedCreatorProfileId) ? (
+                  <AndroidLoginView
+                    users={users}
+                    onRefreshUsers={refreshAllData}
+                    onLoginSuccess={(loggedUser) => {
+                      setCurrentUser(loggedUser);
                       setIsLoggedIn(true);
                       safeStorage.setItem("isLoggedIn", "true");
-                      safeStorage.setItem("loggedInUsername", updatedUser.username);
+                      safeStorage.setItem("loggedInUsername", loggedUser.username);
+                      safeStorage.setItem("currentUserData", JSON.stringify(loggedUser));
+                      refreshAllData();
                       setSelectedCreatorProfileId(null);
                       setActiveTab('profile');
-                    }
-                  }}
-                  onRefreshUsers={refreshAllData}
-                  onPublishSuccess={refreshAllData}
-                  onLogout={handleLogout}
-                  socket={socket}
-                />
+                    }}
+                  />
+                ) : (
+                  <ProfileView
+                    currentUser={currentUser}
+                    selectedCreatorId={selectedCreatorProfileId}
+                    users={users}
+                    reels={reels}
+                    products={products}
+                    savedReelIds={savedReelIds}
+                    onToggleSaveReel={handleToggleSaveReel}
+                    onBackToSelf={() => setSelectedCreatorProfileId(null)}
+                    onOpenDirectChat={openPrivateChatDirectly}
+                    onSelectProduct={handleProductDetailsLink}
+                    onSelectReel={handleReelLink}
+                    onToggleFollowUser={handleToggleFollowUser}
+                    onProfileUpdate={(updatedUser) => {
+                      setCurrentUser(updatedUser);
+                      safeStorage.setItem("currentUserData", JSON.stringify(updatedUser));
+                      setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+                      if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
+                        setIsLoggedIn(true);
+                        safeStorage.setItem("isLoggedIn", "true");
+                        safeStorage.setItem("loggedInUsername", updatedUser.username);
+                        setSelectedCreatorProfileId(null);
+                        setActiveTab('profile');
+                      }
+                    }}
+                    onRefreshUsers={refreshAllData}
+                    onPublishSuccess={refreshAllData}
+                    onLogout={handleLogout}
+                    socket={socket}
+                  />
+                )}
               </div>
             )}
 
@@ -357,7 +385,7 @@ export default function AndroidApp({
             >
               <UserIcon className={`w-5 h-5 transition-all ${activeTab === 'profile' ? "fill-amber-600 stroke-amber-600" : ""}`} />
               <span className="text-[10px] font-medium mt-0.5 tracking-tight">
-                {currentUser.username === "invitado" ? "Cuenta" : "Perfil"}
+                Perfil
               </span>
             </button>
 

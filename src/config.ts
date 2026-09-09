@@ -35,6 +35,9 @@ export const isNativeMobileWrapper = (): boolean => {
   if (win.Capacitor?.getPlatform && (win.Capacitor.getPlatform() === "android" || win.Capacitor.getPlatform() === "ios")) {
     return true;
   }
+  if (win.Capacitor !== undefined && (win.Capacitor.isPluginAvailable || win.Capacitor.Plugins)) {
+    return true;
+  }
 
   // 2. Protocols used exclusively by native mobile wrappers
   const proto = window.location.protocol;
@@ -44,6 +47,19 @@ export const isNativeMobileWrapper = (): boolean => {
 
   // 3. Cordova / PhoneGap
   if (win.cordova && !proto.startsWith("http")) {
+    return true;
+  }
+
+  // 4. Android native webview / Capacitor localhost hosting
+  if (typeof navigator !== "undefined") {
+    const ua = navigator.userAgent || "";
+    if (/Android.*wv|Android.*Version\/[\d.]+.*Chrome/i.test(ua) || (window.location.hostname === "localhost" && /Android/i.test(ua))) {
+      return true;
+    }
+  }
+
+  // 5. Explicit Android build target
+  if ((import.meta as any).env?.VITE_APP_TARGET === "android") {
     return true;
   }
 
@@ -169,8 +185,8 @@ export const apiFetch = async (
       throw new Error(`La carga o conexión ha tardado más de ${Math.round(effectiveTimeout / 1000)} segundos. Por favor, verifica tu conexión a internet e inténtalo de nuevo.`);
     }
 
-    // Fallback: only if running in external static host or native mobile wrapper
-    if (!signal.aborted && (isNativeMobileWrapper() || isExternalStaticHost())) {
+    // Fallback: if primary URL failed, attempt alternative backend URL
+    if (!signal.aborted) {
       const alternateUrl = targetUrl === cleanPath 
         ? `${CLOUD_RUN_BACKEND_URL.replace(/\/$/, "")}${cleanPath}`
         : cleanPath;

@@ -147,33 +147,33 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
   const registeredUsers = users.filter((u) => u.username !== "invitado" && !u.isGuest);
 
   return (
-    <div className="w-full min-h-screen bg-slate-950 text-white flex flex-col p-4 font-sans select-none pb-24" id="android-login-view">
+    <div className="w-full min-h-screen bg-white text-slate-900 flex flex-col p-4 font-sans select-none pb-24" id="android-login-view">
       {/* Top Android Header */}
-      <div className="w-full flex items-center justify-between py-4 border-b border-slate-800">
+      <div className="w-full flex items-center justify-between py-4 border-b border-slate-100">
         <div className="flex items-center space-x-2">
           <Smartphone className="w-5 h-5 text-amber-500" />
-          <span className="font-bold text-sm text-white">MallSocial · Android</span>
+          <span className="font-bold text-sm text-slate-900">MallSocial · Android</span>
         </div>
-        <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-semibold">
-          Native Auth
+        <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">
+          Iniciar Sesión
         </span>
       </div>
 
       <div className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center py-6">
         {/* Android Material Tab Switcher */}
-        <div className="flex p-1 bg-slate-900 rounded-2xl border border-slate-800 mb-6">
+        <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200 mb-6">
           <button
             onClick={() => { setActiveTab("login"); safeStorage.setItem("androidAuthTab", "login"); setLoginError(""); }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${
-              activeTab === "login" ? "bg-amber-500 text-slate-950 shadow-md" : "text-slate-400"
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              activeTab === "login" ? "bg-amber-500 text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"
             }`}
           >
             Iniciar Sesión
           </button>
           <button
             onClick={() => { setActiveTab("register"); safeStorage.setItem("androidAuthTab", "register"); setRegisterError(""); }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${
-              activeTab === "register" ? "bg-amber-500 text-slate-950 shadow-md" : "text-slate-400"
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              activeTab === "register" ? "bg-amber-500 text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"
             }`}
           >
             Crear Cuenta
@@ -184,38 +184,38 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
           <div className="space-y-6">
             <form onSubmit={handleLogin} className="space-y-4">
               {loginError && (
-                <div className="flex items-center space-x-2 p-3 bg-rose-500/20 text-rose-300 rounded-xl text-xs">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
+                <div className="flex items-center space-x-2 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
                   <span>{loginError}</span>
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Usuario</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Usuario</label>
                 <input
                   type="text"
                   placeholder="Tu nombre de usuario"
                   value={usernameInput}
                   onChange={(e) => setUsernameInput(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Contraseña</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Contraseña</label>
                 <input
                   type="password"
                   placeholder="Tu contraseña"
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-2xl text-sm shadow-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-2"
+                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-2xl text-sm shadow-md hover:brightness-105 active:scale-[0.98] transition-all flex items-center justify-center space-x-2 cursor-pointer"
               >
                 {isLoggingIn ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -230,23 +230,23 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
 
             {/* Quick Switch Profiles on Android */}
             {registeredUsers.length > 0 && (
-              <div className="pt-4 border-t border-slate-800">
-                <p className="text-xs font-semibold text-slate-400 mb-3">Cuentas disponibles en este servidor:</p>
+              <div className="pt-4 border-t border-slate-100">
+                <p className="text-xs font-semibold text-slate-600 mb-3">Cuentas disponibles en este servidor:</p>
                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                   {registeredUsers.map((u) => (
                     <div
                       key={u.id}
                       onClick={() => handleLogin(null as any, u.username, "")}
-                      className="flex items-center justify-between p-2.5 bg-slate-900 hover:bg-slate-850 rounded-xl border border-slate-800/80 cursor-pointer active:scale-[0.99] transition-transform"
+                      className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 cursor-pointer active:scale-[0.99] transition-transform"
                     >
                       <div className="flex items-center space-x-3">
-                        <img src={u.avatar} alt={u.name} className="w-9 h-9 rounded-full object-cover border border-amber-500/30" />
+                        <img src={u.avatar} alt={u.name} className="w-9 h-9 rounded-full object-cover border border-amber-500/50" />
                         <div>
-                          <p className="text-xs font-bold text-white">{u.name}</p>
-                          <p className="text-[11px] text-amber-400">@{u.username}</p>
+                          <p className="text-xs font-bold text-slate-900">{u.name}</p>
+                          <p className="text-[11px] text-amber-600 font-semibold">@{u.username}</p>
                         </div>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-slate-500" />
+                      <ArrowRight className="w-4 h-4 text-slate-400" />
                     </div>
                   ))}
                 </div>
@@ -256,70 +256,70 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
         ) : (
           <form onSubmit={handleRegister} className="space-y-4">
             {registerError && (
-              <div className="flex items-center space-x-2 p-3 bg-rose-500/20 text-rose-300 rounded-xl text-xs">
-                <AlertCircle className="w-4 h-4 shrink-0" />
+              <div className="flex items-center space-x-2 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
                 <span>{registerError}</span>
               </div>
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Nombre Completo</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Nombre Completo</label>
               <input
                 type="text"
                 placeholder="Ej. Ana Martínez"
                 value={regName}
                 onChange={(e) => setRegName(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Nombre de Usuario</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Nombre de Usuario</label>
               <input
                 type="text"
                 placeholder="Ej. anam"
                 value={regUsername}
                 onChange={(e) => setRegUsername(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Correo Electrónico</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Correo Electrónico</label>
               <input
                 type="email"
                 placeholder="correo@ejemplo.com"
                 value={regEmail}
                 onChange={(e) => setRegEmail(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Contraseña</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Contraseña</label>
               <input
                 type="password"
                 placeholder="Crea una contraseña"
                 value={regPassword}
                 onChange={(e) => setRegPassword(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Biografía</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Biografía</label>
               <input
                 type="text"
                 placeholder="Tu descripción corta"
                 value={regBio}
                 onChange={(e) => setRegBio(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
               />
             </div>
 
             {/* Avatar Preset Selector */}
             <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-2">Avatar predeterminado</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-2">Avatar predeterminado</label>
               <div className="flex space-x-3">
                 {PRESET_AVATARS.map((av, idx) => (
                   <img
@@ -328,7 +328,7 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
                     alt={`Avatar ${idx}`}
                     onClick={() => setRegAvatar(av)}
                     className={`w-12 h-12 rounded-full object-cover cursor-pointer border-2 transition-all ${
-                      regAvatar === av ? "border-amber-500 scale-105" : "border-slate-800 opacity-60"
+                      regAvatar === av ? "border-amber-500 scale-105 shadow-sm" : "border-slate-200 opacity-60"
                     }`}
                   />
                 ))}
@@ -338,7 +338,7 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
             <button
               type="submit"
               disabled={isRegistering}
-              className="w-full mt-4 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-2xl text-sm shadow-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-2"
+              className="w-full mt-4 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-2xl text-sm shadow-md hover:brightness-105 active:scale-[0.98] transition-all flex items-center justify-center space-x-2 cursor-pointer"
             >
               {isRegistering ? (
                 <Loader2 className="w-5 h-5 animate-spin" />

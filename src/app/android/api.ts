@@ -111,7 +111,18 @@ export const androidApiFetch = async (
     clearTimeout(timeoutId);
     // Fallback: If Android endpoint is in transition or network error, attempt direct fallback
     if (!signal.aborted) {
-      console.warn("Android API fetch primary attempt failed, retrying:", err?.message);
+      console.warn("Android API fetch primary attempt failed, retrying alternate route:", err?.message);
+      const base = (BACKEND_URL || CLOUD_RUN_BACKEND_URL).replace(/\/$/, "");
+      const alternateUrl = url.startsWith("http") ? url.replace(base, "") : `${base}${url.startsWith("/") ? url : `/${url}`}`;
+      try {
+        return await fetch(alternateUrl, {
+          ...init,
+          headers,
+          signal,
+        });
+      } catch (fallbackErr) {
+        throw err;
+      }
     }
     throw err;
   }

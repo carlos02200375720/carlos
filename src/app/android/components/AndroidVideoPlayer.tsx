@@ -312,13 +312,13 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           </div>
         )}
 
-        {/* Dynamic Video Frame: Vertical (100% full bleed above nav), Horizontal (16:9), or Square (1:1) */}
+        {/* Dynamic Video Frame: Vertical (100% full bleed above nav), Horizontal (16:9 edge-to-edge), or Square (1:1) */}
         <div
           className={
             effectiveAspect === "vertical"
               ? "w-full h-full flex items-center justify-center relative overflow-hidden"
               : effectiveAspect === "horizontal"
-              ? "w-full max-h-[calc(100vh-140px)] relative z-10 flex items-center justify-center my-auto px-1 sm:px-4"
+              ? "w-full max-h-[calc(100vh-120px)] relative z-10 flex items-center justify-center my-auto px-0 rounded-none overflow-hidden"
               : "w-full max-w-[min(94vw,calc(100vh-160px))] aspect-square relative z-10 mx-auto flex items-center justify-center my-auto rounded-2xl overflow-hidden shadow-2xl border border-white/10"
           }
         >
@@ -335,7 +335,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
               effectiveAspect === "vertical"
                 ? "w-full h-full object-cover"
                 : effectiveAspect === "horizontal"
-                ? "w-full max-h-full aspect-video sm:aspect-auto object-contain rounded-md shadow-2xl"
+                ? "w-full max-h-full aspect-video object-cover rounded-none shadow-none"
                 : "w-full h-full object-cover"
             }
             onLoadedMetadata={checkVideoDimensions}

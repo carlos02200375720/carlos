@@ -1197,6 +1197,7 @@ export default function App() {
             refreshAllData={refreshAllData}
             setCurrentUser={setCurrentUser}
             setUsers={setUsers}
+            isLoggedIn={isLoggedIn}
             setIsLoggedIn={setIsLoggedIn}
             handleLogout={handleLogout}
             setGuestInteractionAlert={setGuestInteractionAlert}
