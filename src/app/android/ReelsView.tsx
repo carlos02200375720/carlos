@@ -411,8 +411,11 @@ export default function AndroidReelsView({
         )}
       </AnimatePresence>
 
-      {/* Top Transparent Header: Left Cart Icon, Right Audio Mute Toggle */}
-      <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 pt-3.5 pb-2 pointer-events-none bg-transparent">
+      {/* Top Header: Keep the transparent reel feel but separate from the phone status bar and safe area */}
+      <div
+        className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 pb-2 pointer-events-none bg-gradient-to-b from-black/80 via-black/35 to-transparent"
+        style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}
+      >
         {/* Left: Cart Button */}
         <button
           onClick={() => {
@@ -424,7 +427,7 @@ export default function AndroidReelsView({
           title="Ver Carrito"
           id="android-reels-cart-btn"
         >
-          <ShoppingBag className="w-8 h-8 scale-x-120 stroke-[2.4] text-white hover:text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
+          <ShoppingBag className="w-7 h-7 scale-x-120 stroke-[1.7] text-white hover:text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
           {totalCartCount > 0 && (
             <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-black text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center shadow-lg border border-slate-900">
               {totalCartCount > 99 ? "99+" : totalCartCount}
@@ -432,7 +435,7 @@ export default function AndroidReelsView({
           )}
         </button>
 
-        {/* Right: Audio Toggle (Without background) */}
+        {/* Right: Audio Toggle */}
         {isVideo && (
           <button
             onClick={toggleMute}
@@ -441,9 +444,9 @@ export default function AndroidReelsView({
             id="android-mute-toggle"
           >
             {isMuted ? (
-              <VolumeX className="w-8 h-8 scale-x-120 stroke-[2.4] text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
+              <VolumeX className="w-7 h-7 scale-x-120 stroke-[1.7] text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
             ) : (
-              <Volume2 className="w-8 h-8 scale-x-120 stroke-[2.4] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
+              <Volume2 className="w-7 h-7 scale-x-120 stroke-[1.7] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
             )}
           </button>
         )}

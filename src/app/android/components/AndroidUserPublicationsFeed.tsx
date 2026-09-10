@@ -149,37 +149,52 @@ export default function AndroidUserPublicationsFeed({
         <AndroidProgressBar video={videoRefs.current[activeIndex]} isActive={true} />
 
         {/* Right Interaction Column */}
-        <div className="absolute right-3 bottom-20 z-30 flex flex-col items-center space-y-4">
-          <button
-            onClick={() => handleLike(currentReel.id)}
-            className="flex flex-col items-center group cursor-pointer active:scale-90 transition-transform"
-          >
-            <div className={`p-3 rounded-full backdrop-blur-md ${isLiked ? "bg-rose-500 text-white" : "bg-black/40 text-white"}`}>
-              <Heart className={`w-6 h-6 ${isLiked ? "fill-white" : ""}`} />
-            </div>
-            <span className="text-[11px] font-medium mt-1 drop-shadow-md">{currentReel.likes || 0}</span>
-          </button>
+        <div className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center">
+            <button
+              onClick={() => handleLike(currentReel.id)}
+              className="group flex flex-col items-center cursor-pointer active:scale-95 transition-all duration-300"
+              aria-label="Me gusta"
+            >
+              <span className={`flex h-12 w-12 items-center justify-center rounded-full border border-white/20 shadow-[0_8px_22px_rgba(0,0,0,0.4)] transition-all duration-300 ${isLiked ? "bg-rose-500 text-white ring-2 ring-rose-300/70" : "bg-transparent text-white hover:bg-white/10"}`}>
+                <Heart className={`w-6 h-6 transition-all duration-300 ${isLiked ? "fill-white scale-110" : ""}`} />
+              </span>
+              <span className="mt-1 text-[11px] font-semibold text-white drop-shadow-[0_2px_3px_rgba(0,0,0,0.95)]">
+                {currentReel.likes || 0}
+              </span>
+            </button>
+          </div>
 
-          <button
-            onClick={() => setShowComments(true)}
-            className="flex flex-col items-center group cursor-pointer active:scale-90 transition-transform"
-          >
-            <div className="p-3 rounded-full bg-black/40 text-white backdrop-blur-md">
-              <MessageCircle className="w-6 h-6" />
-            </div>
-            <span className="text-[11px] font-medium mt-1 drop-shadow-md">{currentReel.comments?.length || 0}</span>
-          </button>
+          <div className="flex flex-col items-center">
+            <button
+              onClick={() => setShowComments(true)}
+              className="group flex flex-col items-center cursor-pointer active:scale-95 transition-all duration-300"
+              aria-label="Comentarios"
+            >
+              <span className="flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-transparent text-white shadow-[0_8px_22px_rgba(0,0,0,0.4)] transition-all duration-300 hover:bg-white/10">
+                <MessageCircle className="w-6 h-6" />
+              </span>
+              <span className="mt-1 text-[11px] font-semibold text-white drop-shadow-[0_2px_3px_rgba(0,0,0,0.95)]">
+                {currentReel.comments?.length || 0}
+              </span>
+            </button>
+          </div>
 
           {onToggleSaveReel && (
-            <button
-              onClick={() => onToggleSaveReel(currentReel.id)}
-              className="flex flex-col items-center group cursor-pointer active:scale-90 transition-transform"
-            >
-              <div className={`p-3 rounded-full backdrop-blur-md ${isSaved ? "bg-amber-500 text-slate-950" : "bg-black/40 text-white"}`}>
-                <Bookmark className={`w-6 h-6 ${isSaved ? "fill-slate-950" : ""}`} />
-              </div>
-              <span className="text-[11px] font-medium mt-1 drop-shadow-md">Guardar</span>
-            </button>
+            <div className="flex flex-col items-center">
+              <button
+                onClick={() => onToggleSaveReel(currentReel.id)}
+                className="group flex flex-col items-center cursor-pointer active:scale-95 transition-all duration-300"
+                aria-label="Guardar reel"
+              >
+                <span className={`flex h-12 w-12 items-center justify-center rounded-full border border-white/20 shadow-[0_8px_22px_rgba(0,0,0,0.4)] transition-all duration-300 ${isSaved ? "bg-amber-400 text-slate-950 ring-2 ring-amber-200/80" : "bg-transparent text-white hover:bg-white/10"}`}>
+                  <Bookmark className={`w-6 h-6 transition-all duration-300 ${isSaved ? "fill-slate-950 scale-110" : ""}`} />
+                </span>
+                <span className="mt-1 text-[11px] font-semibold text-white drop-shadow-[0_2px_3px_rgba(0,0,0,0.95)]">
+                  Guardar
+                </span>
+              </button>
+            </div>
           )}
 
           {currentUser.id === currentReel.creatorId && onDeleteReel && (
@@ -190,7 +205,8 @@ export default function AndroidUserPublicationsFeed({
                   onClose();
                 }
               }}
-              className="p-3 rounded-full bg-rose-600/80 text-white backdrop-blur-md active:scale-90 transition-transform"
+              className="flex h-12 w-12 items-center justify-center rounded-full border border-rose-200/30 bg-rose-600 text-white shadow-[0_8px_22px_rgba(0,0,0,0.4)] transition-all duration-300 active:scale-90 hover:bg-rose-500"
+              aria-label="Eliminar publicación"
             >
               <Trash2 className="w-5 h-5" />
             </button>
