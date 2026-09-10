@@ -8,11 +8,12 @@ import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { safeStorage } from "./utils/safeStorage";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
 
-const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
+const deduplicateById = <T extends { id?: string; _id?: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
   return items.filter((item) => {
-    if (seen.has(item.id)) return false;
-    seen.add(item.id);
+    const key = item.id || item._id;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 };
@@ -32,10 +33,39 @@ export default function App() {
     }
   }, [activeTab]);
 
-  // Core Data State - pre-seeded with verified fallback data so UI mounts instantly without blank screen
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
-  const [reels, setReels] = useState<Reel[]>(INITIAL_REELS);
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  // Core Data State - pre-hydrated from safeStorage cache if available so UI displays immediately
+  const [users, setUsers] = useState<User[]>(() => {
+    try {
+      const cached = safeStorage.getItem("cached_users");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return deduplicateById(parsed) as User[];
+      }
+    } catch {}
+    return INITIAL_USERS;
+  });
+
+  const [reels, setReels] = useState<Reel[]>(() => {
+    try {
+      const cached = safeStorage.getItem("cached_reels");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return deduplicateById(parsed) as Reel[];
+      }
+    } catch {}
+    return INITIAL_REELS;
+  });
+
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const cached = safeStorage.getItem("cached_products");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return deduplicateById(parsed) as Product[];
+      }
+    } catch {}
+    return INITIAL_PRODUCTS;
+  });
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
       const savedUsername = safeStorage.getItem("loggedInUsername");
@@ -158,33 +188,75 @@ export default function App() {
   }, [activeTab]);
 
   // Refresh functions to ensure feed is live without refreshing browser
-  const refreshReels = () => {
-    apiFetch("/api/reels")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setReels(deduplicateById(data));
-      })
-      .catch((err) => console.error("Error fetching reels:", err));
+  const refreshReels = async () => {
+    try {
+      let data: any = null;
+      try {
+        const res = await apiFetch("/api/reels");
+        if (res.ok) data = await res.json();
+      } catch (e) {
+        console.warn("Primary reels fetch failed, trying android reels route:", e);
+      }
+      if (!Array.isArray(data) || data.length === 0) {
+        try {
+          const res = await apiFetch("/api/android/reels");
+          if (res.ok) data = await res.json();
+        } catch (e) {
+          console.warn("Android reels route also failed:", e);
+        }
+      }
+      if (Array.isArray(data) && data.length > 0) {
+        const unique = deduplicateById(data) as Reel[];
+        setReels(unique);
+        safeStorage.setItem("cached_reels", JSON.stringify(unique));
+      }
+    } catch (err) {
+      console.error("Error fetching reels:", err);
+    }
   };
 
-  const refreshProducts = () => {
-    apiFetch("/api/products")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setProducts(deduplicateById(data));
-      })
-      .catch((err) => console.error("Error fetching products:", err));
+  const refreshProducts = async () => {
+    try {
+      let data: any = null;
+      try {
+        const res = await apiFetch("/api/products");
+        if (res.ok) data = await res.json();
+      } catch (e) {
+        console.warn("Primary products fetch failed, trying android products route:", e);
+      }
+      if (!Array.isArray(data) || data.length === 0) {
+        try {
+          const res = await apiFetch("/api/android/products");
+          if (res.ok) data = await res.json();
+        } catch (e) {
+          console.warn("Android products route also failed:", e);
+        }
+      }
+      if (Array.isArray(data) && data.length > 0) {
+        const unique = deduplicateById(data) as Product[];
+        setProducts(unique);
+        safeStorage.setItem("cached_products", JSON.stringify(unique));
+      }
+    } catch (err) {
+      console.error("Error fetching products:", err);
+    }
   };
 
-  const refreshAllData = () => {
-    refreshReels();
-    refreshProducts();
-    apiFetch("/api/users")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setUsers(deduplicateById(data));
-      })
-      .catch((err) => console.error("Error fetching users:", err));
+  const refreshAllData = async () => {
+    await Promise.allSettled([
+      refreshReels(),
+      refreshProducts(),
+      apiFetch("/api/users")
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data) && data.length > 0) {
+            const unique = deduplicateById(data) as User[];
+            setUsers(unique);
+            safeStorage.setItem("cached_users", JSON.stringify(unique));
+          }
+        })
+        .catch((err) => console.error("Error fetching users:", err))
+    ]);
   };
 
   // Clean up static HTML preloader as soon as React component mounts
@@ -220,31 +292,66 @@ export default function App() {
 
       let hasLoadedAnyCore = false;
 
+      // Hydrate users
       if (usersRes.status === "fulfilled") {
         const val = usersRes.value;
         const list = Array.isArray(val) ? val : (val && Array.isArray(val.users) ? val.users : []);
         if (list.length > 0) {
-          setUsers(deduplicateById(list));
+          const uniqueUsers = deduplicateById(list) as User[];
+          setUsers(uniqueUsers);
+          safeStorage.setItem("cached_users", JSON.stringify(uniqueUsers));
           hasLoadedAnyCore = true;
         }
       }
 
+      // Hydrate reels with dedicated Android route fallback
+      let loadedReels: Reel[] = [];
       if (reelsRes.status === "fulfilled") {
         const val = reelsRes.value;
         const list = Array.isArray(val) ? val : (val && Array.isArray(val.reels) ? val.reels : []);
-        if (list.length > 0) {
-          setReels(deduplicateById(list));
-          hasLoadedAnyCore = true;
+        if (list.length > 0) loadedReels = list;
+      }
+      if (loadedReels.length === 0) {
+        try {
+          const aRes = await apiFetch("/api/android/reels");
+          if (aRes.ok) {
+            const aData = await aRes.json();
+            if (Array.isArray(aData) && aData.length > 0) loadedReels = aData;
+          }
+        } catch (e) {
+          console.warn("Android fallback reels fetch failed:", e);
         }
       }
+      if (loadedReels.length > 0) {
+        const uniqueReels = deduplicateById(loadedReels) as Reel[];
+        setReels(uniqueReels);
+        safeStorage.setItem("cached_reels", JSON.stringify(uniqueReels));
+        hasLoadedAnyCore = true;
+      }
 
+      // Hydrate products with dedicated Android route fallback
+      let loadedProducts: Product[] = [];
       if (productsRes.status === "fulfilled") {
         const val = productsRes.value;
         const list = Array.isArray(val) ? val : (val && Array.isArray(val.products) ? val.products : []);
-        if (list.length > 0) {
-          setProducts(deduplicateById(list));
-          hasLoadedAnyCore = true;
+        if (list.length > 0) loadedProducts = list;
+      }
+      if (loadedProducts.length === 0) {
+        try {
+          const aRes = await apiFetch("/api/android/products");
+          if (aRes.ok) {
+            const aData = await aRes.json();
+            if (Array.isArray(aData) && aData.length > 0) loadedProducts = aData;
+          }
+        } catch (e) {
+          console.warn("Android fallback products fetch failed:", e);
         }
+      }
+      if (loadedProducts.length > 0) {
+        const uniqueProducts = deduplicateById(loadedProducts) as Product[];
+        setProducts(uniqueProducts);
+        safeStorage.setItem("cached_products", JSON.stringify(uniqueProducts));
+        hasLoadedAnyCore = true;
       }
 
       if (liveRes.status === "fulfilled" && Array.isArray(liveRes.value)) {
@@ -304,15 +411,15 @@ export default function App() {
     }
   };
 
-  // Load initial catalog & files with immediate safety timeout
+  // Load initial catalog & files
   useEffect(() => {
     setActiveTab('reels');
     loadInitialData();
 
-    // Safety fallback: guaranteed to clear splash screen within 500ms under any condition
+    // Fallback safety timeout: allow up to 8 seconds for slower mobile networks before clearing splash screen
     const safetyTimer = setTimeout(() => {
       setIsInitialLoading(false);
-    }, 500);
+    }, 8000);
 
     return () => clearTimeout(safetyTimer);
   }, []);
@@ -1153,7 +1260,7 @@ export default function App() {
       />
 
       {/* Main Target Routing: Android vs iOS vs Web */}
-      {(((import.meta as any).env?.VITE_APP_TARGET === "android") || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.getPlatform && Capacitor.getPlatform() === "android") || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.isNativePlatform && Capacitor.isNativePlatform() && !/iPhone|iPad|iPod/.test(navigator.userAgent || ""))) ? (
+      {(((import.meta as any).env?.VITE_APP_TARGET === "android") || (typeof window !== "undefined" && window.location.search.includes("platform=android")) || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.getPlatform && Capacitor.getPlatform() === "android") || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.isNativePlatform && Capacitor.isNativePlatform() && !/iPhone|iPad|iPod/.test(navigator.userAgent || ""))) ? (
         <div className="flex flex-1 w-full min-h-screen" id="app-android-container">
           <AndroidApp
             activeTab={activeTab}
@@ -1194,7 +1301,9 @@ export default function App() {
             handleSendPrivateMessage={handleSendPrivateMessage}
             handleClearUnreads={handleClearUnreads}
             refreshReels={refreshReels}
+            refreshProducts={refreshProducts}
             refreshAllData={refreshAllData}
+            isInitialLoading={isInitialLoading}
             setCurrentUser={setCurrentUser}
             setUsers={setUsers}
             isLoggedIn={isLoggedIn}

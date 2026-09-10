@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Product, CartItem, User, Order, Reel } from "../../types";
-import { ShoppingBag, Search, Plus, Minus, Trash2, X, Check, ArrowRight, Sparkles, Filter, CreditCard, Tag, Truck, ShieldCheck, Heart } from "lucide-react";
+import { ShoppingBag, Search, Plus, Minus, Trash2, X, Check, ArrowRight, Sparkles, Filter, CreditCard, Tag, Truck, ShieldCheck, Heart, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
 
@@ -37,9 +37,11 @@ export interface AndroidShopViewProps {
   initialStep?: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou';
   initialSelectedCartIndices?: number[];
   onClearInitialStep?: () => void;
+  isLoading?: boolean;
+  onRefreshProducts?: () => void;
 }
 
-const CATEGORIES = ["Todos", "Moda", "Calzado", "Accesorios", "Tecnología", "Belleza"];
+const DEFAULT_CATEGORIES = ["Todos", "Moda", "Calzado", "Accesorios", "Tecnología", "Belleza"];
 
 export default function AndroidShopView({
   products,
@@ -58,6 +60,8 @@ export default function AndroidShopView({
   clearDirectProduct,
   onClearInitialProduct,
   onCheckout,
+  isLoading = false,
+  onRefreshProducts,
 }: AndroidShopViewProps) {
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [searchQuery, setSearchQuery] = useState("");
@@ -74,6 +78,17 @@ export default function AndroidShopView({
       setSelectedProduct(selectedProductDirectly);
     }
   }, [selectedProductDirectly]);
+
+  const categoriesList = useMemo(() => {
+    const set = new Set<string>(["Todos"]);
+    (products || []).forEach((p) => {
+      if (p.category && p.category.trim()) {
+        set.add(p.category.trim());
+      }
+    });
+    DEFAULT_CATEGORIES.forEach((c) => set.add(c));
+    return Array.from(set);
+  }, [products]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
@@ -206,7 +221,7 @@ export default function AndroidShopView({
 
       {/* Category Pills */}
       <div className="px-4 py-2 overflow-x-auto flex space-x-2 no-scrollbar">
-        {CATEGORIES.map((cat) => (
+        {categoriesList.map((cat) => (
           <button
             key={cat}
             onClick={() => setActiveCategory(cat)}
@@ -223,9 +238,40 @@ export default function AndroidShopView({
 
       {/* Product Grid */}
       <div className="p-4 grid grid-cols-2 gap-3 flex-1">
-        {filteredProducts.length === 0 ? (
-          <div className="col-span-2 py-16 text-center text-xs text-slate-500">
-            No se encontraron productos en esta categoría.
+        {isLoading && products.length === 0 ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex flex-col animate-pulse">
+              <div className="w-full aspect-square bg-slate-800 rounded-xl mb-3" />
+              <div className="h-3.5 bg-slate-800 rounded w-3/4 mb-2" />
+              <div className="h-2.5 bg-slate-800 rounded w-1/2 mb-3" />
+              <div className="h-5 bg-slate-800 rounded mt-auto" />
+            </div>
+          ))
+        ) : filteredProducts.length === 0 ? (
+          <div className="col-span-2 py-16 flex flex-col items-center justify-center text-center">
+            <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-3 text-amber-400">
+              <ShoppingBag className="w-7 h-7" />
+            </div>
+            <p className="text-sm font-bold text-slate-200">
+              {searchQuery || activeCategory !== "Todos"
+                ? "No se encontraron productos en esta categoría."
+                : "No se encontraron productos en este catálogo."}
+            </p>
+            <p className="text-xs text-slate-400 mt-1 max-w-xs">
+              {searchQuery || activeCategory !== "Todos"
+                ? "Prueba seleccionando otra categoría o cambiando la búsqueda."
+                : "Comprueba tu conexión o reintenta sincronizar con el catálogo."}
+            </p>
+            {onRefreshProducts && (
+              <button
+                type="button"
+                onClick={onRefreshProducts}
+                className="mt-4 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold text-xs flex items-center space-x-1.5 transition-transform shadow-lg shadow-amber-500/10"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Reintentar conexión</span>
+              </button>
+            )}
           </div>
         ) : (
           filteredProducts.map((p) => (

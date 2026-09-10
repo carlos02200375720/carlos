@@ -50,15 +50,20 @@ export const isNativeMobileWrapper = (): boolean => {
     return true;
   }
 
-  // 4. Android native webview / Capacitor localhost hosting
+  // 4. Android native webview / Capacitor localhost hosting / Android device browser
   if (typeof navigator !== "undefined") {
     const ua = navigator.userAgent || "";
-    if (/Android.*wv|Android.*Version\/[\d.]+.*Chrome/i.test(ua) || (window.location.hostname === "localhost" && /Android/i.test(ua))) {
+    if (/Android/i.test(ua) || (window.location.hostname === "localhost" && /Android/i.test(ua))) {
       return true;
     }
   }
 
-  // 5. Explicit Android build target
+  // 5. URL parameter override or explicit build target
+  if (typeof window !== "undefined" && window.location.search.includes("platform=android")) {
+    return true;
+  }
+
+  // 6. Explicit Android build target
   if ((import.meta as any).env?.VITE_APP_TARGET === "android") {
     return true;
   }
@@ -153,6 +158,12 @@ export const apiFetch = async (
     }
   }
 
+  if (isNativeMobileWrapper()) {
+    if (!headers.has("X-Platform")) headers.set("X-Platform", "android");
+    if (!headers.has("X-Client-Platform")) headers.set("X-Client-Platform", "android");
+    if (!headers.has("X-Client-App")) headers.set("X-Client-App", "MallSocial-Android");
+  }
+
   // Setup timeout abort controller if signal not already supplied
   let isTimedOut = false;
   const controller = new AbortController();
@@ -185,10 +196,25 @@ export const apiFetch = async (
       throw new Error(`La carga o conexión ha tardado más de ${Math.round(effectiveTimeout / 1000)} segundos. Por favor, verifica tu conexión a internet e inténtalo de nuevo.`);
     }
 
-    // Fallback: if primary URL failed, attempt alternative backend URL
+    // Fallback: if primary URL failed, attempt alternative backend URL or dedicated Android route
     if (!signal.aborted) {
+      const backendBase = (BACKEND_URL || CLOUD_RUN_BACKEND_URL).replace(/\/$/, "");
+      
+      // If we are querying reels or products or users, attempt dedicated android endpoint
+      if (cleanPath === "/api/reels" || cleanPath === "/api/products" || cleanPath === "/api/users") {
+        const androidEndpoint = cleanPath.replace(/^\/api/, "/api/android");
+        const androidTarget = isNativeMobileWrapper() || isExternalStaticHost()
+          ? `${backendBase}${androidEndpoint}`
+          : androidEndpoint;
+
+        try {
+          const androidRes = await fetch(androidTarget, fetchOptions);
+          if (androidRes.ok) return androidRes;
+        } catch {}
+      }
+
       const alternateUrl = targetUrl === cleanPath 
-        ? `${CLOUD_RUN_BACKEND_URL.replace(/\/$/, "")}${cleanPath}`
+        ? `${backendBase}${cleanPath}`
         : cleanPath;
 
       try {

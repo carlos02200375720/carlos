@@ -53,7 +53,9 @@ export interface AndroidAppProps {
   handleSendPrivateMessage: (text: string) => void;
   handleClearUnreads: (userId: string) => void;
   refreshReels: () => void;
+  refreshProducts?: () => void;
   refreshAllData: () => void;
+  isInitialLoading?: boolean;
   setCurrentUser: React.Dispatch<React.SetStateAction<User>>;
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
   isLoggedIn?: boolean;
@@ -103,7 +105,9 @@ export default function AndroidApp({
   handleSendPrivateMessage,
   handleClearUnreads,
   refreshReels,
+  refreshProducts,
   refreshAllData,
+  isInitialLoading,
   setCurrentUser,
   setUsers,
   isLoggedIn,
@@ -176,6 +180,8 @@ export default function AndroidApp({
                 products={products}
                 bottomNavHeight={navBarHeight}
                 cart={cart}
+                isLoading={isInitialLoading}
+                onRefreshReels={refreshReels}
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}
                 onNavigateToShop={() => setActiveTab('shop')}
@@ -203,6 +209,8 @@ export default function AndroidApp({
                 cart={cart}
                 users={users}
                 currentUser={currentUser}
+                isLoading={isInitialLoading}
+                onRefreshProducts={refreshProducts || refreshAllData}
                 onAddToCart={handleAddToCart}
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}

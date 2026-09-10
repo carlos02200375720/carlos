@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Reel, Product, User, Comment, CartItem } from "../../types";
-import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X, RefreshCw, Video } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { AndroidVideoPlayer, AndroidVideoPlayerHandle } from "./components/AndroidVideoPlayer";
 import { AndroidProgressBar } from "./components/AndroidProgressBar";
@@ -28,6 +28,7 @@ export interface AndroidReelsViewProps {
   onAuthRequired?: (actionDescription?: string) => void;
   onGuestInteraction?: (action: string) => void;
   onRefreshReels?: () => void;
+  isLoading?: boolean;
   isMuted?: boolean;
   onToggleMute?: () => void;
   bottomNavHeight?: number;
@@ -57,6 +58,7 @@ export default function AndroidReelsView({
   onAuthRequired,
   onGuestInteraction,
   onRefreshReels,
+  isLoading = false,
   isMuted: propIsMuted,
   onToggleMute: propOnToggleMute,
   bottomNavHeight = 56,
@@ -197,9 +199,35 @@ export default function AndroidReelsView({
   }, [handleNext, handlePrev, showComments]);
 
   if (!currentReel) {
+    if (isLoading) {
+      return (
+        <div className="w-full h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-6 text-center">
+          <div className="w-10 h-10 rounded-full border-2 border-amber-500/20 border-t-amber-500 animate-spin mb-4" />
+          <p className="text-sm font-semibold text-slate-200">Sincronizando Reels...</p>
+          <p className="text-xs text-slate-400 mt-1">Conectando con la base de datos de videos</p>
+        </div>
+      );
+    }
+
     return (
       <div className="w-full h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-6 text-center">
-        <p className="text-sm font-semibold text-slate-400">No hay Reels disponibles en este momento.</p>
+        <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-4 text-amber-400">
+          <Video className="w-8 h-8" />
+        </div>
+        <p className="text-base font-bold text-slate-200">No hay Reels disponibles en este momento</p>
+        <p className="text-xs text-slate-400 mt-1 max-w-xs">
+          Comprueba tu conexión o reintenta sincronizar con el catálogo de videos.
+        </p>
+        {onRefreshReels && (
+          <button
+            type="button"
+            onClick={onRefreshReels}
+            className="mt-5 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold text-xs flex items-center space-x-2 transition-transform shadow-lg shadow-amber-500/10"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Reintentar conexión</span>
+          </button>
+        )}
       </div>
     );
   }
