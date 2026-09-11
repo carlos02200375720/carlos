@@ -135,10 +135,12 @@ export default function AndroidReelsView({
   }, [reels.length]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (showComments) return;
     touchStartY.current = e.touches[0].clientY;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    if (showComments) return;
     const touchEndY = e.changedTouches[0].clientY;
     const diff = touchStartY.current - touchEndY;
     const SWIPE_THRESHOLD = 45;
@@ -151,12 +153,13 @@ export default function AndroidReelsView({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (showComments) return;
     isMouseDownRef.current = true;
     touchStartY.current = e.clientY;
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
-    if (!isMouseDownRef.current) return;
+    if (showComments || !isMouseDownRef.current) return;
     isMouseDownRef.current = false;
     const diff = touchStartY.current - e.clientY;
     const SWIPE_THRESHOLD = 45;
@@ -425,7 +428,7 @@ export default function AndroidReelsView({
         {/* Left: Cart Button */}
         <button
           onClick={() => setShowCartPanel(true)}
-          className="pointer-events-auto relative p-1.5 text-white hover:text-amber-400 active:scale-90 transition-transform cursor-pointer rounded-full border border-white/40 bg-black/10 backdrop-blur-sm"
+          className="pointer-events-auto relative p-1.5 text-white hover:text-amber-400 active:scale-90 transition-transform cursor-pointer"
           title="Ver Carrito"
           id="android-reels-cart-btn"
         >
@@ -588,7 +591,7 @@ export default function AndroidReelsView({
               transition={{ type: "spring", damping: 26, stiffness: 260 }}
               className="w-[86vw] max-w-[380px] h-full bg-white text-slate-900 shadow-2xl border-r border-slate-200 overflow-hidden flex flex-col"
             >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-amber-50">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-amber-50" style={{ paddingTop: "max(14px, env(safe-area-inset-top))" }}>
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="w-5 h-5 text-amber-600" />
                   <span className="text-sm font-black text-slate-900">Carrito</span>
@@ -649,7 +652,7 @@ export default function AndroidReelsView({
                 )}
               </div>
 
-              <div className="border-t border-slate-200 bg-white px-4 py-3">
+              <div className="border-t border-slate-200 bg-white px-4 py-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 5px)" }}>
                 <div className="flex items-center justify-between text-sm font-black text-slate-900">
                   <span>Total</span>
                   <span className="text-amber-600">${cartTotal.toFixed(2)}</span>
@@ -679,19 +682,19 @@ export default function AndroidReelsView({
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-full h-[70vh] max-h-[70vh] bg-white border-t border-slate-200 rounded-t-3xl flex flex-col overflow-hidden p-4 text-slate-900"
-              style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
+              className="w-full h-[56vh] max-h-[56vh] bg-white border-t border-slate-200 rounded-t-3xl flex flex-col overflow-hidden p-2 text-slate-900"
+              style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}
             >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                <span className="text-sm font-bold text-slate-900">Comentarios ({currentReel.comments?.length || 0})</span>
+              <div className="flex items-center justify-between py-1 border-b border-slate-200">
+                <span className="text-xs font-bold text-slate-900">Comentarios ({currentReel.comments?.length || 0})</span>
                 <button onClick={() => setShowComments(false)} className="p-1 text-slate-500 hover:text-slate-900">
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto py-3 space-y-3">
+              <div className="flex-1 overflow-y-auto py-2 space-y-2">
                 {(!currentReel.comments || currentReel.comments.length === 0) ? (
-                  <div className="text-center py-10 text-xs text-slate-500">
+                  <div className="text-center py-8 text-xs text-slate-500">
                     Aún no hay comentarios. ¡Sé el primero!
                   </div>
                 ) : (
@@ -707,18 +710,18 @@ export default function AndroidReelsView({
                 )}
               </div>
 
-              <form onSubmit={handleCommentSubmit} className="pt-2 border-t border-slate-200 flex items-center space-x-2 bg-white" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
+              <form onSubmit={handleCommentSubmit} className="pt-1 border-t border-slate-200 flex items-center space-x-2 bg-white" style={{ paddingBottom: "max(4px, env(safe-area-inset-bottom))" }}>
                 <input
                   type="text"
                   value={commentInput}
                   onChange={(e) => setCommentInput(e.target.value)}
                   placeholder="Escribe un comentario..."
-                  className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
                 <button
                   type="submit"
                   disabled={!commentInput.trim()}
-                  className="p-2.5 bg-amber-500 disabled:opacity-40 text-slate-950 rounded-xl font-bold active:scale-95"
+                  className="p-2 bg-amber-500 disabled:opacity-40 text-slate-950 rounded-xl font-bold active:scale-95"
                 >
                   <Send className="w-4 h-4" />
                 </button>
