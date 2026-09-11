@@ -560,7 +560,7 @@ export default function AndroidReelsView({
           {taggedProduct && handleProductSelect && (
             <div
               onClick={() => handleProductSelect(taggedProduct)}
-              className="mt-2 inline-flex w-auto max-w-[min(50vw,210px)] items-center rounded-2xl overflow-hidden border border-amber-400/50 bg-slate-950/50 backdrop-blur-md pointer-events-auto cursor-pointer active:scale-95 transition-transform shadow-[0_8px_20px_rgba(0,0,0,0.45)]"
+              className="mt-2 inline-flex w-auto max-w-[min(50vw,210px)] items-center rounded-2xl overflow-hidden border border-amber-400/50 bg-slate-950/60 pointer-events-auto cursor-pointer active:scale-95 transition-transform shadow-[0_8px_20px_rgba(0,0,0,0.45)]"
               style={{ maxHeight: "calc(100vh - 10px - env(safe-area-inset-bottom))" }}
             >
               <img
@@ -682,7 +682,7 @@ export default function AndroidReelsView({
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-full h-[56vh] max-h-[56vh] bg-white border-t border-slate-200 rounded-t-3xl flex flex-col overflow-hidden p-2 text-slate-900"
+              className="w-full h-[70vh] max-h-[70vh] bg-white border-t border-slate-200 rounded-t-3xl flex flex-col overflow-hidden p-2 text-slate-900"
               style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}
             >
               <div className="flex items-center justify-between py-1 border-b border-slate-200">
@@ -710,7 +710,7 @@ export default function AndroidReelsView({
                 )}
               </div>
 
-              <form onSubmit={handleCommentSubmit} className="pt-1 border-t border-slate-200 flex items-center space-x-2 bg-white" style={{ paddingBottom: "max(4px, env(safe-area-inset-bottom))" }}>
+              <form onSubmit={handleCommentSubmit} className="pt-1 border-t border-slate-200 flex items-center space-x-2 bg-white" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 5px)" }}>
                 <input
                   type="text"
                   value={commentInput}
