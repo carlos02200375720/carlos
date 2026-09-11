@@ -22,9 +22,9 @@ export default function App() {
   // Navigation states: 'reels' | 'shop' | 'messages' | 'profile'
   const [activeTab, setActiveTab] = useState<'reels' | 'shop' | 'messages' | 'profile'>('reels');
 
-  // Stop all media playback when switching tabs (reels, shop, messages, profile)
+  // Stop all media playback when switching away from reels tab (shop, messages, profile)
   useEffect(() => {
-    if (typeof document !== "undefined") {
+    if (activeTab !== 'reels' && typeof document !== "undefined") {
       document.querySelectorAll("video").forEach((v) => {
         try {
           v.pause();

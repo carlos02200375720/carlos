@@ -99,11 +99,28 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       setIsMuted(muted);
       if (videoRef.current) {
         videoRef.current.muted = muted;
+        videoRef.current.defaultMuted = muted;
         if (!muted) {
           videoRef.current.volume = 1.0;
         }
       }
     }, [muted]);
+
+    const onVideoReadyRef = useRef(onVideoReady);
+    onVideoReadyRef.current = onVideoReady;
+
+    useEffect(() => {
+      if (videoRef.current) {
+        onVideoReadyRef.current?.(videoRef.current);
+      }
+    }, []);
+
+    const handleVideoRef = useCallback((el: HTMLVideoElement | null) => {
+      videoRef.current = el;
+      if (el) {
+        onVideoReadyRef.current?.(el);
+      }
+    }, []);
 
     useImperativeHandle(ref, () => ({
       getVideoElement: () => videoRef.current,
@@ -211,9 +228,12 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           }
         });
       } else {
-        video.src = mediaSource;
+        if (video.src !== mediaSource) {
+          video.src = mediaSource;
+        }
         if (isCurrent) {
           video.muted = isMuted;
+          video.defaultMuted = isMuted;
           if (!isMuted) {
             video.volume = 1.0;
           }
@@ -222,6 +242,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             p.then(() => setIsPlaying(true)).catch(() => {
               // Autoplay with sound restricted by mobile browser policy: fallback to muted play
               video.muted = true;
+              video.defaultMuted = true;
               setIsMuted(true);
               onMuteChange?.(true);
               video.play().then(() => setIsPlaying(true)).catch(() => {});
@@ -245,12 +266,14 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
 
       if (isCurrent) {
         video.muted = isMuted;
+        video.defaultMuted = isMuted;
         if (!isMuted) video.volume = 1.0;
         const p = video.play();
         if (p !== undefined) {
           p.then(() => setIsPlaying(true)).catch(() => {
             // Autoplay with audio restricted by browser: mute and play
             video.muted = true;
+            video.defaultMuted = true;
             setIsMuted(true);
             onMuteChange?.(true);
             video.play().then(() => setIsPlaying(true)).catch(() => {});
@@ -278,6 +301,22 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       // Single tap
       const video = videoRef.current;
       if (video) {
+        if (video.paused) {
+          if (video.muted || isMuted) {
+            video.muted = false;
+            video.volume = 1.0;
+            setIsMuted(false);
+            onMuteChange?.(false);
+          }
+          video.play().then(() => setIsPlaying(true)).catch(() => {
+            video.muted = true;
+            video.play().then(() => setIsPlaying(true)).catch(() => {});
+          });
+          setShowTapIndicator(true);
+          setTimeout(() => setShowTapIndicator(false), 600);
+          return;
+        }
+
         // If muted due to browser autoplay policy, tapping the video immediately enables audio!
         if (video.muted || isMuted) {
           video.muted = false;
@@ -293,12 +332,8 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
         if (onClick) {
           onClick();
         } else {
-          if (video.paused) {
-            video.play().then(() => setIsPlaying(true)).catch(() => {});
-          } else {
-            video.pause();
-            setIsPlaying(false);
-          }
+          video.pause();
+          setIsPlaying(false);
           setShowTapIndicator(true);
           setTimeout(() => setShowTapIndicator(false), 600);
         }
@@ -336,8 +371,10 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           }
         >
           <video
-            ref={videoRef}
+            ref={handleVideoRef}
+            src={mediaSource}
             poster={poster}
+            autoPlay={autoPlay && isCurrent}
             loop={loop}
             muted={isMuted}
             playsInline
@@ -353,6 +390,19 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             }
             onLoadedMetadata={checkVideoDimensions}
             onLoadedData={checkVideoDimensions}
+            onCanPlay={() => {
+              checkVideoDimensions();
+              const v = videoRef.current;
+              if (isCurrent && v && v.paused) {
+                v.play().then(() => setIsPlaying(true)).catch(() => {
+                  if (v) {
+                    v.muted = true;
+                    v.defaultMuted = true;
+                    v.play().then(() => setIsPlaying(true)).catch(() => {});
+                  }
+                });
+              }
+            }}
             onEnded={onEnded}
             onPlay={() => {
               checkVideoDimensions();

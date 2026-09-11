@@ -1,54 +1,106 @@
-import React, { useRef, useEffect, useCallback } from "react";
+import React, { useRef, useEffect, useCallback, useState } from "react";
 
 interface ReelProgressBarProps {
-  video: HTMLVideoElement | null;
+  video?: HTMLVideoElement | null;
   isActive: boolean;
 }
 
 /**
  * Isolated, zero-overhead progress bar for Reels.
  * Directly listens to native video element events and updates DOM styles
- * without causing any parent component re-renders.
+ * with 60fps tracking and automatic DOM video detection fallback.
  */
-export const ReelProgressBar: React.FC<ReelProgressBarProps> = React.memo(({ video, isActive }) => {
+export const ReelProgressBar: React.FC<ReelProgressBarProps> = React.memo(({ video: propVideo, isActive }) => {
   const progressBarRef = useRef<HTMLDivElement>(null);
   const fillBarRef = useRef<HTMLDivElement>(null);
   const isScrubbingRef = useRef(false);
+  const [resolvedVideo, setResolvedVideo] = useState<HTMLVideoElement | null>(propVideo || null);
+  const animFrameRef = useRef<number | null>(null);
 
-  const updateProgress = useCallback(() => {
-    if (!video || isScrubbingRef.current || !fillBarRef.current) return;
-    const cur = video.currentTime || 0;
-    const dur = video.duration || 0;
-    if (dur > 0) {
-      const pct = Math.min(100, Math.max(0, (cur / dur) * 100));
-      fillBarRef.current.style.width = `${pct}%`;
-    }
-  }, [video]);
-
+  // Sync propVideo or search DOM container fallback if prop is delayed
   useEffect(() => {
-    if (!video || !isActive) return;
+    if (propVideo) {
+      setResolvedVideo(propVideo);
+      return;
+    }
 
-    video.addEventListener("timeupdate", updateProgress, { passive: true });
-    video.addEventListener("loadedmetadata", updateProgress, { passive: true });
-    video.addEventListener("seeking", updateProgress, { passive: true });
-    video.addEventListener("seeked", updateProgress, { passive: true });
+    const findVideo = () => {
+      const container = progressBarRef.current?.parentElement;
+      const el = (container?.querySelector("video") || document.querySelector("video")) as HTMLVideoElement | null;
+      if (el) {
+        setResolvedVideo(el);
+      }
+    };
 
-    updateProgress();
+    findVideo();
+    const t1 = setTimeout(findVideo, 100);
+    const t2 = setTimeout(findVideo, 350);
+    const t3 = setTimeout(findVideo, 800);
 
     return () => {
-      video.removeEventListener("timeupdate", updateProgress);
-      video.removeEventListener("loadedmetadata", updateProgress);
-      video.removeEventListener("seeking", updateProgress);
-      video.removeEventListener("seeked", updateProgress);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
     };
-  }, [video, isActive, updateProgress]);
+  }, [propVideo, isActive]);
+
+  const activeVideo = propVideo || resolvedVideo;
+
+  const updateProgress = useCallback(() => {
+    if (!activeVideo || isScrubbingRef.current || !fillBarRef.current) return;
+    const cur = activeVideo.currentTime || 0;
+    const dur = activeVideo.duration || 0;
+    if (dur > 0 && isFinite(dur)) {
+      const pct = Math.min(100, Math.max(0, (cur / dur) * 100));
+      fillBarRef.current.style.width = `${pct}%`;
+    } else {
+      fillBarRef.current.style.width = "0%";
+    }
+  }, [activeVideo]);
+
+  // High-precision 60fps tracking via requestAnimationFrame while video is playing
+  useEffect(() => {
+    if (!activeVideo || !isActive) {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+      return;
+    }
+
+    let running = true;
+    const loop = () => {
+      if (!running) return;
+      updateProgress();
+      animFrameRef.current = requestAnimationFrame(loop);
+    };
+
+    animFrameRef.current = requestAnimationFrame(loop);
+
+    activeVideo.addEventListener("timeupdate", updateProgress, { passive: true });
+    activeVideo.addEventListener("loadedmetadata", updateProgress, { passive: true });
+    activeVideo.addEventListener("seeking", updateProgress, { passive: true });
+    activeVideo.addEventListener("seeked", updateProgress, { passive: true });
+
+    return () => {
+      running = false;
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+      activeVideo.removeEventListener("timeupdate", updateProgress);
+      activeVideo.removeEventListener("loadedmetadata", updateProgress);
+      activeVideo.removeEventListener("seeking", updateProgress);
+      activeVideo.removeEventListener("seeked", updateProgress);
+    };
+  }, [activeVideo, isActive, updateProgress]);
 
   const handleSeek = (clientX: number) => {
-    if (!progressBarRef.current || !video || !video.duration) return;
+    if (!progressBarRef.current || !activeVideo || !activeVideo.duration) return;
     const rect = progressBarRef.current.getBoundingClientRect();
     const clickX = clientX - rect.left;
     const percentage = Math.max(0, Math.min(1, clickX / rect.width));
-    video.currentTime = percentage * video.duration;
+    activeVideo.currentTime = percentage * activeVideo.duration;
     if (fillBarRef.current) {
       fillBarRef.current.style.width = `${percentage * 100}%`;
     }

@@ -34,11 +34,12 @@ export default function AndroidUserPublicationsFeed({
 }: AndroidUserPublicationsFeedProps) {
   const initialIndex = Math.max(0, reels.findIndex((r) => r.id === initialReelId));
   const [activeIndex, setActiveIndex] = useState(initialIndex);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
   const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
+  const [activeVideoEl, setActiveVideoEl] = useState<HTMLVideoElement | null>(null);
   const [activeReels, setActiveReels] = useState<Reel[]>(reels);
 
   const currentReel = activeReels[activeIndex] || activeReels[0];
@@ -46,6 +47,20 @@ export default function AndroidUserPublicationsFeed({
   useEffect(() => {
     setActiveReels(reels);
   }, [reels]);
+
+  useEffect(() => {
+    const el = videoRefs.current[activeIndex] || null;
+    setActiveVideoEl(el);
+    if (el) {
+      el.muted = isMuted;
+      el.defaultMuted = isMuted;
+      el.play().catch(() => {});
+    }
+  }, [activeIndex, isMuted]);
+
+  useEffect(() => {
+    setActiveVideoEl(videoRefs.current[activeIndex] || null);
+  }, [activeIndex]);
 
   const handleLike = async (reelId: string) => {
     try {
@@ -125,7 +140,9 @@ export default function AndroidUserPublicationsFeed({
       {/* Main Video View */}
       <div className="relative flex-1 w-full h-full flex items-center justify-center overflow-hidden bg-slate-950">
         <video
-          ref={(el) => { videoRefs.current[activeIndex] = el; }}
+          ref={(el) => {
+            videoRefs.current[activeIndex] = el;
+          }}
           src={currentReel.videoUrl}
           playsInline
           loop
@@ -146,7 +163,7 @@ export default function AndroidUserPublicationsFeed({
           }}
         />
 
-        <AndroidProgressBar video={videoRefs.current[activeIndex]} isActive={true} />
+        <AndroidProgressBar video={activeVideoEl || videoRefs.current[activeIndex] || null} isActive={true} />
 
         {/* Right Interaction Column */}
         <div className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-3">
