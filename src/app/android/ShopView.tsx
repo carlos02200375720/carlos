@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { Product, CartItem, User, Order, Reel } from "../../types";
-import { ShoppingBag, Search, Plus, Minus, Trash2, X, Check, ArrowRight, Sparkles, Filter, CreditCard, Tag, Truck, ShieldCheck, Heart, RefreshCw } from "lucide-react";
+import { ShoppingBag, Search, Plus, Minus, Trash2, X, Check, ArrowRight, Sparkles, Filter, CreditCard, Tag, Truck, ShieldCheck, Heart, RefreshCw, Star, Eye, AlertCircle, ShoppingCart, Volume2, VolumeX, Play, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
 
@@ -42,7 +42,105 @@ export interface AndroidShopViewProps {
   cartDrawerRequest?: number;
 }
 
-const DEFAULT_CATEGORIES = ["Todos", "Moda", "Calzado", "Accesorios", "Tecnología", "Belleza"];
+export interface AndroidCategory {
+  id: string;
+  name: string;
+  queryTerm?: string;
+  imageUrl: string;
+}
+
+const CATEGORIES_WITH_IMAGES: AndroidCategory[] = [
+  {
+    id: "todos",
+    name: "Todos",
+    queryTerm: "",
+    imageUrl: "https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "ropa_femenina",
+    name: "Ropa Femenina",
+    queryTerm: "femenina",
+    imageUrl: "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "ropa_masculina",
+    name: "Ropa Masculina",
+    queryTerm: "masculina",
+    imageUrl: "https://images.unsplash.com/photo-1490114538077-0a7f8cb49891?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "mascota",
+    name: "Mascotas",
+    queryTerm: "mascota",
+    imageUrl: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "hogar",
+    name: "Hogar",
+    queryTerm: "neon",
+    imageUrl: "https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "salud",
+    name: "Salud",
+    queryTerm: "yoga",
+    imageUrl: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "joya",
+    name: "Joyas",
+    queryTerm: "joya",
+    imageUrl: "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "bolso",
+    name: "Bolsos",
+    queryTerm: "bolso",
+    imageUrl: "https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "sapato",
+    name: "Zapatos",
+    queryTerm: "zapato",
+    imageUrl: "https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "juguete",
+    name: "Juguetes",
+    queryTerm: "juguete",
+    imageUrl: "https://images.unsplash.com/photo-1558060370-d644479cb6f7?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "deportes",
+    name: "Deportes",
+    queryTerm: "yoga",
+    imageUrl: "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "electronica",
+    name: "Electrónica",
+    queryTerm: "synth",
+    imageUrl: "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "automotriz",
+    name: "Automotriz",
+    queryTerm: "automotriz",
+    imageUrl: "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "telefono",
+    name: "Teléfonos",
+    queryTerm: "telefono",
+    imageUrl: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=150&q=80",
+  },
+  {
+    id: "informatica",
+    name: "Informática",
+    queryTerm: "informatica",
+    imageUrl: "https://images.unsplash.com/photo-1531297484001-80022131f5a1?auto=format&fit=crop&w=150&q=80",
+  },
+];
 
 export default function AndroidShopView({
   products,
@@ -67,6 +165,11 @@ export default function AndroidShopView({
 }: AndroidShopViewProps) {
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [searchQuery, setSearchQuery] = useState("");
+  const [displayCount, setDisplayCount] = useState(10);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isCategoryVisible, setIsCategoryVisible] = useState(true);
+  const isCategoryVisibleRef = useRef(true);
+  const infiniteLoaderRef = useRef<HTMLDivElement>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(
     selectedProductDirectly || initialSelectedProduct || null
   );
@@ -95,49 +198,164 @@ export default function AndroidShopView({
     expiry: "",
     cvv: "",
   });
-  const detailGalleryRef = useRef<HTMLDivElement | null>(null);
+  const [selectedProductMediaUrl, setSelectedProductMediaUrl] = useState<string>("");
+  const [selectedVariants, setSelectedVariants] = useState<{ [key: string]: string }>({});
+  const [optionsValidationError, setOptionsValidationError] = useState<string | null>(null);
+  const [isGalleryVideoMuted, setIsGalleryVideoMuted] = useState(true);
 
-  type DetailGalleryItem = {
-    type: "image" | "video";
-    url: string;
+  // Cart Shockwave & Success button states
+  const [isAddedSuccess, setIsAddedSuccess] = useState(false);
+  const [isCartShockwave, setIsCartShockwave] = useState(false);
+  const [shockwaveKey, setShockwaveKey] = useState(0);
+  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
+
+  const shockwaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const addedSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listAddedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerCartShockwave = () => {
+    setShockwaveKey(Date.now());
+    setIsCartShockwave(true);
+    if (shockwaveTimerRef.current) clearTimeout(shockwaveTimerRef.current);
+    shockwaveTimerRef.current = setTimeout(() => {
+      setIsCartShockwave(false);
+    }, 1500);
   };
-
-  const detailGallery = useMemo<DetailGalleryItem[]>(() => {
-    if (!selectedProduct) return [];
-
-    const gallery: DetailGalleryItem[] = [];
-    const seen = new Set<string>();
-
-    const push = (url?: string, type: "image" | "video" = "image") => {
-      if (!url || seen.has(`${type}:${url}`)) return;
-      seen.add(`${type}:${url}`);
-      gallery.push({ type, url });
-    };
-
-    push(selectedProduct.imageUrl, "image");
-    (selectedProduct.images || []).forEach((img) => push(img, "image"));
-    (selectedProduct.videos || []).forEach((videoUrl) => push(videoUrl, "video"));
-
-    // Mantener compatibilidad con el esquema MongoDB: variantList conserva
-    // una imagen por variante (ProductVariantItem.imageUrl).
-    (selectedProduct.variantList || []).forEach((variant) => push(variant.imageUrl, "image"));
-
-    return gallery.length ? gallery : [{ type: "image", url: selectedProduct.imageUrl }];
-  }, [selectedProduct]);
 
   useEffect(() => {
-    setDetailGalleryIndex(0);
+    return () => {
+      if (shockwaveTimerRef.current) clearTimeout(shockwaveTimerRef.current);
+      if (addedSuccessTimerRef.current) clearTimeout(addedSuccessTimerRef.current);
+      if (listAddedTimerRef.current) clearTimeout(listAddedTimerRef.current);
+    };
+  }, []);
+
+  const gallerySliderRef = useRef<HTMLDivElement | null>(null);
+  const galleryVideoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
+  const thumbnailTrackRef = useRef<HTMLDivElement | null>(null);
+  const thumbnailItemRefs = useRef<{ [key: number]: HTMLButtonElement | null }>({});
+
+  const checkIsVideo = (url: string) => {
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    return (
+      Boolean(selectedProduct?.videos && selectedProduct.videos.some((v) => v === url || lower.includes(v.toLowerCase()))) ||
+      lower.includes(".mp4") ||
+      lower.includes(".webm") ||
+      lower.includes(".mov") ||
+      lower.includes(".m3u8") ||
+      lower.includes(".ogg") ||
+      lower.includes("video") ||
+      lower.startsWith("data:video") ||
+      lower.startsWith("blob:")
+    );
+  };
+
+  const productGalleryMedia = useMemo(() => {
+    if (!selectedProduct) return [];
+    const seen = new Set<string>();
+    const list: string[] = [];
+    const push = (u?: string) => {
+      if (!u || seen.has(u)) return;
+      seen.add(u);
+      list.push(u);
+    };
+
+    push(selectedProduct.imageUrl);
+    (selectedProduct.images || []).forEach(push);
+    (selectedProduct.videos || []).forEach(push);
+    (selectedProduct.variantList || []).forEach((variant) => push(variant.imageUrl));
+
+    return list.length ? list : [selectedProduct.imageUrl];
+  }, [selectedProduct]);
+
+  const getMissingOptions = (product: Product | null, selected: { [key: string]: string }) => {
+    if (!product) return [];
+    const missing: string[] = [];
+    if (product.variants && product.variants.length > 0) {
+      product.variants.forEach((v) => {
+        if (!selected[v.name] || !selected[v.name].trim()) {
+          missing.push(v.name);
+        }
+      });
+    } else if (product.variantList && product.variantList.length > 0) {
+      const hasSwatches = product.variantList.some((item) => item.imageUrl || item.color || item.name);
+      if (hasSwatches && !selected["Color"] && !selected["Opción"]) {
+        missing.push("Color");
+      }
+    }
+    return missing;
+  };
+
+  const getSellerInfo = (sellerId?: string) => {
+    if (!sellerId) return { name: "Vendedor Oficial", avatar: "" };
+    return users.find((u) => u.id === sellerId) || { name: "Vendedor Oficial", avatar: "" };
+  };
+
+  const handleGalleryScroll = () => {
+    if (!gallerySliderRef.current) return;
+    const width = gallerySliderRef.current.clientWidth;
+    if (width > 0) {
+      const newIdx = Math.round(gallerySliderRef.current.scrollLeft / width);
+      if (newIdx !== detailGalleryIndex && newIdx >= 0 && newIdx < productGalleryMedia.length) {
+        setDetailGalleryIndex(newIdx);
+        if (productGalleryMedia[newIdx]) {
+          setSelectedProductMediaUrl(productGalleryMedia[newIdx]);
+        }
+      }
+    }
+  };
+
+  const scrollToGalleryIndex = (index: number) => {
+    if (!gallerySliderRef.current) return;
+    const width = gallerySliderRef.current.clientWidth;
+    gallerySliderRef.current.scrollTo({ left: index * width, behavior: "smooth" });
+    setDetailGalleryIndex(index);
+    if (productGalleryMedia[index]) {
+      setSelectedProductMediaUrl(productGalleryMedia[index]);
+    }
+  };
+
+  // Sync thumbnail container scroll with active gallery index
+  useEffect(() => {
+    const thumbEl = thumbnailItemRefs.current[detailGalleryIndex];
+    if (thumbEl && thumbnailTrackRef.current) {
+      const container = thumbnailTrackRef.current;
+      const thumbLeft = thumbEl.offsetLeft;
+      const thumbWidth = thumbEl.offsetWidth;
+      const containerWidth = container.clientWidth;
+      const targetScroll = thumbLeft - containerWidth / 2 + thumbWidth / 2;
+      container.scrollTo({
+        left: Math.max(0, targetScroll),
+        behavior: "smooth",
+      });
+    }
+  }, [detailGalleryIndex]);
+
+  // Reset product details state when selectedProduct changes
+  useEffect(() => {
+    if (selectedProduct) {
+      setDetailGalleryIndex(0);
+      setSelectedProductMediaUrl(selectedProduct.imageUrl || "");
+      setSelectedVariants({});
+      setOptionsValidationError(null);
+    }
   }, [selectedProduct?.id]);
 
-  const handleGalleryPrev = () => {
-    if (!selectedProduct || detailGallery.length <= 1) return;
-    setDetailGalleryIndex((prev) => (prev === 0 ? detailGallery.length - 1 : prev - 1));
-  };
-
-  const handleGalleryNext = () => {
-    if (!selectedProduct || detailGallery.length <= 1) return;
-    setDetailGalleryIndex((prev) => (prev + 1) % detailGallery.length);
-  };
+  // Cleanup video references on unmount
+  useEffect(() => {
+    return () => {
+      Object.keys(galleryVideoRefs.current).forEach((key) => {
+        const videoEl = galleryVideoRefs.current[Number(key)];
+        if (videoEl) {
+          try {
+            videoEl.pause();
+            videoEl.muted = true;
+          } catch {}
+        }
+      });
+    };
+  }, []);
 
   // Sync selectedProduct if selectedProductDirectly changes
   React.useEffect(() => {
@@ -147,26 +365,328 @@ export default function AndroidShopView({
   }, [selectedProductDirectly]);
 
   const categoriesList = useMemo(() => {
-    const set = new Set<string>(["Todos"]);
+    const list: AndroidCategory[] = [...CATEGORIES_WITH_IMAGES];
+
     (products || []).forEach((p) => {
       if (p.category && p.category.trim()) {
-        set.add(p.category.trim());
+        const catName = p.category.trim();
+        const exists = list.some(
+          (c) => c.name.toLowerCase() === catName.toLowerCase() || c.id.toLowerCase() === catName.toLowerCase()
+        );
+        if (!exists) {
+          list.push({
+            id: catName.toLowerCase().replace(/\s+/g, "_"),
+            name: catName,
+            queryTerm: catName.toLowerCase(),
+            imageUrl: p.imageUrl || "https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=150&q=80",
+          });
+        }
       }
     });
-    DEFAULT_CATEGORIES.forEach((c) => set.add(c));
-    return Array.from(set);
+
+    return list;
   }, [products]);
+
+  // Category track drag, infinite auto-scroll & horizontal scroll helpers (matching Web version)
+  const categoryTrackRef = useRef<HTMLDivElement>(null);
+  const [isCategoryDragging, setIsCategoryDragging] = useState(false);
+  const [isCategoryHovered, setIsCategoryHovered] = useState(false);
+  const isCategoryInteractingRef = useRef(false);
+  const categoryHasMovedRef = useRef(false);
+  const categoryResumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [categoryStartX, setCategoryStartX] = useState(0);
+  const [categoryScrollLeft, setCategoryScrollLeft] = useState(0);
+
+  // Duplicated list of categories for seamless infinite loop (identical to Web version)
+  const infiniteCategories = useMemo(() => {
+    if (categoriesList.length === 0) return [];
+    return [...categoriesList, ...categoriesList];
+  }, [categoriesList]);
+
+  // Smooth infinite horizontal continuous motion
+  useEffect(() => {
+    let animationFrameId: number;
+    let lastTime = performance.now();
+    const speed = 0.45; // gentle, smooth continuous scroll speed
+
+    const animate = (now: number) => {
+      const delta = Math.min((now - lastTime) / 16.67, 2);
+      lastTime = now;
+
+      const track = categoryTrackRef.current;
+      if (
+        track &&
+        isCategoryVisible &&
+        !isCategoryDragging &&
+        !isCategoryHovered &&
+        !isCategoryInteractingRef.current
+      ) {
+        track.scrollLeft += speed * delta;
+
+        // When scrolled past the first set, seamlessly wrap back
+        const singleSetWidth = track.scrollWidth / 2;
+        if (singleSetWidth > 0 && track.scrollLeft >= singleSetWidth) {
+          track.scrollLeft -= singleSetWidth;
+        } else if (track.scrollLeft <= 0) {
+          track.scrollLeft += singleSetWidth;
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      if (categoryResumeTimeoutRef.current) {
+        clearTimeout(categoryResumeTimeoutRef.current);
+      }
+    };
+  }, [isCategoryDragging, isCategoryHovered, isCategoryVisible]);
+
+  const handleCategoryMouseDown = (e: React.MouseEvent) => {
+    if (!categoryTrackRef.current) return;
+    setIsCategoryDragging(true);
+    categoryHasMovedRef.current = false;
+    setCategoryStartX(e.pageX - categoryTrackRef.current.offsetLeft);
+    setCategoryScrollLeft(categoryTrackRef.current.scrollLeft);
+  };
+
+  const handleCategoryMouseLeave = () => {
+    setIsCategoryDragging(false);
+    setIsCategoryHovered(false);
+  };
+
+  const handleCategoryMouseUp = () => {
+    setIsCategoryDragging(false);
+    setTimeout(() => {
+      categoryHasMovedRef.current = false;
+    }, 60);
+  };
+
+  const handleCategoryMouseMove = (e: React.MouseEvent) => {
+    if (!isCategoryDragging || !categoryTrackRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - categoryTrackRef.current.offsetLeft;
+    const walk = (x - categoryStartX) * 1.5;
+    if (Math.abs(walk) > 4) {
+      categoryHasMovedRef.current = true;
+    }
+    categoryTrackRef.current.scrollLeft = categoryScrollLeft - walk;
+  };
+
+  const handleCategoryWheel = (e: React.WheelEvent) => {
+    if (!categoryTrackRef.current) return;
+    if (e.deltaY !== 0 || e.deltaX !== 0) {
+      categoryTrackRef.current.scrollLeft += e.deltaY || e.deltaX;
+      isCategoryInteractingRef.current = true;
+      if (categoryResumeTimeoutRef.current) clearTimeout(categoryResumeTimeoutRef.current);
+      categoryResumeTimeoutRef.current = setTimeout(() => {
+        isCategoryInteractingRef.current = false;
+      }, 1200);
+    }
+  };
+
+  const handleCategoryTouchStart = () => {
+    isCategoryInteractingRef.current = true;
+    if (categoryResumeTimeoutRef.current) clearTimeout(categoryResumeTimeoutRef.current);
+  };
+
+  const handleCategoryTouchEnd = () => {
+    if (categoryResumeTimeoutRef.current) clearTimeout(categoryResumeTimeoutRef.current);
+    categoryResumeTimeoutRef.current = setTimeout(() => {
+      isCategoryInteractingRef.current = false;
+    }, 1500);
+  };
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
-      const matchCat = activeCategory === "Todos" || p.category === activeCategory;
+      let matchCat = activeCategory === "Todos" || activeCategory === "todos";
+      if (!matchCat) {
+        const activeCatObj = categoriesList.find(
+          (c) => c.name.toLowerCase() === activeCategory.toLowerCase() || c.id.toLowerCase() === activeCategory.toLowerCase()
+        );
+        if (p.category) {
+          matchCat = p.category.toLowerCase().trim() === (activeCatObj ? activeCatObj.name.toLowerCase() : activeCategory.toLowerCase().trim());
+        } else if (activeCatObj?.queryTerm) {
+          const term = activeCatObj.queryTerm.toLowerCase();
+          matchCat =
+            p.name.toLowerCase().includes(term) ||
+            Boolean(p.description && p.description.toLowerCase().includes(term));
+        }
+      }
+
       const matchSearch =
         !searchQuery.trim() ||
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.description?.toLowerCase().includes(searchQuery.toLowerCase());
+        Boolean(p.description?.toLowerCase().includes(searchQuery.toLowerCase()));
       return matchCat && matchSearch;
     });
-  }, [products, activeCategory, searchQuery]);
+  }, [products, activeCategory, searchQuery, categoriesList]);
+
+  // Reset infinite scroll count when filter or search changes
+  useEffect(() => {
+    setDisplayCount(10);
+  }, [activeCategory, searchQuery]);
+
+  // Infinite Scroll Trigger via IntersectionObserver and scroll events
+  useEffect(() => {
+    if (isCartOpen || selectedProduct || showCheckoutPage || showThankYouPage) return;
+
+    const triggerLoadMore = () => {
+      if (isLoadingMore || filteredProducts.length === 0) return;
+      setIsLoadingMore(true);
+      setTimeout(() => {
+        setDisplayCount((prev) => prev + 8);
+        setIsLoadingMore(false);
+      }, 200);
+    };
+
+    const handleScroll = () => {
+      if (isLoadingMore || filteredProducts.length === 0) return;
+      const scrollPos = window.innerHeight + window.scrollY;
+      const threshold = document.documentElement.scrollHeight - 400;
+      if (scrollPos >= threshold) {
+        triggerLoadMore();
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    const target = infiniteLoaderRef.current;
+    let observer: IntersectionObserver | null = null;
+    if (target) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting && !isLoadingMore && filteredProducts.length > 0) {
+            triggerLoadMore();
+          }
+        },
+        { threshold: 0.1, rootMargin: "400px" }
+      );
+      observer.observe(target);
+    }
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (observer) observer.disconnect();
+    };
+  }, [isLoadingMore, filteredProducts.length, isCartOpen, selectedProduct, showCheckoutPage, showThankYouPage]);
+
+  // Show/hide category carousel based on scroll direction after ~2 cards (~160px)
+  useEffect(() => {
+    let lastScrollY = Math.max(0, window.scrollY || document.documentElement.scrollTop || 0);
+    let pivotY = lastScrollY;
+    let scrollDirection: "up" | "down" | "none" = "none";
+    let isLocked = false;
+    let lockTimer: any = null;
+    let ticking = false;
+
+    const handleScroll = () => {
+      if (ticking) return;
+      ticking = true;
+
+      window.requestAnimationFrame(() => {
+        ticking = false;
+        const currentY = Math.max(0, window.scrollY || document.documentElement.scrollTop || 0);
+
+        // Near top of the page (within first 80px): ALWAYS show and unlock
+        if (currentY <= 80) {
+          pivotY = currentY;
+          scrollDirection = "none";
+          lastScrollY = currentY;
+          if (!isCategoryVisibleRef.current) {
+            isCategoryVisibleRef.current = true;
+            setIsCategoryVisible(true);
+          }
+          return;
+        }
+
+        // If locked during an animation transition, don't change state
+        if (isLocked) {
+          lastScrollY = currentY;
+          pivotY = currentY;
+          return;
+        }
+
+        const diff = currentY - lastScrollY;
+
+        // Ignore tiny micro-jitter (< 3px)
+        if (Math.abs(diff) < 3) {
+          return;
+        }
+
+        if (diff > 0) {
+          // Scrolling DOWN (advancing into feed)
+          if (scrollDirection !== "down") {
+            scrollDirection = "down";
+            pivotY = currentY;
+          }
+
+          // User scrolled down by at least 45px past pivot AND past first row of cards (160px)
+          if (currentY - pivotY > 45 && currentY > 160) {
+            if (isCategoryVisibleRef.current) {
+              isCategoryVisibleRef.current = false;
+              setIsCategoryVisible(false);
+              isLocked = true;
+              clearTimeout(lockTimer);
+              lockTimer = setTimeout(() => {
+                isLocked = false;
+                const freshY = Math.max(0, window.scrollY || document.documentElement.scrollTop || 0);
+                pivotY = freshY;
+                lastScrollY = freshY;
+              }, 320);
+            }
+          }
+        } else if (diff < 0) {
+          // Scrolling UP (returning towards top)
+          if (scrollDirection !== "up") {
+            scrollDirection = "up";
+            pivotY = currentY;
+          }
+
+          // User scrolled up by at least 35px past pivot
+          if (pivotY - currentY > 35) {
+            if (!isCategoryVisibleRef.current) {
+              isCategoryVisibleRef.current = true;
+              setIsCategoryVisible(true);
+              isLocked = true;
+              clearTimeout(lockTimer);
+              lockTimer = setTimeout(() => {
+                isLocked = false;
+                const freshY = Math.max(0, window.scrollY || document.documentElement.scrollTop || 0);
+                pivotY = freshY;
+                lastScrollY = freshY;
+              }, 320);
+            }
+          }
+        }
+
+        lastScrollY = currentY;
+      });
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      clearTimeout(lockTimer);
+    };
+  }, []);
+
+  // Compute displayed products for continuous infinite exploration
+  const displayedProducts = useMemo(() => {
+    if (filteredProducts.length === 0) return [];
+    const list: (Product & { _renderKey: string })[] = [];
+    for (let i = 0; i < displayCount; i++) {
+      const prod = filteredProducts[i % filteredProducts.length];
+      list.push({
+        ...prod,
+        _renderKey: `${prod.id}-android-inf-${i}`,
+      });
+    }
+    return list;
+  }, [filteredProducts, displayCount]);
 
   const cartTotal = useMemo(() => {
     return cart.reduce((sum, item) => sum + item.product.price * (item.quantity || 1), 0);
@@ -207,7 +727,7 @@ export default function AndroidShopView({
     setLastContactInfo({
       fullName: checkoutForm.fullName || currentUser.name || "Cliente",
       email: checkoutForm.email || currentUser.email || `${currentUser.username}@android.mallsocial`,
-      phone: checkoutForm.phone || currentUser.phone || "Sin teléfono",
+      phone: checkoutForm.phone || (currentUser as any).phone || "Sin teléfono",
     });
 
     setCheckoutSuccess(true);
@@ -490,154 +1010,111 @@ export default function AndroidShopView({
     );
   }
 
-  if (selectedProduct) {
-    return (
-      <div className="w-full min-h-screen bg-slate-950 text-slate-50 flex flex-col font-sans select-none">
-        <div className="sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-          <button onClick={() => setSelectedProduct(null)} className="p-2 rounded-full bg-slate-900 text-slate-50 border border-slate-700 active:scale-95">
-            <ArrowRight className="w-4 h-4 rotate-180" />
-          </button>
-          <div className="flex-1 text-center">
-            <h1 className="text-sm font-black text-white">Detalle del producto</h1>
-            <p className="text-[10px] text-slate-400">Tienda MallSocial</p>
-          </div>
-          <button onClick={() => setIsCartOpen(true)} className="p-2 rounded-full bg-slate-900 text-amber-400 border border-slate-700 active:scale-95">
-            <ShoppingBag className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto pb-24">
-          <div className="relative w-full h-[42vh] min-h-[300px] overflow-hidden bg-slate-900">
-            <div ref={detailGalleryRef} className="flex h-full overflow-x-auto snap-x snap-mandatory scrollbar-none">
-              {detailGallery.map((media, idx) => (
-                <div key={`${media.type}-${media.url}-${idx}`} className="min-w-full h-full snap-center">
-                  {media.type === "video" ? (
-                    <video src={media.url} className="w-full h-full object-cover" muted playsInline autoPlay={idx === detailGalleryIndex} controls={false} />
-                  ) : (
-                    <img src={media.url} alt={selectedProduct.name} className="w-full h-full object-cover" />
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {detailGallery.length > 1 && (
-              <div className="absolute left-4 top-4 z-10 px-2 py-1 rounded-full border border-white/40 text-[10px] font-black text-white bg-transparent">
-                {detailGalleryIndex + 1}/{detailGallery.length}
-              </div>
-            )}
-
-            <div className="absolute right-4 top-4 flex items-center gap-2">
-              <button onClick={handleGalleryPrev} className="p-2 rounded-full bg-black/50 border border-white/20 text-white active:scale-95">
-                <ArrowRight className="w-4 h-4 rotate-180" />
-              </button>
-              <button onClick={handleGalleryNext} className="p-2 rounded-full bg-black/50 border border-white/20 text-white active:scale-95">
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          <div className="px-4 py-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-wide text-amber-400">{selectedProduct.category}</span>
-                <h2 className="mt-2 text-2xl font-black text-white leading-tight">{selectedProduct.name}</h2>
-              </div>
-              <div className="text-right">
-                <div className="text-xs font-black text-slate-500 uppercase">Precio</div>
-                <div className="text-2xl font-black text-amber-400">${selectedProduct.price.toFixed(2)}</div>
-              </div>
-            </div>
-
-            <p className="mt-4 text-xs text-slate-400 leading-relaxed">{selectedProduct.description}</p>
-
-            {onCreatorClick && selectedProduct.sellerId && (
-              <div onClick={() => onCreatorClick(selectedProduct.sellerId!)} className="mt-4 p-3 bg-slate-900/80 rounded-2xl border border-slate-700/80 flex items-center justify-between cursor-pointer active:scale-[0.99]">
-                <span className="text-xs text-slate-300">Vendedor: {selectedProduct.sellerName || "Vendedor Oficial"}</span>
-                <span className="text-xs font-bold text-amber-400">Ver Perfil</span>
-              </div>
-            )}
-
-            <div className="mt-4 bg-slate-900/80 rounded-2xl border border-slate-700/80 p-3 flex items-center space-x-3 text-xs text-slate-400">
-              <Truck className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Envío directo gestionado a través de la pasarela Android.</span>
-            </div>
-
-            <div className="mt-6">
-              <button
-                onClick={() => {
-                  onAddToCart(selectedProduct, 1);
-                  setSelectedProduct(null);
-                  clearDirectProduct?.();
-                  onClearInitialProduct?.();
-                }}
-                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black rounded-2xl text-xs shadow-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-2"
-                style={{ marginBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span>Agregar al Carrito</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (isCartOpen) {
     return (
-      <div className="w-full min-h-screen bg-white text-slate-900 flex flex-col font-sans select-none">
-        <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <button onClick={() => setIsCartOpen(false)} className="p-2 rounded-full bg-slate-100 text-slate-900 active:scale-95">
+      <div className="w-full min-h-screen bg-white text-slate-900 flex flex-col font-sans select-none" id="android-cart-page">
+        {/* Cart Top Header */}
+        <div
+          className="sticky top-0 z-30 bg-white/95 backdrop-blur-md px-4 py-3 border-b border-slate-200 flex items-center justify-between"
+          style={{ paddingTop: "max(10px, env(safe-area-inset-top))" }}
+        >
+          <button
+            type="button"
+            onClick={() => setIsCartOpen(false)}
+            className="p-2 rounded-full bg-slate-100 text-slate-900 active:scale-95 cursor-pointer hover:bg-slate-200 transition-colors"
+            id="android-cart-back-btn"
+            title="Volver"
+          >
             <ArrowRight className="w-4 h-4 rotate-180" />
           </button>
           <div className="flex-1 text-center">
-            <h1 className="text-sm font-black text-slate-900">Carrito</h1>
-            <p className="text-[10px] text-slate-500">{cart.length} producto{cart.length === 1 ? "" : "s"}</p>
+            <h1 className="text-sm font-black text-slate-900">Carrito de Compras</h1>
+            <p className="text-[10px] text-slate-500 font-semibold">
+              {cart.reduce((s, i) => s + (i.quantity || 1), 0)} {cart.reduce((s, i) => s + (i.quantity || 1), 0) === 1 ? "artículo" : "artículos"}
+            </p>
           </div>
           <div className="w-8" />
         </div>
 
+        {/* Cart Items List */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           {cart.length === 0 ? (
             <div className="min-h-[50vh] flex flex-col items-center justify-center text-center">
-              <ShoppingBag className="w-12 h-12 text-amber-500" />
+              <div className="w-20 h-20 rounded-full bg-amber-50 flex items-center justify-center border border-amber-100">
+                <ShoppingBag className="w-10 h-10 text-amber-500" />
+              </div>
               <h3 className="mt-4 text-sm font-black text-slate-900">Tu carrito está vacío</h3>
               <p className="text-[11px] text-slate-500 mt-1">Añade productos para empezar tu compra.</p>
               <button
-                onClick={() => setIsCartOpen(false)}
-                className="mt-5 px-5 py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-xs"
+                type="button"
+                onClick={() => {
+                  setIsCartOpen(false);
+                  setSelectedProduct(null);
+                }}
+                className="mt-5 px-5 py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-xs cursor-pointer shadow-md hover:bg-amber-400 active:scale-95 transition-all"
               >
-                Volver al catálogo
+                Explorar productos
               </button>
             </div>
           ) : (
             cart.map((item, idx) => (
-              <div key={`${item.product.id}-${idx}`} className="flex items-center justify-between rounded-3xl border border-slate-200 bg-slate-50 p-3 shadow-sm">
-                <div className="flex items-center gap-2">
+              <div
+                key={`${item.product.id}-${idx}`}
+                className="flex items-center justify-between rounded-3xl border border-slate-200 bg-slate-50 p-3 shadow-xs"
+              >
+                <div className="flex items-center gap-2.5">
                   <div className="flex flex-col items-center gap-1">
                     <button
+                      type="button"
                       onClick={() => handleItemQtyChange(idx, item, Math.max(1, (item.quantity || 1) - 1))}
-                      className="p-1.5 rounded-full bg-white border border-slate-300 text-slate-900 active:scale-95"
+                      className="p-1.5 rounded-full bg-white border border-slate-300 text-slate-900 active:scale-90 cursor-pointer shadow-2xs hover:bg-slate-50"
                     >
                       <Minus className="w-3 h-3" />
                     </button>
                     <span className="text-[11px] font-black w-6 text-center text-slate-900">{item.quantity || 1}</span>
                     <button
+                      type="button"
                       onClick={() => handleItemQtyChange(idx, item, (item.quantity || 1) + 1)}
-                      className="p-1.5 rounded-full bg-white border border-slate-300 text-slate-900 active:scale-95"
+                      className="p-1.5 rounded-full bg-white border border-slate-300 text-slate-900 active:scale-90 cursor-pointer shadow-2xs hover:bg-slate-50"
                     >
                       <Plus className="w-3 h-3" />
                     </button>
                   </div>
-                  <img src={item.product.imageUrl} alt={item.product.name} className="w-16 h-16 rounded-2xl object-cover border border-slate-200" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedProduct(item.product);
+                      setIsCartOpen(false);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <img
+                      src={item.product.imageUrl}
+                      alt={item.product.name}
+                      className="w-16 h-16 rounded-2xl object-cover border border-slate-200 hover:opacity-90 transition-opacity"
+                    />
+                  </button>
                 </div>
 
                 <div className="flex-1 px-3">
-                  <h4 className="text-[12px] font-black text-slate-900 line-clamp-1">{item.product.name}</h4>
-                  <p className="text-[11px] text-slate-500 font-bold mt-1">${item.product.price.toFixed(2)} c/u</p>
+                  <h4
+                    onClick={() => {
+                      setSelectedProduct(item.product);
+                      setIsCartOpen(false);
+                    }}
+                    className="text-[12px] font-black text-slate-900 line-clamp-1 cursor-pointer hover:text-amber-600 transition-colors"
+                  >
+                    {item.product.name}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 font-bold mt-0.5">${item.product.price.toFixed(2)} c/u</p>
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-[11px] font-black text-amber-600">Subtotal ${(item.product.price * (item.quantity || 1)).toFixed(2)}</span>
-                    <button onClick={() => handleItemRemove(idx, item)} className="p-1.5 rounded-full bg-rose-50 text-rose-500 active:scale-95">
+                    <button
+                      type="button"
+                      onClick={() => handleItemRemove(idx, item)}
+                      className="p-1.5 rounded-full bg-rose-50 text-rose-500 hover:bg-rose-100 active:scale-90 cursor-pointer transition-colors"
+                      title="Eliminar producto"
+                    >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -647,22 +1124,26 @@ export default function AndroidShopView({
           )}
         </div>
 
+        {/* Cart Bottom Checkout Summary */}
         {cart.length > 0 && (
-          <div className="border-t border-slate-200 bg-white px-4 py-4">
-            <div className="flex items-center justify-between text-sm font-black text-slate-900">
-              <span>Total</span>
-              <span className="text-amber-600">${cartTotal.toFixed(2)}</span>
+          <div
+            className="border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.04)]"
+            style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+          >
+            <div className="flex items-center justify-between text-sm font-black text-slate-900 mb-2.5">
+              <span className="text-xs text-slate-500 font-bold">Total a pagar</span>
+              <span className="text-base text-amber-600 font-black">${cartTotal.toFixed(2)}</span>
             </div>
             <button
+              type="button"
               onClick={() => {
                 setIsCartOpen(false);
                 setShowCheckoutPage(true);
               }}
-              className="w-full mt-4 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-2xl text-xs shadow-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-2"
-              style={{ marginBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
+              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black rounded-2xl text-xs shadow-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-2 cursor-pointer"
             >
               <CreditCard className="w-4 h-4" />
-              <span>Completar Compra</span>
+              <span>Completar Compra (${cartTotal.toFixed(2)})</span>
             </button>
           </div>
         )}
@@ -670,62 +1151,751 @@ export default function AndroidShopView({
     );
   }
 
+  if (selectedProduct) {
+    return (
+      <div className="w-full min-h-screen bg-white text-slate-900 flex flex-col font-sans select-none relative">
+        {/* Cabecera 100% transparente fija */}
+        <header
+          id="android-detail-fixed-header"
+          className="fixed top-0 inset-x-0 z-50 bg-transparent pointer-events-none"
+          style={{ paddingTop: "max(10px, env(safe-area-inset-top))" }}
+        >
+          <div className="max-w-md mx-auto w-full px-3.5 py-2.5 flex items-center justify-between pointer-events-none">
+            {/* Botón de regreso - 100% transparente, sin fondo negro */}
+            <button
+              type="button"
+              id="android-detail-back-btn"
+              onClick={() => {
+                setSelectedProduct(null);
+                clearDirectProduct?.();
+                onClearInitialProduct?.();
+              }}
+              className="pointer-events-auto p-2 bg-transparent text-white active:scale-90 transition-transform flex items-center justify-center cursor-pointer border-0 shadow-none outline-none group"
+              title="Volver a la tienda"
+            >
+              <ArrowRight className="w-6 h-6 rotate-180 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] group-hover:scale-110 transition-transform" />
+            </button>
+
+            <div className="flex-1" />
+
+            {/* Icono del carrito - 100% transparente, sin fondo negro con ondas expansivas */}
+            <button
+              type="button"
+              id="android-detail-cart-btn"
+              onClick={() => setIsCartOpen(true)}
+              className="pointer-events-auto relative p-2 bg-transparent text-white active:scale-90 transition-transform flex items-center justify-center cursor-pointer border-0 shadow-none outline-none group"
+              title="Ver carrito"
+            >
+              <ShoppingBag
+                className={`w-6 h-6 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] group-hover:scale-110 transition-all duration-300 ${
+                  isCartShockwave ? "scale-115 !text-amber-300 drop-shadow-[0_0_10px_rgba(251,191,36,0.9)]" : ""
+                }`}
+              />
+              {(cart.length > 0 || isCartShockwave) && (
+                <span
+                  key={`detail-cart-counter-${shockwaveKey}`}
+                  className={`absolute top-0.5 right-0.5 bg-amber-500 text-slate-950 font-black text-[9px] w-4 h-4 rounded-full flex items-center justify-center shadow-md transition-all duration-300 ${
+                    isCartShockwave
+                      ? "scale-125 ring-2 ring-amber-300 bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.95)]"
+                      : "scale-100"
+                  }`}
+                >
+                  {Math.max(1, cart.reduce((s, i) => s + (i.quantity || 1), 0))}
+
+                  {/* Onda expansiva emitida desde el contador del carrito */}
+                  {isCartShockwave && (
+                    <span className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                      <span className="absolute inset-0 rounded-full bg-amber-400 animate-cart-shockwave" />
+                      <span className="absolute inset-0 rounded-full border-2 border-amber-300 animate-cart-shockwave-2" />
+                      <span className="absolute inset-0 rounded-full border border-amber-200 animate-cart-shockwave-3" />
+                    </span>
+                  )}
+                </span>
+              )}
+            </button>
+          </div>
+        </header>
+
+        {/* Scrollable Body */}
+        <div className="flex-1 overflow-y-auto pb-28">
+          {/* Main Media Viewer - Horizontal Scroll Gallery Slider */}
+          <div className="w-full h-[340px] sm:h-[420px] overflow-hidden border-b border-slate-200/80 bg-white relative group/gallery shadow-xs">
+            <div
+              ref={gallerySliderRef}
+              onScroll={handleGalleryScroll}
+              className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar"
+              style={{
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+                WebkitOverflowScrolling: "touch",
+                touchAction: "pan-x pan-y",
+              }}
+            >
+              {productGalleryMedia.map((mediaUrl, idx) => {
+                const isVideo = checkIsVideo(mediaUrl);
+                return (
+                  <div
+                    key={idx}
+                    className="w-full h-full flex-shrink-0 snap-center relative flex items-center justify-center bg-black overflow-hidden group/vid"
+                  >
+                    {isVideo ? (
+                      <div className="w-full h-full relative flex items-center justify-center bg-black">
+                        <video
+                          ref={(el) => {
+                            galleryVideoRefs.current[idx] = el;
+                          }}
+                          src={mediaUrl}
+                          poster={selectedProduct.imageUrl || selectedProduct.images?.[0]}
+                          controls
+                          playsInline
+                          loop
+                          muted={isGalleryVideoMuted}
+                          className="w-full h-full object-contain bg-black"
+                        />
+                      </div>
+                    ) : (
+                      <img
+                        src={mediaUrl}
+                        alt={`${selectedProduct.name} - ${idx + 1}`}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover p-0 m-0 bg-white"
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Image Counter Badge in Bottom-Left Corner */}
+            {productGalleryMedia.length > 0 && (
+              <div
+                className="absolute bottom-3 left-3 z-20 px-2 py-0.5 text-white font-mono text-xs font-bold tracking-wider flex items-center space-x-1 pointer-events-none select-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
+                id="android-detail-image-counter"
+              >
+                <span className="text-amber-400 font-extrabold">{detailGalleryIndex + 1}</span>
+                <span className="text-white/80">/</span>
+                <span className="text-white">{productGalleryMedia.length}</span>
+              </div>
+            )}
+
+            {/* Audio Toggle Button for Video */}
+            {checkIsVideo(productGalleryMedia[detailGalleryIndex]) && (
+              <button
+                type="button"
+                id="android-gallery-video-mute-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsGalleryVideoMuted((prev) => {
+                    const nextMuted = !prev;
+                    const currentVideo = galleryVideoRefs.current[detailGalleryIndex];
+                    if (currentVideo) {
+                      currentVideo.muted = nextMuted;
+                    }
+                    return nextMuted;
+                  });
+                }}
+                className="absolute bottom-3 right-3 z-20 p-2 text-white hover:opacity-80 active:scale-95 transition-all cursor-pointer flex items-center justify-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
+                title={isGalleryVideoMuted ? "Activar audio" : "Silenciar audio"}
+              >
+                {isGalleryVideoMuted ? (
+                  <VolumeX className="w-5 h-5 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" />
+                ) : (
+                  <Volume2 className="w-5 h-5 text-amber-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" />
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* Media Thumbnails list (photos and videos) */}
+          {productGalleryMedia.length > 1 && (
+            <div
+              ref={thumbnailTrackRef}
+              className="flex space-x-2 overflow-x-auto py-2 px-3 no-scrollbar scroll-smooth bg-white border-b border-slate-100"
+            >
+              {productGalleryMedia.map((url, idx) => {
+                const isVideo = checkIsVideo(url);
+                const isSelected = detailGalleryIndex === idx;
+                return (
+                  <button
+                    key={`thumb-${idx}`}
+                    ref={(el) => {
+                      thumbnailItemRefs.current[idx] = el;
+                    }}
+                    type="button"
+                    onClick={() => scrollToGalleryIndex(idx)}
+                    className={`w-12 h-12 rounded-lg overflow-hidden border-2 shrink-0 relative cursor-pointer transition-all ${
+                      isSelected ? "border-amber-500 scale-105 shadow-xs" : "border-slate-200 opacity-70 hover:opacity-100"
+                    }`}
+                  >
+                    {isVideo ? (
+                      <div className="w-full h-full bg-slate-900 flex items-center justify-center relative overflow-hidden">
+                        <img
+                          src={selectedProduct.imageUrl || selectedProduct.images?.[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=300&q=80"}
+                          className="w-full h-full object-cover opacity-75"
+                          referrerPolicy="no-referrer"
+                          alt=""
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                          <Play className="w-3.5 h-3.5 text-white fill-white drop-shadow-xs" />
+                        </div>
+                        <span className="absolute bottom-0.5 right-0.5 bg-amber-500 text-slate-950 font-black text-[7px] px-1 rounded-xs uppercase tracking-tight">
+                          VIDEO
+                        </span>
+                      </div>
+                    ) : (
+                      <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt="" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Security Badges */}
+          <div className="bg-slate-50 rounded-xl p-3 mx-3 sm:mx-4 mt-3 border border-slate-100 grid grid-cols-3 gap-2 text-center text-[10px] text-slate-500 font-semibold">
+            <div className="flex flex-col items-center">
+              <ShieldCheck className="w-5 h-5 text-emerald-500 mb-1" />
+              <span>Pago Seguro</span>
+            </div>
+            <div className="flex flex-col items-center border-x border-slate-200/60">
+              <Truck className="w-5 h-5 text-amber-500 mb-1" />
+              <span>Envío Rápido</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <Star className="w-5 h-5 text-amber-400 fill-amber-400/20 mb-1" />
+              <span>Garantía Oficial</span>
+            </div>
+          </div>
+
+          {/* Product Details Section */}
+          <div className="px-3 sm:px-4 py-3 space-y-3">
+            {/* Seller Header clickable */}
+            <div
+              onClick={() => {
+                if (selectedProduct.sellerId && onCreatorClick) {
+                  onCreatorClick(selectedProduct.sellerId);
+                }
+              }}
+              className="inline-flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-full text-xs font-bold text-slate-800 cursor-pointer transition-colors"
+            >
+              <img
+                src={getSellerInfo(selectedProduct.sellerId).avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
+                alt="Creator"
+                referrerPolicy="no-referrer"
+                className="w-5 h-5 rounded-full object-cover"
+              />
+              <span>Tienda de @{getSellerInfo(selectedProduct.sellerId).name.toLowerCase().replace(/\s+/g, "")}</span>
+              <span className="text-[10px] text-amber-600 font-medium ml-1">Ver perfil →</span>
+            </div>
+
+            {/* Product Title */}
+            <h1 className="font-display font-extrabold text-xl sm:text-2xl text-slate-900 leading-tight">
+              {selectedProduct.name}
+            </h1>
+
+            {/* Rating Stars & Price Section */}
+            <div className="flex items-center justify-between gap-3 bg-slate-50/80 p-3 rounded-xl border border-slate-100 flex-wrap">
+              <div className="flex items-center space-x-3 flex-wrap gap-y-1">
+                <div className="flex items-center space-x-1.5">
+                  <div className="flex items-center text-amber-400">
+                    {[...Array(5)].map((_, i) => (
+                      <Star key={i} className="w-4 h-4 fill-amber-400" />
+                    ))}
+                  </div>
+                  <span className="text-xs font-bold text-slate-700">
+                    {selectedProduct.rating || 4.9} (Verificado)
+                  </span>
+                </div>
+
+                {/* Views Badge */}
+                <div
+                  className="flex items-center space-x-1 text-xs font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80"
+                  title="Visualizaciones en la página de detalle"
+                >
+                  <Eye className="w-3.5 h-3.5 text-sky-600" />
+                  <span>{selectedProduct.views ?? 0} visualizaciones</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl font-black font-mono text-slate-950 tracking-tight" id="android-product-detail-price">
+                  ${selectedProduct.price.toFixed(2)}
+                </span>
+                <span
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                    selectedProduct.stock > 0
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200/80"
+                      : "bg-rose-50 text-rose-700 border-rose-200/80"
+                  }`}
+                >
+                  {selectedProduct.stock > 0 ? "En Stock" : "Agotado"}
+                </span>
+              </div>
+            </div>
+
+            {/* Description */}
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line">
+              {selectedProduct.description}
+            </p>
+
+            {/* Product Variants Selection */}
+            {((selectedProduct.variants && selectedProduct.variants.length > 0) || (selectedProduct.variantList && selectedProduct.variantList.length > 0)) && (() => {
+              const swatchesMap = new Map<string, { name: string; color?: string; imageUrl: string }>();
+              if (selectedProduct.variantList) {
+                selectedProduct.variantList.forEach((vItem) => {
+                  if (!vItem.imageUrl) return;
+                  const key = (vItem.color || vItem.name || vItem.imageUrl).trim().toLowerCase();
+                  if (!swatchesMap.has(key)) {
+                    swatchesMap.set(key, {
+                      name: vItem.color || vItem.name || "Color",
+                      color: vItem.color,
+                      imageUrl: vItem.imageUrl
+                    });
+                  }
+                });
+              }
+              const uniqueSwatches = Array.from(swatchesMap.values());
+              const hasOptionGroups = selectedProduct.variants && selectedProduct.variants.length > 0;
+
+              return (
+                <div className="mt-4 space-y-3.5 border-t border-slate-100 pt-3" id="android-product-options-section">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-extrabold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                      <span>Selecciona tus opciones:</span>
+                      <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded font-bold border border-amber-200/60 lowercase">
+                        (requerido)
+                      </span>
+                    </p>
+                  </div>
+
+                  {optionsValidationError && (
+                    <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs font-bold flex items-center gap-2 shadow-xs">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>{optionsValidationError}</span>
+                    </div>
+                  )}
+
+                  {hasOptionGroups ? (
+                    selectedProduct.variants!.map((v, idx) => {
+                      const groupNameLower = v.name.toLowerCase().trim();
+                      const isSizeGroup = groupNameLower.includes("talla") || groupNameLower.includes("size") || groupNameLower.includes("medida") || groupNameLower.includes("dimension");
+                      const isColorGroup = !isSizeGroup && (
+                        groupNameLower.includes("color") ||
+                        groupNameLower.includes("estilo") ||
+                        groupNameLower.includes("style") ||
+                        groupNameLower.includes("opción") ||
+                        groupNameLower.includes("option") ||
+                        groupNameLower.includes("modelo") ||
+                        (selectedProduct.variants!.length === 1 && uniqueSwatches.length > 0)
+                      );
+
+                      if (isColorGroup) {
+                        const selectedColorVal = selectedVariants[v.name] || (uniqueSwatches.find(s => s.imageUrl === selectedProductMediaUrl)?.name) || "";
+
+                        return (
+                          <div key={idx} className="space-y-1.5 text-left">
+                            <div className="flex items-center space-x-1.5 text-[11px] font-bold">
+                              <span className="text-slate-600">{v.name}:</span>
+                              {selectedColorVal ? (
+                                <span className="text-amber-600 font-extrabold capitalize bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80">
+                                  {selectedColorVal}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
+                                  Selecciona un {v.name.toLowerCase()}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-0.5 px-0.5 no-scrollbar scroll-smooth snap-x">
+                              {v.options.map((opt, oIdx) => {
+                                const matchingSwatch = uniqueSwatches.find(s =>
+                                  s.name.toLowerCase() === opt.toLowerCase() ||
+                                  (s.color && s.color.toLowerCase() === opt.toLowerCase()) ||
+                                  s.name.toLowerCase().includes(opt.toLowerCase())
+                                );
+                                const imgUrl = matchingSwatch?.imageUrl;
+                                const isSelected = selectedVariants[v.name] === opt || (imgUrl && selectedProductMediaUrl === imgUrl);
+
+                                return (
+                                  <button
+                                    key={oIdx}
+                                    type="button"
+                                    title={opt}
+                                    onClick={() => {
+                                      setSelectedVariants({ ...selectedVariants, [v.name]: opt });
+                                      setOptionsValidationError(null);
+                                      if (imgUrl) {
+                                        setSelectedProductMediaUrl(imgUrl);
+                                      } else if (selectedProduct.variantList) {
+                                        const match = selectedProduct.variantList.find((vItem) =>
+                                          (vItem.name && vItem.name.toLowerCase().includes(opt.toLowerCase())) ||
+                                          (vItem.color && vItem.color.toLowerCase().includes(opt.toLowerCase()))
+                                        );
+                                        if (match && match.imageUrl) {
+                                          setSelectedProductMediaUrl(match.imageUrl);
+                                        }
+                                      }
+                                    }}
+                                    className={`group snap-start flex items-center justify-center p-0 overflow-hidden rounded-xl border transition-all cursor-pointer w-14 h-14 shrink-0 relative ${
+                                      isSelected
+                                        ? "bg-slate-950 border-slate-950 ring-2 ring-amber-500 shadow-md scale-[1.05]"
+                                        : "bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 shadow-2xs"
+                                    }`}
+                                  >
+                                    {imgUrl ? (
+                                      <div className="w-full h-full overflow-hidden relative">
+                                        <img
+                                          src={imgUrl}
+                                          alt={opt}
+                                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                          referrerPolicy="no-referrer"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div className="w-full h-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                                        {opt.slice(0, 3)}
+                                      </div>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      const selectedOptVal = selectedVariants[v.name];
+                      return (
+                        <div key={idx} className="space-y-1.5 text-left">
+                          <div className="flex items-center space-x-1.5 text-[11px] font-bold">
+                            <span className="text-slate-600">{v.name}:</span>
+                            {selectedOptVal ? (
+                              <span className="text-slate-900 font-extrabold bg-slate-100 px-2 py-0.5 rounded-md">
+                                {selectedOptVal}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
+                                Selecciona una {v.name.toLowerCase()}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {v.options.map((opt, oIdx) => {
+                              const isSelected = selectedVariants[v.name] === opt;
+                              return (
+                                <button
+                                  key={oIdx}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedVariants({ ...selectedVariants, [v.name]: opt });
+                                    setOptionsValidationError(null);
+                                  }}
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
+                                    isSelected
+                                      ? "bg-slate-950 text-white border-slate-950 shadow-sm ring-2 ring-amber-500/30"
+                                      : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                                  }`}
+                                >
+                                  {opt}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : uniqueSwatches.length > 0 ? (
+                    <div className="space-y-1.5 text-left">
+                      <div className="flex items-center space-x-1.5 text-[11px] font-bold">
+                        <span className="text-slate-600">Color:</span>
+                        {(selectedVariants["Color"] || (uniqueSwatches.find(s => s.imageUrl === selectedProductMediaUrl)?.name)) ? (
+                          <span className="text-amber-600 font-extrabold capitalize bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80">
+                            {selectedVariants["Color"] || (uniqueSwatches.find(s => s.imageUrl === selectedProductMediaUrl)?.name)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
+                            Selecciona un color
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-0.5 px-0.5 no-scrollbar scroll-smooth snap-x">
+                        {uniqueSwatches.map((swatch, sIdx) => {
+                          const isSelected = selectedProductMediaUrl === swatch.imageUrl || selectedVariants["Color"] === swatch.name;
+                          return (
+                            <button
+                              key={sIdx}
+                              type="button"
+                              title={swatch.name}
+                              onClick={() => {
+                                setSelectedProductMediaUrl(swatch.imageUrl);
+                                setSelectedVariants(prev => ({ ...prev, Color: swatch.name }));
+                                setOptionsValidationError(null);
+                              }}
+                              className={`group snap-start flex items-center justify-center p-0 overflow-hidden rounded-xl border transition-all cursor-pointer w-14 h-14 shrink-0 relative ${
+                                isSelected
+                                  ? "bg-slate-950 border-slate-950 ring-2 ring-amber-500 shadow-md scale-[1.05]"
+                                  : "bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 shadow-2xs"
+                              }`}
+                            >
+                              <div className="w-full h-full overflow-hidden">
+                                <img src={swatch.imageUrl} alt={swatch.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" referrerPolicy="no-referrer" />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })()}
+
+            {/* Shipping Information Banner */}
+            <div className="mt-4 bg-slate-50 rounded-xl border border-slate-100 p-3 flex items-center justify-between text-xs">
+              <div className="flex items-center space-x-2 text-slate-700 font-bold">
+                <Truck className="w-4 h-4 text-amber-500 shrink-0" />
+                <span>Envío a tu País:</span>
+              </div>
+              <span className="text-[11px] font-extrabold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/80 flex items-center space-x-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>GRATIS</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Fixed Bottom Action Bar */}
+        <div
+          className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-100 py-2 px-3 sm:px-5 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]"
+          style={{ paddingBottom: "max(0.5rem, calc(env(safe-area-inset-bottom, 0px) + 0.35rem))" }}
+        >
+          <div className="max-w-md mx-auto w-full flex items-center justify-center min-h-[38px]">
+            {(() => {
+              const missingOpts = getMissingOptions(selectedProduct, selectedVariants);
+              const hasMissingOpts = missingOpts.length > 0;
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedProduct.stock <= 0) return;
+
+                    const currentMissing = getMissingOptions(selectedProduct, selectedVariants);
+                    if (currentMissing.length > 0) {
+                      setOptionsValidationError(`Por favor selecciona tu ${currentMissing.join(" y ")} antes de añadir al carrito.`);
+                      document.getElementById("android-product-options-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      return;
+                    }
+
+                    const variantStr = Object.entries(selectedVariants)
+                      .map(([k, v]) => `${k}: ${v}`)
+                      .join(", ");
+
+                    const activeImageUrl = selectedProductMediaUrl || selectedProduct.imageUrl;
+
+                    const customizedProduct: Product = {
+                      ...selectedProduct,
+                      imageUrl: activeImageUrl,
+                      name: variantStr ? `${selectedProduct.name} (${variantStr})` : selectedProduct.name,
+                    };
+
+                    onAddToCart(customizedProduct, 1, selectedVariants);
+                    triggerCartShockwave();
+                    setIsAddedSuccess(true);
+                    if (addedSuccessTimerRef.current) clearTimeout(addedSuccessTimerRef.current);
+                    addedSuccessTimerRef.current = setTimeout(() => {
+                      setIsAddedSuccess(false);
+                    }, 2400);
+                  }}
+                  disabled={selectedProduct.stock <= 0}
+                  className={`w-full py-3 px-4 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-98 text-center ${
+                    selectedProduct.stock <= 0
+                      ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                      : hasMissingOpts
+                      ? "bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/20"
+                      : isAddedSuccess
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30 scale-[1.01]"
+                      : "bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-amber-500/25"
+                  }`}
+                  id="android-add-to-cart-detail-btn"
+                >
+                  {selectedProduct.stock <= 0 ? (
+                    <span>Agotado</span>
+                  ) : hasMissingOpts ? (
+                    <>
+                      <AlertCircle className="w-4 h-4 shrink-0 text-slate-950" />
+                      <span className="whitespace-nowrap">
+                        {missingOpts.length === 1 ? `Elegir ${missingOpts[0]}` : "Elegir opciones"}
+                      </span>
+                    </>
+                  ) : isAddedSuccess ? (
+                    <>
+                      <CheckCircle2 className="w-5 h-5 shrink-0 text-white animate-bounce" />
+                      <span className="whitespace-nowrap font-black">¡Añadido con éxito!</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShoppingCart className="w-4 h-4 shrink-0 text-slate-950" />
+                      <span className="whitespace-nowrap">Añadir al Carrito • ${selectedProduct.price.toFixed(2)}</span>
+                    </>
+                  )}
+                </button>
+              );
+            })()}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full min-h-screen bg-white text-slate-900 flex flex-col font-sans select-none pb-24" id="android-shop-view">
-      {/* Top Android Header */}
-      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
-            <ShoppingBag className="w-4 h-4" />
+      {/* Top Android Sticky Bar: Header + Collapsible Category Carousel */}
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md shadow-xs">
+        {/* Integrated Search and Cart Header */}
+        <div className="px-3 py-2.5 border-b border-slate-200 flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar productos..."
+              className="w-full pl-9 pr-7 py-2 bg-slate-100 hover:bg-slate-100/80 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
-          <div>
-            <h1 className="text-sm font-bold text-slate-900">Tienda MallSocial</h1>
-            <p className="text-[10px] text-amber-500 font-medium">Catálogo Android</p>
-          </div>
-        </div>
 
-        <button
-          onClick={() => setIsCartOpen(true)}
-          className="relative p-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 active:scale-95 transition-transform"
-        >
-          <ShoppingBag className="w-5 h-5 text-amber-500" />
-          {cart.length > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 text-slate-950 font-bold text-[10px] rounded-full flex items-center justify-center shadow">
-              {cart.reduce((s, i) => s + (i.quantity || 1), 0)}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* Search Input */}
-      <div className="p-4 pb-2">
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar productos en Android..."
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-800 rounded-2xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
-          />
-        </div>
-      </div>
-
-      {/* Category Pills */}
-      <div className="px-4 py-2 overflow-x-auto flex space-x-2 no-scrollbar">
-        {categoriesList.map((cat) => (
           <button
-            key={cat}
-            onClick={() => setActiveCategory(cat)}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
-              activeCategory === cat
-                ? "bg-amber-500 text-slate-950 shadow-sm"
-                : "bg-slate-900 text-slate-400 border border-slate-800"
-            }`}
+            onClick={() => setIsCartOpen(true)}
+            className="relative p-2 rounded-xl bg-white border border-slate-200 text-slate-900 active:scale-95 transition-transform shrink-0"
+            aria-label="Carrito de compras"
           >
-            {cat}
+            <ShoppingBag
+              className={`w-5 h-5 transition-all duration-300 ${
+                isCartShockwave ? "text-amber-600 scale-110 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]" : "text-amber-500"
+              }`}
+            />
+            {(cart.length > 0 || isCartShockwave) && (
+              <span
+                key={`main-cart-counter-${shockwaveKey}`}
+                className={`absolute -top-1 -right-1 w-5 h-5 bg-amber-500 text-slate-950 font-black text-[10px] rounded-full flex items-center justify-center shadow transition-all duration-300 ${
+                  isCartShockwave
+                    ? "scale-125 ring-2 ring-amber-300 bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.95)]"
+                    : "scale-100"
+                }`}
+              >
+                {Math.max(1, cart.reduce((s, i) => s + (i.quantity || 1), 0))}
+
+                {/* Onda expansiva emitida desde el contador del carrito */}
+                {isCartShockwave && (
+                  <span className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <span className="absolute inset-0 rounded-full bg-amber-400 animate-cart-shockwave" />
+                    <span className="absolute inset-0 rounded-full border-2 border-amber-300 animate-cart-shockwave-2" />
+                    <span className="absolute inset-0 rounded-full border border-amber-200 animate-cart-shockwave-3" />
+                  </span>
+                )}
+              </span>
+            )}
           </button>
-        ))}
+        </div>
+
+        {/* Category Carousel with Images (Collapsible on scroll) */}
+        <div
+          id="android-category-carousel-container"
+          style={{ overflowAnchor: "none" }}
+          className={`w-full bg-white overflow-hidden transition-all duration-300 ease-out border-b will-change-[max-height,opacity] ${
+            isCategoryVisible
+              ? "max-h-20 opacity-100 border-slate-100 pointer-events-auto"
+              : "max-h-0 opacity-0 pointer-events-none border-transparent"
+          }`}
+        >
+          <div className="py-1 px-2 flex items-center gap-1.5" id="android-category-carousel-inner">
+            {activeCategory !== "Todos" && activeCategory !== "todos" && (
+              <button
+                type="button"
+                onClick={() => setActiveCategory("Todos")}
+                className="shrink-0 z-10 flex items-center space-x-1 px-2 py-0.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 rounded-full text-[8.5px] font-bold border border-amber-500/30 active:scale-95 transition-all shadow-xs"
+                title="Restablecer filtro a Todos"
+              >
+                <span className="truncate max-w-[55px]">
+                  {categoriesList.find((c) => c.name.toLowerCase() === activeCategory.toLowerCase() || c.id === activeCategory)?.name || activeCategory}
+                </span>
+                <X className="w-2.5 h-2.5 shrink-0" />
+              </button>
+            )}
+            <div
+              ref={categoryTrackRef}
+              onMouseDown={handleCategoryMouseDown}
+              onMouseLeave={handleCategoryMouseLeave}
+              onMouseUp={handleCategoryMouseUp}
+              onMouseMove={handleCategoryMouseMove}
+              onMouseEnter={() => setIsCategoryHovered(true)}
+              onWheel={handleCategoryWheel}
+              onTouchStart={handleCategoryTouchStart}
+              onTouchEnd={handleCategoryTouchEnd}
+              onTouchCancel={handleCategoryTouchEnd}
+              className={`flex-1 flex items-center space-x-2 overflow-x-auto no-scrollbar py-0.5 select-none ${
+                isCategoryDragging ? 'cursor-grabbing' : 'cursor-grab'
+              }`}
+            >
+              {infiniteCategories.map((cat, idx) => {
+                const isSelected =
+                  activeCategory.toLowerCase() === cat.name.toLowerCase() ||
+                  activeCategory.toLowerCase() === cat.id.toLowerCase();
+                return (
+                  <button
+                    key={`${cat.id || cat.name}-${idx}`}
+                    type="button"
+                    onClick={() => {
+                      if (!categoryHasMovedRef.current) {
+                        setActiveCategory(cat.name);
+                      }
+                    }}
+                    className="flex flex-col items-center shrink-0 outline-none group focus:outline-none cursor-pointer select-none active:scale-95 transition-transform w-[42px]"
+                  >
+                    <div
+                      className={`w-7 h-7 rounded-full overflow-hidden border-[1.5px] transition-all relative flex items-center justify-center bg-slate-50 ${
+                        isSelected
+                          ? "border-amber-500 ring-2 ring-amber-500/25 scale-105 shadow-xs"
+                          : "border-slate-200 group-hover:border-slate-300"
+                      }`}
+                    >
+                      <img
+                        src={cat.imageUrl}
+                        alt={cat.name}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-200 group-hover:scale-110"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src =
+                            "https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=150&q=80";
+                        }}
+                      />
+                    </div>
+                    <span
+                      className={`text-[8px] leading-tight text-center truncate w-full mt-0.5 transition-colors ${
+                        isSelected
+                          ? "text-amber-600 font-bold"
+                          : "text-slate-600 font-medium group-hover:text-slate-900"
+                      }`}
+                    >
+                      {cat.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Product Grid */}
@@ -766,9 +1936,9 @@ export default function AndroidShopView({
             )}
           </div>
         ) : (
-          filteredProducts.map((p) => (
+          displayedProducts.map((p) => (
             <div
-              key={p.id}
+              key={p._renderKey || p.id}
               onClick={() => {
                 setSelectedProduct(p);
                 onSelectProduct?.(p);
@@ -794,16 +1964,45 @@ export default function AndroidShopView({
                   onClick={(e) => {
                     e.stopPropagation();
                     onAddToCart(p, 1);
+                    triggerCartShockwave();
+                    setRecentlyAddedId(p.id);
+                    if (listAddedTimerRef.current) clearTimeout(listAddedTimerRef.current);
+                    listAddedTimerRef.current = setTimeout(() => {
+                      setRecentlyAddedId(null);
+                    }, 1800);
                   }}
-                  className="p-1.5 bg-amber-500 text-slate-950 rounded-lg hover:bg-amber-400 active:scale-90 transition-transform font-bold"
+                  className={`p-1.5 rounded-lg active:scale-90 transition-all font-bold cursor-pointer ${
+                    recentlyAddedId === p.id
+                      ? "bg-emerald-600 text-white shadow-sm scale-110"
+                      : "bg-amber-500 text-slate-950 hover:bg-amber-400"
+                  }`}
+                  title={recentlyAddedId === p.id ? "¡Añadido con éxito!" : "Añadir al carrito"}
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  {recentlyAddedId === p.id ? (
+                    <Check className="w-3.5 h-3.5 text-white stroke-[3] animate-scale-in" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5" />
+                  )}
                 </button>
               </div>
             </div>
           ))
         )}
       </div>
+
+      {/* Infinite Scroll Loader & Sentinel */}
+      {filteredProducts.length > 0 && (
+        <div ref={infiniteLoaderRef} className="w-full py-5 flex flex-col items-center justify-center">
+          {isLoadingMore ? (
+            <div className="flex items-center space-x-2 bg-slate-100/95 border border-slate-200 px-4 py-2 rounded-full shadow-xs">
+              <RefreshCw className="w-3.5 h-3.5 text-amber-500 animate-spin" />
+              <span className="text-[11px] font-semibold text-slate-600">Cargando más productos...</span>
+            </div>
+          ) : (
+            <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+          )}
+        </div>
+      )}
 
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { User as UserIcon, Camera, Upload, AlertTriangle } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession } from "./types";
@@ -143,6 +143,28 @@ export default function App() {
   const [forceAvatarError, setForceAvatarError] = useState("");
   const [guestInteractionAlert, setGuestInteractionAlert] = useState<string | null>(null);
   const [isLiveViewerOpen, setIsLiveViewerOpen] = useState(false);
+
+  // Platform Target: 'android' vs 'web' (defaults to 'android' as requested to preview and develop Android app)
+  const [activePlatform, setActivePlatform] = useState<'android' | 'web'>(() => {
+    if (typeof window !== "undefined") {
+      const saved = safeStorage.getItem("mallsocial_platform_target");
+      if (saved === "android" || saved === "web") return saved;
+      if (window.location.search.includes("platform=android")) return "android";
+      if (window.location.search.includes("platform=web")) return "web";
+      if ((import.meta as any).env?.VITE_APP_TARGET === "android") return "android";
+      if ((import.meta as any).env?.VITE_APP_TARGET === "web") return "web";
+      const win = window as any;
+      if (typeof win.Capacitor?.isNativePlatform === "function" && win.Capacitor.isNativePlatform()) {
+        return "android";
+      }
+    }
+    return "android";
+  });
+
+  const handleSwitchPlatform = useCallback((target: 'android' | 'web') => {
+    setActivePlatform(target);
+    safeStorage.setItem("mallsocial_platform_target", target);
+  }, []);
 
   // App Startup & Server Connection Splash State (disabled by default on web for instant paint)
   const [isInitialLoading, setIsInitialLoading] = useState(() => {
@@ -1259,60 +1281,97 @@ export default function App() {
         onContinueAnyway={() => setIsInitialLoading(false)}
       />
 
-      {/* Main Target Routing: Android vs iOS vs Web */}
-      {(((import.meta as any).env?.VITE_APP_TARGET === "android") || (typeof window !== "undefined" && window.location.search.includes("platform=android")) || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.getPlatform && Capacitor.getPlatform() === "android") || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.isNativePlatform && Capacitor.isNativePlatform() && !/iPhone|iPad|iPod/.test(navigator.userAgent || ""))) ? (
-        <div className="flex flex-1 w-full min-h-screen" id="app-android-container">
-          <AndroidApp
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            users={users}
-            reels={reels}
-            products={products}
-            cart={cart}
-            currentUser={currentUser}
-            directSelectedProduct={directSelectedProduct}
-            setDirectSelectedProduct={setDirectSelectedProduct}
-            selectedCreatorProfileId={selectedCreatorProfileId}
-            setSelectedCreatorProfileId={setSelectedCreatorProfileId}
-            isProductDetailOpen={isProductDetailOpen}
-            setIsProductDetailOpen={setIsProductDetailOpen}
-            shopInitialStep={shopInitialStep}
-            setShopInitialStep={setShopInitialStep}
-            shopInitialSelectedIndices={shopInitialSelectedIndices}
-            setShopInitialSelectedIndices={setShopInitialSelectedIndices}
-            activeChatUser={activeChatUser}
-            setActiveChatUser={setActiveChatUser}
-            privateMessages={privateMessages}
-            unreadCounts={unreadCounts}
-            savedReelIds={savedReelIds}
-            isLiveViewerOpen={isLiveViewerOpen}
-            totalUnreads={totalUnreads}
-            handleAddToCart={handleAddToCart}
-            handleRemoveFromCart={handleRemoveFromCart}
-            handleUpdateCartQuantity={handleUpdateCartQuantity}
-            handleCheckoutCart={handleCheckoutCart}
-            handleCreatorProfileLink={handleCreatorProfileLink}
-            handleProductDetailsLink={handleProductDetailsLink}
-            handleReelLink={handleReelLink}
-            handleLikeReel={handleLikeReel}
-            handleAddComment={handleAddComment}
-            handleToggleSaveReel={handleToggleSaveReel}
-            handleToggleFollowUser={handleToggleFollowUser}
-            handleSendPrivateMessage={handleSendPrivateMessage}
-            handleClearUnreads={handleClearUnreads}
-            refreshReels={refreshReels}
-            refreshProducts={refreshProducts}
-            refreshAllData={refreshAllData}
-            isInitialLoading={isInitialLoading}
-            setCurrentUser={setCurrentUser}
-            setUsers={setUsers}
-            isLoggedIn={isLoggedIn}
-            setIsLoggedIn={setIsLoggedIn}
-            handleLogout={handleLogout}
-            setGuestInteractionAlert={setGuestInteractionAlert}
-            openPrivateChatDirectly={openPrivateChatDirectly}
-            socket={socketRef.current}
-          />
+      {/* Floating Platform Switcher for Preview / Development */}
+      {typeof window !== "undefined" && !(typeof (window as any).Capacitor !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) && (
+        <div
+          className="fixed top-3 right-3 z-[9999] flex items-center bg-slate-900/90 backdrop-blur-md p-1 border border-slate-700/80 rounded-full shadow-2xl text-xs font-semibold text-white select-none transition-all"
+          id="preview-platform-switcher"
+        >
+          <button
+            type="button"
+            onClick={() => handleSwitchPlatform('android')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all cursor-pointer ${
+              activePlatform === 'android'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+            title="Visualizar versión Android"
+          >
+            <span>📱</span>
+            <span>Android</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSwitchPlatform('web')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all cursor-pointer ${
+              activePlatform === 'web'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+            title="Visualizar versión Web"
+          >
+            <span>🌐</span>
+            <span>Web</span>
+          </button>
+        </div>
+      )}
+
+      {/* Main Target Routing: Android vs Web */}
+      {activePlatform === "android" ? (
+        <div className="flex flex-1 w-full min-h-screen justify-center bg-slate-950" id="app-android-container">
+          <div className="w-full sm:max-w-[430px] min-h-screen flex flex-col relative sm:border-x sm:border-slate-800 sm:shadow-2xl bg-black">
+            <AndroidApp
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              users={users}
+              reels={reels}
+              products={products}
+              cart={cart}
+              currentUser={currentUser}
+              directSelectedProduct={directSelectedProduct}
+              setDirectSelectedProduct={setDirectSelectedProduct}
+              selectedCreatorProfileId={selectedCreatorProfileId}
+              setSelectedCreatorProfileId={setSelectedCreatorProfileId}
+              isProductDetailOpen={isProductDetailOpen}
+              setIsProductDetailOpen={setIsProductDetailOpen}
+              shopInitialStep={shopInitialStep}
+              setShopInitialStep={setShopInitialStep}
+              shopInitialSelectedIndices={shopInitialSelectedIndices}
+              setShopInitialSelectedIndices={setShopInitialSelectedIndices}
+              activeChatUser={activeChatUser}
+              setActiveChatUser={setActiveChatUser}
+              privateMessages={privateMessages}
+              unreadCounts={unreadCounts}
+              savedReelIds={savedReelIds}
+              isLiveViewerOpen={isLiveViewerOpen}
+              totalUnreads={totalUnreads}
+              handleAddToCart={handleAddToCart}
+              handleRemoveFromCart={handleRemoveFromCart}
+              handleUpdateCartQuantity={handleUpdateCartQuantity}
+              handleCheckoutCart={handleCheckoutCart}
+              handleCreatorProfileLink={handleCreatorProfileLink}
+              handleProductDetailsLink={handleProductDetailsLink}
+              handleReelLink={handleReelLink}
+              handleLikeReel={handleLikeReel}
+              handleAddComment={handleAddComment}
+              handleToggleSaveReel={handleToggleSaveReel}
+              handleToggleFollowUser={handleToggleFollowUser}
+              handleSendPrivateMessage={handleSendPrivateMessage}
+              handleClearUnreads={handleClearUnreads}
+              refreshReels={refreshReels}
+              refreshProducts={refreshProducts}
+              refreshAllData={refreshAllData}
+              isInitialLoading={isInitialLoading}
+              setCurrentUser={setCurrentUser}
+              setUsers={setUsers}
+              isLoggedIn={isLoggedIn}
+              setIsLoggedIn={setIsLoggedIn}
+              handleLogout={handleLogout}
+              setGuestInteractionAlert={setGuestInteractionAlert}
+              openPrivateChatDirectly={openPrivateChatDirectly}
+              socket={socketRef.current}
+            />
+          </div>
         </div>
       ) : (
         <div className="flex flex-1 w-full min-h-screen" id="app-web-container">

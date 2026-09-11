@@ -55,6 +55,25 @@ export default function ReelsView({
   const [carouselIndices, setCarouselIndices] = useState<{ [key: string]: number }>({});
   const [mediaAspectRatios, setMediaAspectRatios] = useState<{ [key: string]: 'vertical' | 'square' | 'horizontal' | 'horizontal_or_square' }>({});
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
+  const activeIndexRef = useRef(activeReelIndex);
+  activeIndexRef.current = activeReelIndex;
+
+  const handleRegisterRef = useCallback((idx: number, el: HTMLVideoElement | null) => {
+    if (!el) {
+      delete videoRefs.current[idx];
+      if (idx === activeIndexRef.current) {
+        setActiveVideoElement(null);
+      }
+    } else {
+      videoRefs.current[idx] = el;
+      if (idx === activeIndexRef.current) {
+        setActiveVideoElement(el);
+      }
+    }
+  }, []);
+
   // Listen for user interaction to allow unmuting seamlessly according to browser policy
   useEffect(() => {
     const handleFirstGesture = () => {
@@ -68,7 +87,7 @@ export default function ReelsView({
     };
   }, []);
 
-  // Cleanup all videos and release hardware decoders on unmount
+  // Safely pause all videos on unmount
   useEffect(() => {
     return () => {
       Object.keys(videoRefs.current).forEach((key) => {
@@ -76,8 +95,6 @@ export default function ReelsView({
         if (video) {
           try {
             video.pause();
-            video.removeAttribute("src");
-            video.load();
           } catch {}
         }
       });
@@ -88,10 +105,13 @@ export default function ReelsView({
   // Helper to safely play active video with fallback to muted if autoplay audio is blocked
   const playVideoSafely = useCallback((video: HTMLVideoElement) => {
     if (!isPlaying) {
-      video.pause();
+      try {
+        video.pause();
+      } catch {}
       return;
     }
     video.muted = isMuted;
+    video.defaultMuted = isMuted;
     video.volume = isMuted ? 0 : 1.0;
     const playPromise = video.play();
     if (playPromise !== undefined) {
@@ -99,11 +119,40 @@ export default function ReelsView({
         if (err?.name === "AbortError" || !isPlaying) return;
         if (err?.name === "NotAllowedError") {
           video.muted = true;
+          video.defaultMuted = true;
           video.play().catch(() => {});
         }
       });
     }
   }, [isMuted, isPlaying]);
+
+  // Master synchronization effect: plays active reel video and ensures all others are paused
+  useEffect(() => {
+    // 1. Pause any video that is not the active reel
+    Object.keys(videoRefs.current).forEach((key) => {
+      const k = Number(key);
+      if (k !== activeReelIndex) {
+        const v = videoRefs.current[k];
+        if (v && !v.paused) {
+          try {
+            v.pause();
+          } catch {}
+        }
+      }
+    });
+
+    // 2. Play active video
+    const activeVideo = videoRefs.current[activeReelIndex] || activeVideoElement;
+    if (activeVideo) {
+      if (isPlaying) {
+        playVideoSafely(activeVideo);
+      } else {
+        try {
+          activeVideo.pause();
+        } catch {}
+      }
+    }
+  }, [activeReelIndex, isPlaying, isMuted, activeVideoElement, playVideoSafely]);
 
   // Pause playback when browser tab or app window is hidden/minimized
   useEffect(() => {
@@ -111,7 +160,9 @@ export default function ReelsView({
       if (document.hidden) {
         const activeVideo = videoRefs.current[activeReelIndex];
         if (activeVideo) {
-          activeVideo.pause();
+          try {
+            activeVideo.pause();
+          } catch {}
         }
       } else if (isPlaying) {
         const activeVideo = videoRefs.current[activeReelIndex];
@@ -185,23 +236,6 @@ export default function ReelsView({
     return sum + shippingFee * item.quantity;
   }, 0);
   const effectiveTotal = effectiveSubtotal + effectiveShipping;
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
-
-  const handleRegisterRef = useCallback((idx: number, el: HTMLVideoElement | null) => {
-    if (!el) {
-      delete videoRefs.current[idx];
-      if (idx === activeReelIndex) {
-        setActiveVideoElement(null);
-      }
-    } else {
-      videoRefs.current[idx] = el;
-      if (idx === activeReelIndex) {
-        setActiveVideoElement(el);
-      }
-    }
-  }, [activeReelIndex]);
 
   const handleAspectRatioDetected = useCallback((reelId: string, ratio: 'vertical' | 'square' | 'horizontal' | 'horizontal_or_square') => {
     setMediaAspectRatios((prev) => {
@@ -1708,20 +1742,19 @@ const ReelVideoItem = memo(function ReelVideoItem({
   const handleRef = useCallback((el: HTMLVideoElement | null) => {
     videoRef.current = el;
     if (el) {
-      onRegisterRef(index, el);
+      el.muted = isMuted;
+      el.defaultMuted = isMuted;
     }
-  }, [index, onRegisterRef]);
+    onRegisterRef(index, el);
+  }, [index, isMuted, onRegisterRef]);
 
-  // Safely release hardware decoder when THIS component unmounts from the DOM
+  // Clean unmount from DOM - safely pause video without removing src or corrupting DOM state
   useEffect(() => {
     return () => {
       const video = videoRef.current;
       if (video) {
         try {
           video.pause();
-          video.muted = true;
-          video.removeAttribute("src");
-          video.load(); // Vital: immediately releases hardware decoder context in browser/OS
         } catch {}
       }
       onRegisterRef(index, null);
@@ -1750,6 +1783,24 @@ const ReelVideoItem = memo(function ReelVideoItem({
     }
   };
 
+  const triggerSafePlay = (v: HTMLVideoElement) => {
+    if (isCurrent && isPlaying && v.paused) {
+      v.muted = isMuted;
+      v.defaultMuted = isMuted;
+      const p = v.play();
+      if (p !== undefined) {
+        p.catch((err) => {
+          if (err?.name === "AbortError") return;
+          if (err?.name === "NotAllowedError") {
+            v.muted = true;
+            v.defaultMuted = true;
+            v.play().catch(() => {});
+          }
+        });
+      }
+    }
+  };
+
   return (
     <video
       ref={handleRef}
@@ -1772,16 +1823,8 @@ const ReelVideoItem = memo(function ReelVideoItem({
         onDoubleTap(reel.id);
       }}
       onLoadedMetadata={handleLoadedMetadata}
-      onCanPlay={(e) => {
-        const v = e.currentTarget;
-        if (isCurrent && isPlaying && v.paused) {
-          v.play().catch(() => {
-            v.muted = true;
-            v.defaultMuted = true;
-            v.play().catch(() => {});
-          });
-        }
-      }}
+      onLoadedData={(e) => triggerSafePlay(e.currentTarget)}
+      onCanPlay={(e) => triggerSafePlay(e.currentTarget)}
     />
   );
 });
