@@ -454,14 +454,14 @@ export default function AndroidReelsView({
         )}
       </div>
 
-      {/* Right Actions: Positioned 5px above bottom navigation bar without black background */}
-      <div className="absolute right-2.5 bottom-[5px] z-30 flex flex-col items-center space-y-3.5 text-white pointer-events-auto">
+      {/* Right Actions: Keep 10px gap above the bottom navigation bar */}
+      <div className="absolute right-2.5 bottom-[10px] z-30 flex flex-col items-center space-y-3.5 text-white pointer-events-auto">
         <div className="relative mb-1">
           <img
             src={displayAvatar}
             alt={displayUsername}
             onClick={handleCreatorNav}
-            className="w-11 h-11 rounded-full object-cover border-2 border-amber-500 shadow-xl cursor-pointer active:scale-95 transition-transform"
+            className="w-11 h-11 rounded-full object-cover shadow-xl cursor-pointer active:scale-95 transition-transform"
           />
           {!isFollowing && currentUser?.id !== currentReel.creatorId && onToggleFollowUser && (
             <button
@@ -487,7 +487,7 @@ export default function AndroidReelsView({
           id="android-reel-like-btn"
         >
           <Heart
-            className={`w-8 h-8 scale-x-120 stroke-[1.8] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
+            className={`w-7 h-7 scale-x-120 stroke-[1.8] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
               isLiked ? "fill-rose-500 text-rose-500 filter drop-shadow-[0_0_12px_rgba(244,63,94,0.85)]" : "text-white group-hover:text-rose-400"
             }`}
           />
@@ -499,7 +499,7 @@ export default function AndroidReelsView({
           className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
           id="android-reel-comment-btn"
         >
-          <MessageCircle className="w-8 h-8 scale-x-120 stroke-[1.8] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
+          <MessageCircle className="w-7 h-7 scale-x-120 stroke-[1.8] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
           <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{currentReel.comments?.length || 0}</span>
         </button>
 
@@ -517,7 +517,7 @@ export default function AndroidReelsView({
           id="android-reel-save-btn"
         >
           <Bookmark
-            className={`w-8 h-8 scale-x-120 stroke-[1.8] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
+            className={`w-7 h-7 scale-x-120 stroke-[1.8] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
               isSaved ? "fill-amber-400 text-amber-400 filter drop-shadow-[0_0_12px_rgba(245,158,11,0.85)]" : "text-white group-hover:text-amber-400"
             }`}
           />
@@ -529,7 +529,7 @@ export default function AndroidReelsView({
           className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
           id="android-reel-share-btn"
         >
-          <Share2 className="w-8 h-8 scale-x-120 stroke-[1.8] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
+          <Share2 className="w-7 h-7 scale-x-120 stroke-[1.8] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
           <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Compartir</span>
         </button>
       </div>

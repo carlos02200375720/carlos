@@ -324,7 +324,7 @@ export default function AndroidApp({
             paddingBottom: 'max(0.2rem, calc(env(safe-area-inset-bottom, 0px) + 0.15rem))'
           }}
         >
-          <div className="max-w-md mx-auto flex items-center justify-around">
+          <div className="max-w-md mx-auto grid grid-cols-4 items-center">
             
             {/* Tab 1: Reels */}
             <button
@@ -340,7 +340,7 @@ export default function AndroidApp({
               <span className="text-[10px] font-medium mt-0.5 tracking-tight">Reels</span>
             </button>
 
-            {/* Tab 2: Shop */}
+            {/* Tab 2: Carrito / Store link in the center row */}
             <button
               onClick={() => setActiveTab('shop')}
               className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all active:bg-amber-500/10 cursor-pointer relative ${
@@ -351,7 +351,7 @@ export default function AndroidApp({
               id="android-nav-shop"
             >
               <ShoppingBag className={`w-5 h-5 transition-all ${activeTab === 'shop' ? "fill-amber-600 stroke-amber-600" : ""}`} />
-              <span className="text-[10px] font-medium mt-0.5 tracking-tight">Tienda</span>
+              <span className="text-[10px] font-medium mt-0.5 tracking-tight">Carrito</span>
               {cart.length > 0 && (
                 <span className="absolute top-0.5 right-2 w-4 h-4 bg-amber-500 text-slate-950 font-mono font-bold text-[9px] rounded-full flex items-center justify-center border border-black shadow-sm">
                   {cart.reduce((s, i) => s + (i.quantity || 1), 0)}
