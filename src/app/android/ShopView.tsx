@@ -78,6 +78,11 @@ export default function AndroidShopView({
   const [showThankYouPage, setShowThankYouPage] = useState(false);
   const [lastOrderItems, setLastOrderItems] = useState<CartItem[]>([]);
   const [lastDeliveryAddress, setLastDeliveryAddress] = useState("");
+  const [lastContactInfo, setLastContactInfo] = useState({
+    fullName: "",
+    email: "",
+    phone: "",
+  });
   const [checkoutForm, setCheckoutForm] = useState({
     fullName: "",
     email: "",
@@ -199,6 +204,11 @@ export default function AndroidShopView({
     const address = shippingAddress || "Dirección Android Principal";
     setLastOrderItems(itemsToCheckout.map((item) => ({ ...item, product: { ...item.product } })));
     setLastDeliveryAddress(address);
+    setLastContactInfo({
+      fullName: checkoutForm.fullName || currentUser.name || "Cliente",
+      email: checkoutForm.email || currentUser.email || `${currentUser.username}@android.mallsocial`,
+      phone: checkoutForm.phone || currentUser.phone || "Sin teléfono",
+    });
 
     setCheckoutSuccess(true);
     onClearCart?.();
@@ -259,7 +269,7 @@ export default function AndroidShopView({
     const thankYouTotal = lastOrderItems.reduce((sum, item) => sum + item.product.price * (item.quantity || 1), 0);
 
     return (
-      <div className="w-full min-h-screen bg-gradient-to-br from-amber-950 via-slate-950 to-rose-950 text-slate-50 flex flex-col font-sans select-none overflow-hidden">
+      <div className="w-full min-h-screen bg-gradient-to-br from-amber-950 via-slate-950 to-rose-950 text-slate-50 flex flex-col font-sans select-none overflow-x-hidden overflow-y-auto">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute left-[-8%] top-[-4%] w-44 h-44 rounded-full bg-amber-500/30 blur-3xl animate-pulse" />
           <div className="absolute right-[-6%] bottom-[-12%] w-56 h-56 rounded-full bg-orange-600/30 blur-3xl animate-pulse" />
@@ -267,7 +277,7 @@ export default function AndroidShopView({
           <div className="absolute right-[16%] top-[30%] w-2 h-2 bg-orange-300 rounded-full shadow-[0_0_12px_#fdba74,0_0_20px_#fb923c] animate-ping" />
         </div>
 
-        <div className="relative z-10 px-4 py-8 flex flex-col min-h-screen">
+        <div className="relative z-10 px-4 py-8 flex flex-col min-h-screen" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 18px)" }}>
           <div className="flex items-center justify-center mt-4">
             <div className="relative">
               <div className="w-28 h-28 rounded-full border-4 border-amber-300/80 bg-amber-500/20 flex items-center justify-center shadow-[0_0_30px_rgba(251,191,36,0.8)]">
@@ -312,10 +322,22 @@ export default function AndroidShopView({
               )}
             </div>
 
-            <div className="mt-4 border-t border-white/10 pt-3">
+            <div className="mt-4 border-t border-white/10 pt-3 space-y-3">
               <div className="flex items-center justify-between text-[11px] text-slate-300">
                 <span>Dirección de entrega</span>
                 <span className="font-black text-white text-right max-w-[60%] truncate">{lastDeliveryAddress}</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-300">
+                <span>Contacto</span>
+                <span className="font-black text-white text-right max-w-[60%] truncate">{lastContactInfo.fullName}</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-300">
+                <span>Email</span>
+                <span className="font-black text-white text-right max-w-[60%] truncate">{lastContactInfo.email}</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-300">
+                <span>Teléfono</span>
+                <span className="font-black text-white text-right max-w-[60%] truncate">{lastContactInfo.phone}</span>
               </div>
               <div className="flex items-center justify-between mt-3 text-sm font-black">
                 <span className="text-slate-200">Total</span>
@@ -333,6 +355,7 @@ export default function AndroidShopView({
                 setIsCartOpen(false);
               }}
               className="w-full max-w-xs py-3.5 bg-gradient-to-r from-amber-300 to-orange-500 text-slate-950 font-black rounded-2xl shadow-xl shadow-orange-900/40 flex items-center justify-center space-x-2 active:scale-95 transition-transform"
+              style={{ marginBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
             >
               <Sparkles className="w-4 h-4" />
               <span>Volver al catálogo</span>
@@ -463,6 +486,186 @@ export default function AndroidShopView({
             </button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (selectedProduct) {
+    return (
+      <div className="w-full min-h-screen bg-slate-950 text-slate-50 flex flex-col font-sans select-none">
+        <div className="sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+          <button onClick={() => setSelectedProduct(null)} className="p-2 rounded-full bg-slate-900 text-slate-50 border border-slate-700 active:scale-95">
+            <ArrowRight className="w-4 h-4 rotate-180" />
+          </button>
+          <div className="flex-1 text-center">
+            <h1 className="text-sm font-black text-white">Detalle del producto</h1>
+            <p className="text-[10px] text-slate-400">Tienda MallSocial</p>
+          </div>
+          <button onClick={() => setIsCartOpen(true)} className="p-2 rounded-full bg-slate-900 text-amber-400 border border-slate-700 active:scale-95">
+            <ShoppingBag className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto pb-24">
+          <div className="relative w-full h-[42vh] min-h-[300px] overflow-hidden bg-slate-900">
+            <div ref={detailGalleryRef} className="flex h-full overflow-x-auto snap-x snap-mandatory scrollbar-none">
+              {detailGallery.map((media, idx) => (
+                <div key={`${media.type}-${media.url}-${idx}`} className="min-w-full h-full snap-center">
+                  {media.type === "video" ? (
+                    <video src={media.url} className="w-full h-full object-cover" muted playsInline autoPlay={idx === detailGalleryIndex} controls={false} />
+                  ) : (
+                    <img src={media.url} alt={selectedProduct.name} className="w-full h-full object-cover" />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {detailGallery.length > 1 && (
+              <div className="absolute left-4 top-4 z-10 px-2 py-1 rounded-full border border-white/40 text-[10px] font-black text-white bg-transparent">
+                {detailGalleryIndex + 1}/{detailGallery.length}
+              </div>
+            )}
+
+            <div className="absolute right-4 top-4 flex items-center gap-2">
+              <button onClick={handleGalleryPrev} className="p-2 rounded-full bg-black/50 border border-white/20 text-white active:scale-95">
+                <ArrowRight className="w-4 h-4 rotate-180" />
+              </button>
+              <button onClick={handleGalleryNext} className="p-2 rounded-full bg-black/50 border border-white/20 text-white active:scale-95">
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="px-4 py-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wide text-amber-400">{selectedProduct.category}</span>
+                <h2 className="mt-2 text-2xl font-black text-white leading-tight">{selectedProduct.name}</h2>
+              </div>
+              <div className="text-right">
+                <div className="text-xs font-black text-slate-500 uppercase">Precio</div>
+                <div className="text-2xl font-black text-amber-400">${selectedProduct.price.toFixed(2)}</div>
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs text-slate-400 leading-relaxed">{selectedProduct.description}</p>
+
+            {onCreatorClick && selectedProduct.sellerId && (
+              <div onClick={() => onCreatorClick(selectedProduct.sellerId!)} className="mt-4 p-3 bg-slate-900/80 rounded-2xl border border-slate-700/80 flex items-center justify-between cursor-pointer active:scale-[0.99]">
+                <span className="text-xs text-slate-300">Vendedor: {selectedProduct.sellerName || "Vendedor Oficial"}</span>
+                <span className="text-xs font-bold text-amber-400">Ver Perfil</span>
+              </div>
+            )}
+
+            <div className="mt-4 bg-slate-900/80 rounded-2xl border border-slate-700/80 p-3 flex items-center space-x-3 text-xs text-slate-400">
+              <Truck className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Envío directo gestionado a través de la pasarela Android.</span>
+            </div>
+
+            <div className="mt-6">
+              <button
+                onClick={() => {
+                  onAddToCart(selectedProduct, 1);
+                  setSelectedProduct(null);
+                  clearDirectProduct?.();
+                  onClearInitialProduct?.();
+                }}
+                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black rounded-2xl text-xs shadow-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-2"
+                style={{ marginBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span>Agregar al Carrito</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isCartOpen) {
+    return (
+      <div className="w-full min-h-screen bg-white text-slate-900 flex flex-col font-sans select-none">
+        <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <button onClick={() => setIsCartOpen(false)} className="p-2 rounded-full bg-slate-100 text-slate-900 active:scale-95">
+            <ArrowRight className="w-4 h-4 rotate-180" />
+          </button>
+          <div className="flex-1 text-center">
+            <h1 className="text-sm font-black text-slate-900">Carrito</h1>
+            <p className="text-[10px] text-slate-500">{cart.length} producto{cart.length === 1 ? "" : "s"}</p>
+          </div>
+          <div className="w-8" />
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {cart.length === 0 ? (
+            <div className="min-h-[50vh] flex flex-col items-center justify-center text-center">
+              <ShoppingBag className="w-12 h-12 text-amber-500" />
+              <h3 className="mt-4 text-sm font-black text-slate-900">Tu carrito está vacío</h3>
+              <p className="text-[11px] text-slate-500 mt-1">Añade productos para empezar tu compra.</p>
+              <button
+                onClick={() => setIsCartOpen(false)}
+                className="mt-5 px-5 py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-xs"
+              >
+                Volver al catálogo
+              </button>
+            </div>
+          ) : (
+            cart.map((item, idx) => (
+              <div key={`${item.product.id}-${idx}`} className="flex items-center justify-between rounded-3xl border border-slate-200 bg-slate-50 p-3 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-col items-center gap-1">
+                    <button
+                      onClick={() => handleItemQtyChange(idx, item, Math.max(1, (item.quantity || 1) - 1))}
+                      className="p-1.5 rounded-full bg-white border border-slate-300 text-slate-900 active:scale-95"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="text-[11px] font-black w-6 text-center text-slate-900">{item.quantity || 1}</span>
+                    <button
+                      onClick={() => handleItemQtyChange(idx, item, (item.quantity || 1) + 1)}
+                      className="p-1.5 rounded-full bg-white border border-slate-300 text-slate-900 active:scale-95"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <img src={item.product.imageUrl} alt={item.product.name} className="w-16 h-16 rounded-2xl object-cover border border-slate-200" />
+                </div>
+
+                <div className="flex-1 px-3">
+                  <h4 className="text-[12px] font-black text-slate-900 line-clamp-1">{item.product.name}</h4>
+                  <p className="text-[11px] text-slate-500 font-bold mt-1">${item.product.price.toFixed(2)} c/u</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-[11px] font-black text-amber-600">Subtotal ${(item.product.price * (item.quantity || 1)).toFixed(2)}</span>
+                    <button onClick={() => handleItemRemove(idx, item)} className="p-1.5 rounded-full bg-rose-50 text-rose-500 active:scale-95">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {cart.length > 0 && (
+          <div className="border-t border-slate-200 bg-white px-4 py-4">
+            <div className="flex items-center justify-between text-sm font-black text-slate-900">
+              <span>Total</span>
+              <span className="text-amber-600">${cartTotal.toFixed(2)}</span>
+            </div>
+            <button
+              onClick={() => {
+                setIsCartOpen(false);
+                setShowCheckoutPage(true);
+              }}
+              className="w-full mt-4 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-2xl text-xs shadow-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-2"
+              style={{ marginBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Completar Compra</span>
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -602,196 +805,6 @@ export default function AndroidShopView({
         )}
       </div>
 
-      {/* Product Detail Sheet */}
-      <AnimatePresence>
-        {selectedProduct && (
-          <div className="fixed inset-0 z-50 flex items-end bg-black/70 backdrop-blur-sm">
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-full max-h-[85vh] bg-white border-t border-slate-200 rounded-t-3xl flex flex-col overflow-hidden text-slate-900"
-              style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
-            >
-              <div className="flex-1 overflow-y-auto">
-                <div className="relative w-full h-72 overflow-hidden bg-slate-800">
-                  <div
-                    ref={detailGalleryRef}
-                    className="flex h-full overflow-x-auto snap-x snap-mandatory scrollbar-none"
-                    onScroll={() => {
-                      const el = detailGalleryRef.current;
-                      if (!el || detailGallery.length <= 1) return;
-                      const nextIndex = Math.min(
-                        Math.max(Math.round(el.scrollLeft / Math.max(el.clientWidth, 1)), 0),
-                        detailGallery.length - 1
-                      );
-                      if (nextIndex !== detailGalleryIndex) {
-                        setDetailGalleryIndex(nextIndex);
-                      }
-                    }}
-                  >
-                    {detailGallery.map((media, idx) => (
-                      <div key={`${media.type}-${media.url}-${idx}`} className="min-w-full h-full snap-center">
-                        {media.type === "video" ? (
-                          <video
-                            src={media.url}
-                            className="w-full h-full object-cover"
-                            muted
-                            playsInline
-                            autoPlay={idx === detailGalleryIndex}
-                            controls={false}
-                          />
-                        ) : (
-                          <img src={media.url} alt={selectedProduct.name} className="w-full h-full object-cover" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {detailGallery.length > 1 && (
-                    <div className="absolute left-3 top-3 z-10 px-2 py-1 rounded-full border border-white/30 text-[10px] font-black text-white bg-transparent">
-                      {detailGalleryIndex + 1}/{detailGallery.length}
-                    </div>
-                  )}
-                </div>
-                <div className="px-5 py-4 space-y-4">
-                  <h2 className="text-base font-bold text-white">{selectedProduct.name}</h2>
-                  <p className="text-lg font-black text-amber-400 mt-1">${selectedProduct.price.toFixed(2)}</p>
-                  <p className="text-xs text-slate-300 mt-2 leading-relaxed">{selectedProduct.description}</p>
-                </div>
-
-                {onCreatorClick && selectedProduct.sellerId && (
-                  <div
-                    onClick={() => onCreatorClick(selectedProduct.sellerId!)}
-                    className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 flex items-center justify-between cursor-pointer active:scale-[0.99]"
-                  >
-                    <span className="text-xs text-slate-300">Vendedor: {selectedProduct.sellerName || "Vendedor Oficial"}</span>
-                    <span className="text-xs font-bold text-amber-400">Ver Perfil</span>
-                  </div>
-                )}
-
-                <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-800 flex items-center space-x-3 text-xs text-slate-400">
-                  <Truck className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>Envío directo gestionado a través de la pasarela Android.</span>
-                </div>
-              </div>
-
-              <button
-                onClick={() => {
-                  onAddToCart(selectedProduct, 1);
-                  setSelectedProduct(null);
-                  clearDirectProduct?.();
-                  onClearInitialProduct?.();
-                }}
-                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-2xl text-xs shadow-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-2"
-                style={{ marginBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span>Agregar al Carrito</span>
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Android Shopping Cart Sheet */}
-      <AnimatePresence>
-        {isCartOpen && (
-          <div className="fixed inset-0 z-50 flex items-end bg-black/70 backdrop-blur-sm">
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-full max-h-[85vh] bg-white border-t border-slate-200 rounded-t-3xl flex flex-col overflow-hidden p-5 text-slate-900"
-              style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center space-x-2">
-                  <ShoppingBag className="w-5 h-5 text-amber-400" />
-                  <span className="text-sm font-bold">Carrito de Compras ({cart.length})</span>
-                </div>
-                <button onClick={() => setIsCartOpen(false)} className="p-1 text-slate-400 hover:text-white">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {checkoutSuccess ? (
-                <div className="py-16 flex flex-col items-center justify-center text-center">
-                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mb-4">
-                    <Check className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-base font-bold text-white">¡Pedido Confirmado!</h3>
-                  <p className="text-xs text-slate-400 mt-1">Tu orden ha sido registrada en el servidor de Android.</p>
-                </div>
-              ) : (
-                <>
-                  <div className="flex-1 overflow-y-auto py-3 space-y-3">
-                    {cart.length === 0 ? (
-                      <div className="py-12 text-center text-xs text-slate-500">
-                        Tu carrito de compras está vacío.
-                      </div>
-                    ) : (
-                      cart.map((item, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 bg-slate-100 rounded-xl border border-slate-200">
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleItemQtyChange(idx, item, Math.max(1, (item.quantity || 1) - 1))}
-                              className="p-1 rounded-md bg-white text-slate-900 border border-slate-300 active:scale-95"
-                            >
-                              <Minus className="w-3 h-3" />
-                            </button>
-                            <span className="text-[11px] font-black w-6 text-center text-slate-900">{item.quantity || 1}</span>
-                            <button
-                              onClick={() => handleItemQtyChange(idx, item, (item.quantity || 1) + 1)}
-                              className="p-1 rounded-md bg-white text-slate-900 border border-slate-300 active:scale-95"
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                          </div>
-                          <img src={item.product.imageUrl} alt={item.product.name} className="w-12 h-12 rounded-lg object-cover" />
-                          <div className="flex-1 px-3">
-                            <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{item.product.name}</h4>
-                            <p className="text-[11px] text-amber-500 font-black">${item.product.price.toFixed(2)}</p>
-                          </div>
-                          <button
-                            onClick={() => handleItemRemove(idx, item)}
-                            className="p-1 text-rose-500 hover:text-rose-600 ml-1"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  {cart.length > 0 && (
-                    <div className="pt-3 border-t border-slate-800 space-y-3">
-                      <div className="flex justify-between items-center text-sm font-bold">
-                        <span>Total:</span>
-                        <span className="text-amber-400">${cartTotal.toFixed(2)}</span>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setIsCartOpen(false);
-                          setShowCheckoutPage(true);
-                        }}
-                        disabled={isCheckingOut}
-                        className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-2xl text-xs shadow-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-2"
-                        style={{ marginBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
-                      >
-                        <CreditCard className="w-4 h-4" />
-                        <span>{isCheckingOut ? "Procesando..." : "Completar Compra en Android"}</span>
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
