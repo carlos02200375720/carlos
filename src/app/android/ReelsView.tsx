@@ -75,6 +75,7 @@ export default function AndroidReelsView({
   const [authDescription, setAuthDescription] = useState("");
   const [actualNavHeight, setActualNavHeight] = useState<number>(bottomNavHeight || 56);
   const [imageAspect, setImageAspect] = useState<'vertical' | 'horizontal' | 'square'>('vertical');
+  const [progressVideo, setProgressVideo] = useState<HTMLVideoElement | null>(null);
 
   const totalCartCount = (cart || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
 
@@ -346,6 +347,7 @@ export default function AndroidReelsView({
           aspectRatio={currentReel.aspectRatio}
           onDoubleTap={handleDoubleTap}
           onMuteChange={(m) => setLocalMuted(m)}
+          onVideoReady={(video) => setProgressVideo(video)}
           className="w-full h-full"
         />
       ) : (
@@ -388,10 +390,10 @@ export default function AndroidReelsView({
         </div>
       )}
 
-      {/* Progress Bar for video publications: Positioned at bottom 0 of the card, directly on top of the navigation bar */}
+      {/* Progress Bar for video publications: receives the live video element from AndroidVideoPlayer and tracks its accurate playback */}
       {isVideo && (
         <AndroidProgressBar
-          video={playerRef.current?.getVideoElement() || null}
+          video={progressVideo}
           isActive={isFeedActive}
           bottomOffset={0}
         />
@@ -485,7 +487,7 @@ export default function AndroidReelsView({
           id="android-reel-like-btn"
         >
           <Heart
-            className={`w-8 h-8 scale-x-120 stroke-[2.4] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
+            className={`w-8 h-8 scale-x-120 stroke-[1.8] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
               isLiked ? "fill-rose-500 text-rose-500 filter drop-shadow-[0_0_12px_rgba(244,63,94,0.85)]" : "text-white group-hover:text-rose-400"
             }`}
           />
@@ -497,7 +499,7 @@ export default function AndroidReelsView({
           className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
           id="android-reel-comment-btn"
         >
-          <MessageCircle className="w-8 h-8 scale-x-120 stroke-[2.4] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
+          <MessageCircle className="w-8 h-8 scale-x-120 stroke-[1.8] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
           <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{currentReel.comments?.length || 0}</span>
         </button>
 
@@ -515,7 +517,7 @@ export default function AndroidReelsView({
           id="android-reel-save-btn"
         >
           <Bookmark
-            className={`w-8 h-8 scale-x-120 stroke-[2.4] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
+            className={`w-8 h-8 scale-x-120 stroke-[1.8] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
               isSaved ? "fill-amber-400 text-amber-400 filter drop-shadow-[0_0_12px_rgba(245,158,11,0.85)]" : "text-white group-hover:text-amber-400"
             }`}
           />
@@ -527,7 +529,7 @@ export default function AndroidReelsView({
           className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
           id="android-reel-share-btn"
         >
-          <Share2 className="w-8 h-8 scale-x-120 stroke-[2.4] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
+          <Share2 className="w-8 h-8 scale-x-120 stroke-[1.8] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
           <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Compartir</span>
         </button>
       </div>
@@ -538,11 +540,20 @@ export default function AndroidReelsView({
           {taggedProduct && handleProductSelect && (
             <div
               onClick={() => handleProductSelect(taggedProduct)}
-              className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-slate-900/90 border border-amber-500/50 backdrop-blur-md mb-2 pointer-events-auto cursor-pointer active:scale-95 transition-transform shadow-lg"
+              className="inline-flex w-auto max-w-[min(78vw,280px)] items-center gap-2 px-2 py-1.5 rounded-2xl border border-amber-400/50 bg-slate-950/50 backdrop-blur-md mb-2 pointer-events-auto cursor-pointer active:scale-95 transition-transform shadow-[0_8px_20px_rgba(0,0,0,0.45)]"
             >
-              <ShoppingBag className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-xs font-bold text-white line-clamp-1">{taggedProduct.name}</span>
-              <span className="text-xs font-black text-amber-400">${taggedProduct.price}</span>
+              <img
+                src={taggedProduct.imageUrl || taggedProduct.images?.[0] || ""}
+                alt={taggedProduct.name}
+                className="w-9 h-9 rounded-xl object-cover border border-white/25 bg-white/10"
+              />
+              <div className="min-w-0 flex flex-col">
+                <span className="flex items-center gap-1 text-[11px] font-bold text-white truncate">
+                  <ShoppingBag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="truncate">{taggedProduct.name}</span>
+                </span>
+                <span className="text-[10px] font-black text-amber-300">${taggedProduct.price}</span>
+              </div>
             </div>
           )}
 

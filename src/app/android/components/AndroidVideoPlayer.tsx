@@ -28,6 +28,7 @@ export interface AndroidVideoPlayerProps {
   onPause?: () => void;
   onMuteChange?: (isMuted: boolean) => void;
   onAspectRatioDetected?: (aspect: 'vertical' | 'horizontal' | 'square', ratio: number) => void;
+  onVideoReady?: (video: HTMLVideoElement | null) => void;
 }
 
 /**
@@ -55,6 +56,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       onPause,
       onMuteChange,
       onAspectRatioDetected,
+      onVideoReady,
     },
     ref
   ) => {
@@ -163,6 +165,17 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       }
       return (src || hlsUrl || "").trim();
     }, [src, hlsUrl]);
+
+    useEffect(() => {
+      const video = videoRef.current;
+      if (video) {
+        onVideoReady?.(video);
+      }
+
+      return () => {
+        onVideoReady?.(null);
+      };
+    }, [onVideoReady, mediaSource]);
 
     // Media Setup & Lifecycle
     useEffect(() => {
