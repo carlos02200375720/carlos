@@ -255,7 +255,7 @@ export default function AndroidUserPublicationsFeed({
               )}
             </div>
 
-            <div className="pt-2 border-t border-slate-800 flex items-center space-x-2">
+            <div className="pt-2 border-t border-slate-800 flex items-center space-x-2" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}>
               <input
                 type="text"
                 value={commentText}

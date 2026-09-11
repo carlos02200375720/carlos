@@ -710,7 +710,7 @@ export default function AndroidReelsView({
                 )}
               </div>
 
-              <form onSubmit={handleCommentSubmit} className="pt-1 border-t border-slate-200 flex items-center space-x-2 bg-white" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 5px)" }}>
+              <form onSubmit={handleCommentSubmit} className="pt-1 border-t border-slate-200 flex items-center space-x-2 bg-white" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}>
                 <input
                   type="text"
                   value={commentInput}
