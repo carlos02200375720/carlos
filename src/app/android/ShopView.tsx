@@ -39,6 +39,7 @@ export interface AndroidShopViewProps {
   onClearInitialStep?: () => void;
   isLoading?: boolean;
   onRefreshProducts?: () => void;
+  cartDrawerRequest?: number;
 }
 
 const DEFAULT_CATEGORIES = ["Todos", "Moda", "Calzado", "Accesorios", "Tecnología", "Belleza"];
@@ -62,6 +63,7 @@ export default function AndroidShopView({
   onCheckout,
   isLoading = false,
   onRefreshProducts,
+  cartDrawerRequest = 0,
 }: AndroidShopViewProps) {
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [searchQuery, setSearchQuery] = useState("");
@@ -104,6 +106,12 @@ export default function AndroidShopView({
   const cartTotal = useMemo(() => {
     return cart.reduce((sum, item) => sum + item.product.price * (item.quantity || 1), 0);
   }, [cart]);
+
+  React.useEffect(() => {
+    if (cartDrawerRequest > 0) {
+      setIsCartOpen(true);
+    }
+  }, [cartDrawerRequest]);
 
   const handleItemRemove = (idx: number, item: CartItem) => {
     if (!onRemoveFromCart) return;

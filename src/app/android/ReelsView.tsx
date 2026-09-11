@@ -455,8 +455,8 @@ export default function AndroidReelsView({
       </div>
 
       {/* Right Actions: Keep 10px gap above the bottom navigation bar */}
-      <div className="absolute right-2.5 bottom-[10px] z-30 flex flex-col items-center space-y-3.5 text-white pointer-events-auto">
-        <div className="relative mb-1">
+      <div className="absolute right-2.5 bottom-[10px] z-30 flex flex-col items-center space-y-4 text-white pointer-events-auto">
+        <div className="relative mb-2">
           <img
             src={displayAvatar}
             alt={displayUsername}
@@ -537,26 +537,6 @@ export default function AndroidReelsView({
       {/* Bottom Info: Clean, transparent overlay without dark shadow. Only displays username and caption */}
       <div className="absolute bottom-2 left-0 right-0 z-20 pointer-events-none pb-2 px-4">
         <div className="max-w-[calc(100%-72px)]">
-          {taggedProduct && handleProductSelect && (
-            <div
-              onClick={() => handleProductSelect(taggedProduct)}
-              className="inline-flex w-auto max-w-[min(78vw,280px)] items-center gap-2 px-2 py-1.5 rounded-2xl border border-amber-400/50 bg-slate-950/50 backdrop-blur-md mb-2 pointer-events-auto cursor-pointer active:scale-95 transition-transform shadow-[0_8px_20px_rgba(0,0,0,0.45)]"
-            >
-              <img
-                src={taggedProduct.imageUrl || taggedProduct.images?.[0] || ""}
-                alt={taggedProduct.name}
-                className="w-9 h-9 rounded-xl object-cover border border-white/25 bg-white/10"
-              />
-              <div className="min-w-0 flex flex-col">
-                <span className="flex items-center gap-1 text-[11px] font-bold text-white truncate">
-                  <ShoppingBag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="truncate">{taggedProduct.name}</span>
-                </span>
-                <span className="text-[10px] font-black text-amber-300">${taggedProduct.price}</span>
-              </div>
-            </div>
-          )}
-
           {/* Author Username ONLY */}
           <div className="flex items-center space-x-2 mb-1 pointer-events-auto">
             <span
@@ -573,6 +553,27 @@ export default function AndroidReelsView({
               {currentReel.description}
             </p>
           )}
+
+          {taggedProduct && handleProductSelect && (
+            <div
+              onClick={() => handleProductSelect(taggedProduct)}
+              className="mt-2 inline-flex w-auto max-w-[min(50vw,210px)] items-center rounded-2xl overflow-hidden border border-amber-400/50 bg-slate-950/50 backdrop-blur-md pointer-events-auto cursor-pointer active:scale-95 transition-transform shadow-[0_8px_20px_rgba(0,0,0,0.45)]"
+              style={{ maxHeight: "calc(100vh - 10px - env(safe-area-inset-bottom))" }}
+            >
+              <img
+                src={taggedProduct.imageUrl || taggedProduct.images?.[0] || ""}
+                alt={taggedProduct.name}
+                className="w-11 h-11 object-cover border-r border-white/25 bg-white/10"
+              />
+              <div className="min-w-0 flex flex-col px-2 py-1.5">
+                <span className="flex items-center gap-1 text-[11px] font-bold text-white truncate">
+                  <ShoppingBag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="truncate">{taggedProduct.name}</span>
+                </span>
+                <span className="text-[10px] font-black text-amber-300">${taggedProduct.price}</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -585,7 +586,8 @@ export default function AndroidReelsView({
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-full max-h-[75vh] bg-slate-900 border-t border-slate-800 rounded-t-3xl flex flex-col overflow-hidden p-4 text-white"
+              className="w-full max-h-[70vh] bg-slate-900/80 backdrop-blur-xl border-t border-slate-700/60 rounded-t-3xl flex flex-col overflow-hidden p-4 text-white"
+              style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
             >
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <span className="text-sm font-bold">Comentarios ({currentReel.comments?.length || 0})</span>
@@ -612,13 +614,13 @@ export default function AndroidReelsView({
                 )}
               </div>
 
-              <form onSubmit={handleCommentSubmit} className="pt-2 border-t border-slate-800 flex items-center space-x-2">
+              <form onSubmit={handleCommentSubmit} className="pt-2 border-t border-slate-800 flex items-center space-x-2" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
                 <input
                   type="text"
                   value={commentInput}
                   onChange={(e) => setCommentInput(e.target.value)}
                   placeholder="Escribe un comentario..."
-                  className="flex-1 px-3.5 py-2.5 bg-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  className="flex-1 px-3.5 py-2.5 bg-slate-800/70 rounded-xl text-xs text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
                 <button
                   type="submit"
