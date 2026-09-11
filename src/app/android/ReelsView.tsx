@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Reel, Product, User, Comment, CartItem } from "../../types";
-import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X, RefreshCw, Video } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X, RefreshCw, Video, Minus, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { AndroidVideoPlayer, AndroidVideoPlayerHandle } from "./components/AndroidVideoPlayer";
 import { AndroidProgressBar } from "./components/AndroidProgressBar";
@@ -65,6 +65,8 @@ export default function AndroidReelsView({
   cart = [],
   onNavigateToShop,
   onNavigateToCheckout,
+  onRemoveFromCart,
+  onUpdateCartQuantity,
 }: AndroidReelsViewProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [localMuted, setLocalMuted] = useState(false);
@@ -76,8 +78,10 @@ export default function AndroidReelsView({
   const [actualNavHeight, setActualNavHeight] = useState<number>(bottomNavHeight || 56);
   const [imageAspect, setImageAspect] = useState<'vertical' | 'horizontal' | 'square'>('vertical');
   const [progressVideo, setProgressVideo] = useState<HTMLVideoElement | null>(null);
+  const [showCartPanel, setShowCartPanel] = useState(false);
 
   const totalCartCount = (cart || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
+  const cartTotal = cart.reduce((sum, item) => sum + (item.product.price * (item.quantity || 1)), 0);
 
   // Track bottom navigation bar height dynamically for pixel-perfect alignment
   useEffect(() => {
@@ -420,16 +424,12 @@ export default function AndroidReelsView({
       >
         {/* Left: Cart Button */}
         <button
-          onClick={() => {
-            if (onNavigateToShop) {
-              onNavigateToShop();
-            }
-          }}
-          className="pointer-events-auto relative p-1 text-white hover:text-amber-400 active:scale-90 transition-transform cursor-pointer"
+          onClick={() => setShowCartPanel(true)}
+          className="pointer-events-auto relative p-1.5 text-white hover:text-amber-400 active:scale-90 transition-transform cursor-pointer rounded-full border border-white/40 bg-black/10 backdrop-blur-sm"
           title="Ver Carrito"
           id="android-reels-cart-btn"
         >
-          <ShoppingBag className="w-7 h-7 scale-x-120 stroke-[1.7] text-white hover:text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
+          <ShoppingBag className="w-5 h-5 scale-x-120 stroke-[1.8] text-white hover:text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
           {totalCartCount > 0 && (
             <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-black text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center shadow-lg border border-slate-900">
               {totalCartCount > 99 ? "99+" : totalCartCount}
@@ -456,7 +456,7 @@ export default function AndroidReelsView({
 
       {/* Right Actions: Keep 10px gap above the bottom navigation bar */}
       <div className="absolute right-2.5 bottom-[10px] z-30 flex flex-col items-center space-y-4 text-white pointer-events-auto">
-        <div className="relative mb-2">
+        <div className="relative mb-3 -translate-y-1">
           <img
             src={displayAvatar}
             alt={displayUsername}
@@ -577,6 +577,99 @@ export default function AndroidReelsView({
         </div>
       </div>
 
+      {/* Left Cart Side Panel */}
+      <AnimatePresence>
+        {showCartPanel && (
+          <div className="fixed inset-0 z-[60] flex items-stretch">
+            <motion.aside
+              initial={{ x: -360, opacity: 0.8 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -360, opacity: 0.8 }}
+              transition={{ type: "spring", damping: 26, stiffness: 260 }}
+              className="w-[86vw] max-w-[380px] h-full bg-white text-slate-900 shadow-2xl border-r border-slate-200 overflow-hidden flex flex-col"
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-amber-50">
+                <div className="flex items-center gap-2">
+                  <ShoppingBag className="w-5 h-5 text-amber-600" />
+                  <span className="text-sm font-black text-slate-900">Carrito</span>
+                </div>
+                <button onClick={() => setShowCartPanel(false)} className="p-1 rounded-full hover:bg-slate-100">
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-3">
+                {cart.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-12">
+                    <ShoppingBag className="w-10 h-10 text-slate-300" />
+                    <p className="mt-3 text-sm font-bold text-slate-700">Tu carrito está vacío</p>
+                    <p className="text-xs mt-1">Agrega artículos desde la tienda.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {cart.map((item, idx) => (
+                      <div key={`${item.product.id}-${idx}`} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                        <img src={item.product.imageUrl} alt={item.product.name} className="w-14 h-14 rounded-xl object-cover border border-slate-200" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-black text-slate-900 truncate">{item.product.name}</p>
+                          <p className="text-[10px] font-bold text-amber-600 mt-1">${item.product.price.toFixed(2)}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <button
+                              onClick={() => {
+                                const newQty = Math.max(1, (item.quantity || 1) - 1);
+                                if (onUpdateCartQuantity) onUpdateCartQuantity(item.product.id, newQty, idx);
+                                else if (onRemoveFromCart) onRemoveFromCart(item.product.id, idx);
+                              }}
+                              className="p-1 rounded-full bg-slate-200 text-slate-700"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="text-[11px] font-bold text-slate-900 w-5 text-center">{item.quantity || 1}</span>
+                            <button
+                              onClick={() => {
+                                if (onUpdateCartQuantity) onUpdateCartQuantity(item.product.id, (item.quantity || 1) + 1, idx);
+                              }}
+                              className="p-1 rounded-full bg-slate-200 text-slate-700"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (onRemoveFromCart) onRemoveFromCart(item.product.id, idx);
+                              }}
+                              className="ml-auto p-1 rounded-full text-rose-500 hover:bg-rose-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-slate-200 bg-white px-4 py-3">
+                <div className="flex items-center justify-between text-sm font-black text-slate-900">
+                  <span>Total</span>
+                  <span className="text-amber-600">${cartTotal.toFixed(2)}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowCartPanel(false);
+                    if (onNavigateToShop) onNavigateToShop();
+                  }}
+                  className="mt-3 w-full rounded-2xl bg-slate-950 text-white font-black text-xs py-3 active:scale-95"
+                >
+                  Ver tienda
+                </button>
+              </div>
+            </motion.aside>
+            <button className="flex-1 bg-black/30 backdrop-blur-[1px]" onClick={() => setShowCartPanel(false)} aria-label="Cerrar carrito" />
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Bottom Comments Sheet */}
       <AnimatePresence>
         {showComments && (
@@ -586,12 +679,12 @@ export default function AndroidReelsView({
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-full max-h-[70vh] bg-slate-900/80 backdrop-blur-xl border-t border-slate-700/60 rounded-t-3xl flex flex-col overflow-hidden p-4 text-white"
+              className="w-full h-[70vh] max-h-[70vh] bg-white border-t border-slate-200 rounded-t-3xl flex flex-col overflow-hidden p-4 text-slate-900"
               style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
             >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <span className="text-sm font-bold">Comentarios ({currentReel.comments?.length || 0})</span>
-                <button onClick={() => setShowComments(false)} className="p-1 text-slate-400 hover:text-white">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <span className="text-sm font-bold text-slate-900">Comentarios ({currentReel.comments?.length || 0})</span>
+                <button onClick={() => setShowComments(false)} className="p-1 text-slate-500 hover:text-slate-900">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -606,21 +699,21 @@ export default function AndroidReelsView({
                     <div key={c.id} className="flex space-x-3 text-xs">
                       <img src={c.avatar} alt={c.username} className="w-8 h-8 rounded-full object-cover shrink-0" />
                       <div>
-                        <span className="font-bold text-amber-400">@{c.username}</span>
-                        <p className="text-slate-200 mt-0.5">{c.text}</p>
+                        <span className="font-bold text-amber-600">@{c.username}</span>
+                        <p className="text-slate-500 mt-0.5">{c.text}</p>
                       </div>
                     </div>
                   ))
                 )}
               </div>
 
-              <form onSubmit={handleCommentSubmit} className="pt-2 border-t border-slate-800 flex items-center space-x-2" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
+              <form onSubmit={handleCommentSubmit} className="pt-2 border-t border-slate-200 flex items-center space-x-2 bg-white" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
                 <input
                   type="text"
                   value={commentInput}
                   onChange={(e) => setCommentInput(e.target.value)}
                   placeholder="Escribe un comentario..."
-                  className="flex-1 px-3.5 py-2.5 bg-slate-800/70 rounded-xl text-xs text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
                 <button
                   type="submit"

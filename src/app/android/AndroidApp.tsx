@@ -326,7 +326,7 @@ export default function AndroidApp({
             paddingBottom: 'max(0.2rem, calc(env(safe-area-inset-bottom, 0px) + 0.15rem))'
           }}
         >
-          <div className="max-w-md mx-auto grid grid-cols-5 items-center">
+          <div className="max-w-md mx-auto grid grid-cols-4 items-center">
             
             {/* Tab 1: Reels */}
             <button
@@ -356,29 +356,7 @@ export default function AndroidApp({
               <span className="text-[10px] font-medium mt-0.5 tracking-tight">Tienda</span>
             </button>
 
-            {/* Tab 3: Cart */}
-            <button
-              onClick={() => {
-                setActiveTab('shop');
-                setCartDrawerRequest((value) => value + 1);
-              }}
-              className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all active:bg-amber-500/10 cursor-pointer relative ${
-                activeTab === 'shop'
-                  ? "text-amber-600 scale-105"
-                  : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
-              }`}
-              id="android-nav-cart"
-            >
-              <ShoppingBag className={`w-5 h-5 transition-all ${activeTab === 'shop' ? "fill-amber-600 stroke-amber-600" : ""}`} />
-              <span className="text-[10px] font-medium mt-0.5 tracking-tight">Carrito</span>
-              {cart.length > 0 && (
-                <span className="absolute top-0.5 right-2 w-4 h-4 bg-amber-500 text-slate-950 font-mono font-bold text-[9px] rounded-full flex items-center justify-center border border-black shadow-sm">
-                  {cart.reduce((s, i) => s + (i.quantity || 1), 0)}
-                </span>
-              )}
-            </button>
-
-            {/* Tab 4: Messages */}
+            {/* Tab 3: Messages */}
             <button
               onClick={() => setActiveTab('messages')}
               className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all active:bg-amber-500/10 cursor-pointer relative ${
@@ -397,7 +375,7 @@ export default function AndroidApp({
               )}
             </button>
 
-            {/* Tab 5: Profile */}
+            {/* Tab 4: Profile */}
             <button
               onClick={() => {
                 setSelectedCreatorProfileId(null);
