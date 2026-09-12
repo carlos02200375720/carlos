@@ -763,7 +763,7 @@ export default function ReelsView({
                 </div>
               </div>
             );
-          })
+          })}
         )}
       </div>
 
