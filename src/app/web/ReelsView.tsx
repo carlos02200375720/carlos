@@ -643,9 +643,7 @@ export default function ReelsView({
                                   else if (ratio >= 0.85 && ratio <= 1.15) detected = 'square';
                                   setMediaAspectRatios((prev) => ({ ...prev, [reel.id]: detected }));
                                 }}
-                                className={`w-full h-full cursor-pointer select-none block touch-auto object-center ${
-                                  (mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"
-                                }`}
+                                className={`w-full h-full cursor-pointer select-none block touch-auto object-center ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`}
                                 style={{ touchAction: "pan-y" }}
                                 referrerPolicy="no-referrer"
                               />
@@ -762,8 +760,9 @@ export default function ReelsView({
                   </div>
                 </div>
               </div>
+              </div>
             );
-          })}
+          })
         )}
       </div>
 
