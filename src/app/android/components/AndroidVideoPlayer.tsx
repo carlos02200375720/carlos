@@ -173,14 +173,23 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
-          backBufferLength: 8,
-          maxBufferLength: 12,
-          maxMaxBufferLength: 24,
-          startLevel: -1,
+          // Keep a modest back buffer but enough forward buffer to absorb short
+          // network/CPU hiccups without recreating multi-video memory pressure.
+          backBufferLength: 6,
+          maxBufferLength: 20,
+          maxMaxBufferLength: 40,
+          maxBufferHole: 0.5,
+          // Start at the smallest rendition so the first segment arrives quickly;
+          // ABR upgrades after it has measured the real connection.
+          startLevel: 0,
           capLevelToPlayerSize: true,
-          abrEwmaDefaultEstimate: 1000000,
-          abrBandWidthFactor: 0.75,
+          abrEwmaDefaultEstimate: 650000,
+          abrBandWidthFactor: 0.8,
           abrBandWidthUpFactor: 0.7,
+          maxStarvationDelay: 2,
+          maxLoadingDelay: 4,
+          fragLoadingMaxRetry: 3,
+          fragLoadingRetryDelay: 500,
         });
         hlsRef.current = hls;
         hls.loadSource(mediaSource);
