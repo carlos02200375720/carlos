@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { promisify } from "util";
-import { Storage, Bucket } from "@google-cloud/storage";
+import { Bucket } from "@google-cloud/storage";
 
 const execAsync = promisify(exec);
 
@@ -25,83 +25,39 @@ export interface H264OptimizationResult {
   codec: string;
 }
 
-/**
- * Optimizes an uploaded video to universal H.264 (AVC) profile for maximum compatibility across all mobile devices
- * (iOS Safari, Android Chrome, webviews).
- *
- * Parameters:
- * - Codec: libx264
- * - Profile: High 4.1 (supported by all modern and legacy smartphones)
- * - Pixel format: yuv420p (guarantees playback on iOS hardware decoders without black screens)
- * - Bitrate & CRF: CRF 24, maxrate 2500k, bufsize 5000k (lightweight payload, no buffering spikes)
- * - Dimension: max width 1080, max height 1920, even dimensions (divisible by 2)
- * - Instant Playback: -movflags +faststart (places moov atom at beginning of MP4 for 0-wait streaming)
- * - Audio: AAC stereo, 128 kbps, 44100 Hz
- */
-export async function optimizeVideoToH264(
-  videoBuffer: Buffer,
-  videoId: string
-): Promise<H264OptimizationResult> {
+export async function optimizeVideoToH264(videoBuffer: Buffer, videoId: string): Promise<H264OptimizationResult> {
   const startTime = Date.now();
   const tmpDir = path.join(os.tmpdir(), `h264_opt_${videoId}_${Date.now()}`);
   const inputFilePath = path.join(tmpDir, "input_source.mp4");
   const outputFilePath = path.join(tmpDir, "output_h264_faststart.mp4");
-
   await fs.promises.mkdir(tmpDir, { recursive: true });
   await fs.promises.writeFile(inputFilePath, videoBuffer);
-
   const originalSize = videoBuffer.length;
-  console.log(`🎬 [H.264 Transcoder] Iniciando procesamiento a H.264 AVC para ${videoId} (Tamaño original: ${(originalSize / (1024 * 1024)).toFixed(2)} MB)...`);
-
   try {
-    const ffmpegCmd = [
-      "ffmpeg -y -i",
-      `"${inputFilePath}"`,
-      "-map 0:v:0 -map 0:a?",
-      "-threads 0",
-      "-c:v libx264 -preset ultrafast -profile:v high -level:v 4.1",
-      "-pix_fmt yuv420p -crf 24 -maxrate 2500k -bufsize 5000k",
+    const cmd = [
+      "ffmpeg -y -i", `"${inputFilePath}"`, "-map 0:v:0 -map 0:a? -threads 0",
+      "-c:v libx264 -preset ultrafast -profile:v high -level:v 4.1 -pix_fmt yuv420p",
+      "-crf 24 -maxrate 2500k -bufsize 5000k",
       `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"`,
-      "-g 60 -keyint_min 30",
-      "-movflags +faststart",
-      "-c:a aac -b:a 128k -ar 44100 -ac 2",
+      "-g 60 -keyint_min 30 -movflags +faststart -c:a aac -b:a 128k -ar 44100 -ac 2",
       `"${outputFilePath}"`
     ].join(" ");
-
-    await execAsync(ffmpegCmd, { timeout: 120000 });
-
-    const optimizedBuffer = await fs.promises.readFile(outputFilePath);
-    const optimizedSize = optimizedBuffer.length;
-    const durationMs = Date.now() - startTime;
-    const savedBytes = originalSize - optimizedSize;
-    const compressionRatioPercent = Math.max(0, Math.round((savedBytes / originalSize) * 100));
-
-    console.log(
-      `✅ [H.264 Transcoder] Completado en ${durationMs}ms: ${(originalSize / (1024 * 1024)).toFixed(2)} MB -> ${(optimizedSize / (1024 * 1024)).toFixed(2)} MB (${compressionRatioPercent}% más liviano, preparado con +faststart para inicio instantáneo en móviles)`
-    );
-
+    await execAsync(cmd, { timeout: 120000 });
+    const buffer = await fs.promises.readFile(outputFilePath);
+    const optimizedSize = buffer.length;
     return {
-      buffer: optimizedBuffer,
+      buffer,
       originalSize,
       optimizedSize,
-      compressionRatioPercent,
-      durationMs,
+      compressionRatioPercent: Math.max(0, Math.round(((originalSize - optimizedSize) / originalSize) * 100)),
+      durationMs: Date.now() - startTime,
       codec: "H.264 / AVC (libx264, yuv420p, +faststart)"
     };
   } catch (err: any) {
-    console.warn(`⚠️ [H.264 Transcoder] Error optimizando a H.264, usando archivo original:`, err.message);
-    return {
-      buffer: videoBuffer,
-      originalSize,
-      optimizedSize: originalSize,
-      compressionRatioPercent: 0,
-      durationMs: Date.now() - startTime,
-      codec: "Original (Fallback)"
-    };
+    console.warn(`[H.264 Transcoder] Fallback: ${err?.message || err}`);
+    return { buffer: videoBuffer, originalSize, optimizedSize: originalSize, compressionRatioPercent: 0, durationMs: Date.now() - startTime, codec: "Original (Fallback)" };
   } finally {
-    try {
-      await fs.promises.rm(tmpDir, { recursive: true, force: true });
-    } catch {}
+    await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -121,155 +77,62 @@ export interface HlsJob {
   error?: string;
 }
 
-// Global In-Memory Queue & Telemetry Storage
 class HlsTranscoderQueue {
-  private queue: Array<{
-    job: HlsJob;
-    videoBuffer: Buffer;
-    bucket: Bucket;
-    bucketName: string;
-    onComplete?: (result: TranscodeHlsResult) => Promise<void> | void;
-    onError?: (err: Error) => void;
-  }> = [];
-
+  private queue: Array<{ job: HlsJob; videoBuffer: Buffer; bucket: Bucket; bucketName: string; onComplete?: (result: TranscodeHlsResult) => Promise<void> | void; onError?: (err: Error) => void }> = [];
   private jobsMap = new Map<string, HlsJob>();
-  private isProcessing = false;
-  private maxConcurrent = 2;
+  private maxConcurrent = 1;
   private activeWorkers = 0;
+  public telemetry = { totalJobs: 0, completedJobs: 0, failedJobs: 0, totalSegmentsGenerated: 0, averageLatencyMs: 0, latencies: [] as number[], recentJobs: [] as HlsJob[] };
 
-  // Latency & performance telemetry stats
-  public telemetry = {
-    totalJobs: 0,
-    completedJobs: 0,
-    failedJobs: 0,
-    totalSegmentsGenerated: 0,
-    averageLatencyMs: 0,
-    latencies: [] as number[],
-    recentJobs: [] as HlsJob[],
-  };
-
-  public enqueue(
-    jobId: string,
-    videoBuffer: Buffer,
-    sourceName: string,
-    bucket: Bucket,
-    bucketName: string,
-    options?: {
-      reelId?: string;
-      publicacionId?: string;
-      onComplete?: (result: TranscodeHlsResult) => Promise<void> | void;
-      onError?: (err: Error) => void;
-    }
-  ): HlsJob {
-    const job: HlsJob = {
-      id: jobId,
-      reelId: options?.reelId,
-      publicacionId: options?.publicacionId,
-      sourceName,
-      status: "queued",
-      progress: 5,
-      queuedAt: Date.now(),
-    };
-
+  public enqueue(jobId: string, videoBuffer: Buffer, sourceName: string, bucket: Bucket, bucketName: string, options?: { reelId?: string; publicacionId?: string; onComplete?: (result: TranscodeHlsResult) => Promise<void> | void; onError?: (err: Error) => void }): HlsJob {
+    const job: HlsJob = { id: jobId, reelId: options?.reelId, publicacionId: options?.publicacionId, sourceName, status: "queued", progress: 5, queuedAt: Date.now() };
     this.jobsMap.set(jobId, job);
     this.telemetry.totalJobs++;
     this.telemetry.recentJobs.unshift(job);
     if (this.telemetry.recentJobs.length > 50) this.telemetry.recentJobs.pop();
-
-    this.queue.push({
-      job,
-      videoBuffer,
-      bucket,
-      bucketName,
-      onComplete: options?.onComplete,
-      onError: options?.onError,
-    });
-
-    console.log(`📥 [HLS Queue] Enqueued background job ${jobId} for "${sourceName}". Queue size: ${this.queue.length}`);
+    this.queue.push({ job, videoBuffer, bucket, bucketName, onComplete: options?.onComplete, onError: options?.onError });
     this.processNext();
-
     return job;
   }
-
-  public getJob(id: string): HlsJob | undefined {
-    return this.jobsMap.get(id);
-  }
-
-  public getAllJobs(): HlsJob[] {
-    return Array.from(this.jobsMap.values()).sort((a, b) => b.queuedAt - a.queuedAt);
-  }
-
-  public getTelemetry() {
-    return {
-      ...this.telemetry,
-      activeWorkers: this.activeWorkers,
-      queueLength: this.queue.length,
-    };
-  }
+  public getJob(id: string) { return this.jobsMap.get(id); }
+  public getAllJobs() { return Array.from(this.jobsMap.values()).sort((a, b) => b.queuedAt - a.queuedAt); }
+  public getTelemetry() { return { ...this.telemetry, activeWorkers: this.activeWorkers, queueLength: this.queue.length }; }
 
   private async processNext() {
-    if (this.activeWorkers >= this.maxConcurrent || this.queue.length === 0) {
-      return;
-    }
-
+    if (this.activeWorkers >= this.maxConcurrent || !this.queue.length) return;
     const task = this.queue.shift();
     if (!task) return;
-
     this.activeWorkers++;
     const { job, videoBuffer, bucket, bucketName, onComplete, onError } = task;
-
     job.status = "transcoding";
     job.startedAt = Date.now();
-    job.progress = 20;
-
-    console.log(`⚡ [HLS Worker] Started background transcoding for job ${job.id} (${job.sourceName})...`);
-
+    job.progress = 15;
     try {
-      const result = await transcodeVideoToHLS(videoBuffer, job.id, bucket, bucketName, (progressPercent) => {
-        job.progress = progressPercent;
-        if (progressPercent > 80) {
-          job.status = "uploading_cdn";
-        }
+      const result = await transcodeVideoToHLS(videoBuffer, job.id, bucket, bucketName, p => {
+        job.progress = p;
+        if (p >= 80) job.status = "uploading_cdn";
       });
-
       job.status = "completed";
       job.progress = 100;
       job.completedAt = Date.now();
       job.durationMs = job.completedAt - (job.startedAt || job.queuedAt);
       job.totalSegments = result.totalSegments;
       job.masterM3u8Url = result.masterM3u8Url;
-
-      // Update telemetry
       this.telemetry.completedJobs++;
       this.telemetry.totalSegmentsGenerated += result.totalSegments;
       this.telemetry.latencies.push(job.durationMs);
       if (this.telemetry.latencies.length > 100) this.telemetry.latencies.shift();
-      const sum = this.telemetry.latencies.reduce((a, b) => a + b, 0);
-      this.telemetry.averageLatencyMs = Math.round(sum / this.telemetry.latencies.length);
-
-      console.log(`🏁 [HLS Worker] Finished job ${job.id} in ${job.durationMs}ms with ${result.totalSegments} segments.`);
-
-      if (onComplete) {
-        try {
-          await onComplete(result);
-        } catch (callErr) {
-          console.error("Error in job onComplete callback:", callErr);
-        }
-      }
+      this.telemetry.averageLatencyMs = Math.round(this.telemetry.latencies.reduce((a, b) => a + b, 0) / this.telemetry.latencies.length);
+      await onComplete?.(result);
     } catch (err: any) {
-      console.error(`❌ [HLS Worker] Failed job ${job.id}:`, err);
       job.status = "failed";
-      job.error = err.message || String(err);
+      job.error = err?.message || String(err);
       job.completedAt = Date.now();
       job.durationMs = job.completedAt - (job.startedAt || job.queuedAt);
       this.telemetry.failedJobs++;
-
-      if (onError) {
-        onError(err);
-      }
+      onError?.(err instanceof Error ? err : new Error(String(err)));
     } finally {
       this.activeWorkers--;
-      // Trigger next task if available
       setImmediate(() => this.processNext());
     }
   }
@@ -277,188 +140,115 @@ class HlsTranscoderQueue {
 
 export const hlsQueue = new HlsTranscoderQueue();
 
-/**
- * Ultra-fast Async Pre-transcoding Engine: Transcodes video to HLS (.m3u8 and .ts segments)
- * at upload time and uploads all fragments directly to Google Cloud Storage.
- *
- * Prevents on-the-fly dynamic CPU bottlenecks, eliminating timeouts and buffering.
- */
-export async function transcodeVideoToHLS(
-  videoBuffer: Buffer,
-  videoId: string,
-  bucket: Bucket,
-  bucketName: string,
-  onProgress?: (progress: number) => void
-): Promise<TranscodeHlsResult> {
+const HLS_VARIANTS = [
+  { name: "360p", width: 360, height: 640, videoBitrate: "500k", maxrate: "650k", bufsize: "1000k", bandwidth: 650000 },
+  { name: "540p", width: 540, height: 960, videoBitrate: "900k", maxrate: "1100k", bufsize: "1800k", bandwidth: 1150000 },
+  { name: "720p", width: 720, height: 1280, videoBitrate: "1500k", maxrate: "1800k", bufsize: "3000k", bandwidth: 1650000 },
+] as const;
+
+async function transcodeVariant(input: string, outputDir: string, variant: typeof HLS_VARIANTS[number], segmentDuration: number) {
+  const playlist = path.join(outputDir, variant.name, "index.m3u8");
+  const segmentPattern = path.join(outputDir, variant.name, "segment_%03d.ts");
+  const cmd = [
+    "ffmpeg -y -i", `"${input}"`,
+    "-map 0:v:0 -map 0:a? -threads 0",
+    "-c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p",
+    `-b:v ${variant.videoBitrate} -maxrate ${variant.maxrate} -bufsize ${variant.bufsize}`,
+    `-vf "scale=${variant.width}:${variant.height}:force_original_aspect_ratio=decrease:force_divisible_by=2"`,
+    "-g 60 -keyint_min 60 -sc_threshold 0",
+    "-c:a aac -b:a 96k -ar 44100 -ac 2",
+    `-f hls -hls_time ${segmentDuration} -hls_playlist_type vod -hls_list_size 0 -hls_flags independent_segments`,
+    `-hls_segment_filename "${segmentPattern}"`, `"${playlist}"`
+  ].join(" ");
+  await execAsync(cmd, { timeout: 180000 });
+}
+
+export async function transcodeVideoToHLS(videoBuffer: Buffer, videoId: string, bucket: Bucket, bucketName: string, onProgress?: (progress: number) => void): Promise<TranscodeHlsResult> {
   const startTime = Date.now();
   const tmpDir = path.join(os.tmpdir(), `hls_job_${videoId}_${Date.now()}`);
   const inputFilePath = path.join(tmpDir, "input_source.mp4");
   const outputDir = path.join(tmpDir, "output_hls");
-
-  await fs.promises.mkdir(tmpDir, { recursive: true });
   await fs.promises.mkdir(outputDir, { recursive: true });
+  for (const variant of HLS_VARIANTS) await fs.promises.mkdir(path.join(outputDir, variant.name), { recursive: true });
   await fs.promises.writeFile(inputFilePath, videoBuffer);
-
-  if (onProgress) onProgress(20);
+  onProgress?.(20);
 
   try {
-    console.log(`🎬 [HLS Pre-Transcoder] Starting ultrafast HLS segmentation for video ${videoId}...`);
+    const segmentDuration = 3;
+    // Encode variants sequentially: this protects Cloud Run CPU/RAM while still producing true ABR HLS.
+    for (let i = 0; i < HLS_VARIANTS.length; i++) {
+      await transcodeVariant(inputFilePath, outputDir, HLS_VARIANTS[i], segmentDuration);
+      onProgress?.(30 + Math.round(((i + 1) / HLS_VARIANTS.length) * 35));
+    }
 
-    const segmentDuration = 3; // 3-second segments for instant playback
-    const playlistPath = path.join(outputDir, "index.m3u8");
-    const segmentPattern = path.join(outputDir, "segment_%03d.ts");
+    const masterLines = ["#EXTM3U", "#EXT-X-VERSION:7", "#EXT-X-INDEPENDENT-SEGMENTS"];
+    for (const variant of HLS_VARIANTS) {
+      masterLines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${variant.bandwidth},AVERAGE-BANDWIDTH=${Math.round(variant.bandwidth * 0.85)},RESOLUTION=${variant.width}x${variant.height},CODECS=\"avc1.4d401f,mp4a.40.2\",NAME=\"${variant.name}\"`);
+      masterLines.push(`${variant.name}/index.m3u8`);
+    }
+    await fs.promises.writeFile(path.join(outputDir, "master.m3u8"), masterLines.join("\n") + "\n", "utf8");
+    onProgress?.(70);
 
-    // Highly optimized ffmpeg command for fast conversion with robust video & audio mapping
-    const ffmpegCmd = [
-      "ffmpeg -y -i",
-      `"${inputFilePath}"`,
-      "-map 0:v:0 -map 0:a?",
-      "-c:v libx264 -preset ultrafast -crf 26 -g 60 -keyint_min 60 -sc_threshold 0",
-      "-c:a aac -b:a 192k -ar 44100 -ac 2",
-      `-f hls -hls_time ${segmentDuration} -hls_playlist_type vod -hls_list_size 0`,
-      `-hls_segment_filename "${segmentPattern}"`,
-      `"${playlistPath}"`
-    ].join(" ");
-
-    if (onProgress) onProgress(40);
-
-    await execAsync(ffmpegCmd, { timeout: 60000 });
-    console.log(`✅ [HLS Pre-Transcoder] Local HLS segmentation finished for ${videoId}`);
-
-    // Create a master.m3u8 alias pointing to index.m3u8 for compatibility
-    const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
-    await fs.promises.writeFile(path.join(outputDir, "master.m3u8"), masterContent);
-
-    if (onProgress) onProgress(75);
-
-    // Upload all generated HLS files (.m3u8 and .ts) to Google Cloud Storage
-    const files = await fs.promises.readdir(outputDir);
-    console.log(`📦 [HLS Pre-Transcoder] Uploading ${files.length} HLS files directly to GCS bucket "${bucketName}"...`);
+    const localFiles: string[] = [];
+    async function collect(dir: string, relative = "") {
+      for (const entry of await fs.promises.readdir(dir, { withFileTypes: true })) {
+        const absolute = path.join(dir, entry.name);
+        const rel = path.join(relative, entry.name);
+        if (entry.isDirectory()) await collect(absolute, rel);
+        else localFiles.push(rel);
+      }
+    }
+    await collect(outputDir);
 
     const destinationFolder = `hls/${videoId}`;
-    let uploadedCount = 0;
-
-    const uploadPromises = files.map(async (fileName) => {
-      const filePath = path.join(outputDir, fileName);
-      const isPlaylist = fileName.endsWith(".m3u8");
-      const isSegment = fileName.endsWith(".ts");
-
-      const destination = `${destinationFolder}/${fileName}`;
-      const gcsFile = bucket.file(destination);
-
-      const contentType = isPlaylist
-        ? "application/x-mpegURL"
-        : isSegment
-        ? "video/MP2T"
-        : "application/octet-stream";
-
-      const cacheControl = isSegment
-        ? "public, max-age=31536000, immutable"
-        : "public, max-age=60";
-
-      const fileBuffer = await fs.promises.readFile(filePath);
-
-      return new Promise<void>((resolve, reject) => {
-        const stream = gcsFile.createWriteStream({
-          resumable: false,
-          metadata: {
-            contentType,
-            cacheControl,
-          },
-        });
-        stream.on("error", reject);
-        stream.on("finish", () => {
-          uploadedCount++;
-          if (onProgress) {
-            const uploadProgress = 75 + Math.round((uploadedCount / files.length) * 20);
-            onProgress(uploadProgress);
-          }
-          resolve();
-        });
+    let uploaded = 0;
+    await Promise.all(localFiles.map(async relativeFile => {
+      const fileBuffer = await fs.promises.readFile(path.join(outputDir, relativeFile));
+      const destination = `${destinationFolder}/${relativeFile.replace(/\\/g, "/")}`;
+      const file = bucket.file(destination);
+      const playlist = relativeFile.endsWith(".m3u8");
+      const segment = relativeFile.endsWith(".ts");
+      await new Promise<void>((resolve, reject) => {
+        const stream = file.createWriteStream({ resumable: false, metadata: {
+          contentType: playlist ? "application/vnd.apple.mpegurl" : segment ? "video/mp2t" : "application/octet-stream",
+          cacheControl: segment ? "public, max-age=31536000, immutable" : "public, max-age=60"
+        }});
+        stream.once("error", reject);
+        stream.once("finish", resolve);
         stream.end(fileBuffer);
       });
-    });
+      uploaded++;
+      onProgress?.(70 + Math.round((uploaded / localFiles.length) * 25));
+    }));
 
-    await Promise.all(uploadPromises);
-
-    const masterM3u8Url = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/index.m3u8`;
-    const segmentCount = files.filter((f) => f.endsWith(".ts")).length;
-    const totalLatencyMs = Date.now() - startTime;
-
-    console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed direct static HLS stream: ${masterM3u8Url} (${segmentCount} segments) in ${totalLatencyMs}ms`);
-
-    return {
-      masterM3u8Url,
-      variantUrls: [masterM3u8Url],
-      totalSegments: segmentCount,
-      bucketPath: destinationFolder,
-      latencyMs: totalLatencyMs,
-    };
+    const masterM3u8Url = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/master.m3u8`;
+    const variantUrls = HLS_VARIANTS.map(v => `https://storage.googleapis.com/${bucketName}/${destinationFolder}/${v.name}/index.m3u8`);
+    const totalSegments = localFiles.filter(f => f.endsWith(".ts")).length;
+    const latencyMs = Date.now() - startTime;
+    onProgress?.(100);
+    return { masterM3u8Url, variantUrls, totalSegments, bucketPath: destinationFolder, latencyMs };
   } finally {
-    try {
-      await fs.promises.rm(tmpDir, { recursive: true, force: true });
-    } catch {}
+    await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
-/**
- * Batch Cleanup Function: Delete all HLS segments (.ts), playlists (.m3u8), and master file
- * from Google Cloud Storage in a single bulk operation.
- */
-export async function deleteHlsStreamBatch(
-  bucket: Bucket,
-  hlsUrlOrVideoId: string
-): Promise<{ success: boolean; deletedCount: number; prefix: string }> {
+export async function deleteHlsStreamBatch(bucket: Bucket, hlsUrlOrVideoId: string): Promise<{ success: boolean; deletedCount: number; prefix: string }> {
   try {
     let prefix = "";
     if (hlsUrlOrVideoId.includes("hls/")) {
       const match = hlsUrlOrVideoId.match(/hls\/([a-zA-Z0-9_-]+)/);
-      if (match && match[1]) {
-        prefix = `hls/${match[1]}`;
-      }
-    } else if (hlsUrlOrVideoId.startsWith("hls_")) {
-      prefix = `hls/${hlsUrlOrVideoId}`;
-    }
-
-    if (!prefix) {
-      console.warn(`[HLS Cleanup] No valid HLS prefix found for ${hlsUrlOrVideoId}`);
-      return { success: false, deletedCount: 0, prefix: "" };
-    }
-
-    console.log(`🧹 [HLS Cleanup] Performing bulk deletion of all HLS files under GCS prefix "${prefix}/"...`);
-    
-    // GCS deleteFiles removes all files matching the prefix in one batch API call
-    await bucket.deleteFiles({
-      prefix: `${prefix}/`,
-      force: true
-    });
-
-    console.log(`✨ [HLS Cleanup] Successfully removed HLS batch files from GCS prefix "${prefix}"`);
-
-    return {
-      success: true,
-      deletedCount: 1,
-      prefix,
-    };
-  } catch (err: any) {
-    console.error(`❌ [HLS Cleanup] Failed to delete HLS batch for ${hlsUrlOrVideoId}:`, err);
+      if (match?.[1]) prefix = `hls/${match[1]}`;
+    } else if (hlsUrlOrVideoId.startsWith("hls_")) prefix = `hls/${hlsUrlOrVideoId}`;
+    if (!prefix) return { success: false, deletedCount: 0, prefix: "" };
+    await bucket.deleteFiles({ prefix: `${prefix}/`, force: true });
+    return { success: true, deletedCount: 1, prefix };
+  } catch (err) {
+    console.error(`[HLS Cleanup] Failed:`, err);
     return { success: false, deletedCount: 0, prefix: "" };
   }
 }
 
-/**
- * Backward-compatible helper for legacy references (no live ffmpeg execution)
- */
-export async function getOrGenerateDynamicHLS(videoUrl: string): Promise<{
-  masterM3u8: string;
-  files: Map<string, Buffer>;
-}> {
-  const masterM3u8 = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Direct Stream"\n${videoUrl}\n`;
-  const filesMap = new Map<string, Buffer>();
-  filesMap.set("index.m3u8", Buffer.from(masterM3u8, "utf8"));
-  return {
-    masterM3u8,
-    files: filesMap,
-  };
+export async function getOrGenerateDynamicHLS(videoUrl: string): Promise<{ masterM3u8: string; files: Map<string, Buffer> }> {
+  const masterM3u8 = `#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,NAME="Direct Stream"\n${videoUrl}\n`;
+  return { masterM3u8, files: new Map([["index.m3u8", Buffer.from(masterM3u8, "utf8")]]) };
 }
-
