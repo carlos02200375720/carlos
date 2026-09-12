@@ -749,6 +749,64 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
     }
   });
 
+  // Android: Toggle save/unsave (reel or product)
+  router.post("/users/current/save", async (req: Request, res: Response) => {
+    try {
+      const { reelId, productId, id, userId, username } = req.body;
+      const targetItemId = reelId || productId || id;
+      if (!targetItemId) {
+        res.status(400).json({ error: "ID de publicación o producto requerido" });
+        return;
+      }
+
+      let currentUserObj: any = null;
+      if (mongoose.connection.readyState === 1) {
+        const candidates = [userId, username, req.headers["x-user-id"], req.headers["x-user-username"]].filter(
+          (c) => c && c !== "user_guest" && c !== "current_user" && c !== "invitado"
+        );
+        if (candidates.length > 0) {
+          currentUserObj = await MongoUser.findOne({
+            $or: candidates.flatMap((c) => [
+              { id: c },
+              { username: c },
+              { username: typeof c === "string" ? c.toLowerCase() : c }
+            ])
+          });
+        }
+      }
+
+      if (!currentUserObj) {
+        res.json({ success: true, saved: true, savedReelIds: [targetItemId] });
+        return;
+      }
+
+      if (!currentUserObj.savedReelIds) {
+        currentUserObj.savedReelIds = [];
+      }
+
+      const index = currentUserObj.savedReelIds.indexOf(targetItemId);
+      let saved = false;
+      if (index > -1) {
+        currentUserObj.savedReelIds.splice(index, 1);
+      } else {
+        currentUserObj.savedReelIds.push(targetItemId);
+        saved = true;
+      }
+
+      if (mongoose.connection.readyState === 1) {
+        await MongoUser.updateOne(
+          { id: currentUserObj.id },
+          { $set: { savedReelIds: currentUserObj.savedReelIds } }
+        );
+      }
+
+      res.json({ success: true, saved, savedReelIds: currentUserObj.savedReelIds });
+    } catch (err: any) {
+      console.error("❌ [Android Gateway] Error en save:", err);
+      res.status(500).json({ error: "Error al guardar elemento", details: err.message });
+    }
+  });
+
   // Android Shop: Create Order
   router.post("/orders", async (req: Request, res: Response) => {
     try {

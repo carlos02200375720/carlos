@@ -10,6 +10,7 @@ export interface User {
   following: number;
   followingUserIds?: string[];
   savedReelIds?: string[];
+  savedProductIds?: string[];
   coverPhoto?: string;
   isGuest?: boolean;
   password?: string;

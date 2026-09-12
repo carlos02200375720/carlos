@@ -135,7 +135,13 @@ export default function App() {
   const [activeChatUser, setActiveChatUser] = useState<User | null>(null);
   const [privateMessages, setPrivateMessages] = useState<ChatMessage[]>([]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
-  const [savedReelIds, setSavedReelIds] = useState<string[]>([]);
+  const [savedReelIds, setSavedReelIds] = useState<string[]>(() => {
+    try {
+      const cached = safeStorage.getItem("saved_publication_ids");
+      if (cached) return JSON.parse(cached);
+    } catch (e) {}
+    return [];
+  });
 
   // Force upload profile photo state
   const [selectedForceAvatar, setSelectedForceAvatar] = useState<string | null>(null);
@@ -742,11 +748,6 @@ export default function App() {
   };
 
   const handleToggleSaveReel = (reelId: string) => {
-    if (!currentUser || currentUser.username === "invitado" || currentUser.isGuest || !currentUser.username) {
-      setGuestInteractionAlert("Para guardar publicaciones, por favor inicia sesión o crea una cuenta.");
-      return;
-    }
-
     const isSaved = savedReelIds.includes(reelId);
     const newSavedIds = isSaved
       ? savedReelIds.filter((id) => id !== reelId)
@@ -754,12 +755,13 @@ export default function App() {
 
     // Optimistic update for UI state
     setSavedReelIds(newSavedIds);
+    safeStorage.setItem("saved_publication_ids", JSON.stringify(newSavedIds));
     setCurrentUser((prev) => ({
       ...prev,
       savedReelIds: newSavedIds
     }));
 
-    // Optimistic update for reel saves count
+    // Optimistic update for reel saves count if it's a reel
     setReels((prev) =>
       prev.map((r) => {
         if (r.id === reelId) {
@@ -773,33 +775,39 @@ export default function App() {
       })
     );
 
-    apiFetch("/api/users/current/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        reelId,
-        userId: currentUser.originalId || currentUser.id,
-        username: currentUser.username
+    // Sync to backend if logged in
+    if (currentUser && currentUser.username !== "invitado" && !currentUser.isGuest && currentUser.username) {
+      apiFetch("/api/users/current/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reelId,
+          productId: reelId,
+          id: reelId,
+          userId: currentUser.originalId || currentUser.id,
+          username: currentUser.username
+        })
       })
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          if (data.savedReelIds) {
-            setSavedReelIds(data.savedReelIds);
-            setCurrentUser((prev) => ({
-              ...prev,
-              savedReelIds: data.savedReelIds
-            }));
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            if (data.savedReelIds) {
+              setSavedReelIds(data.savedReelIds);
+              safeStorage.setItem("saved_publication_ids", JSON.stringify(data.savedReelIds));
+              setCurrentUser((prev) => ({
+                ...prev,
+                savedReelIds: data.savedReelIds
+              }));
+            }
+            if (typeof data.saves === "number") {
+              setReels((prev) =>
+                prev.map((r) => (r.id === reelId ? { ...r, saves: data.saves } : r))
+              );
+            }
           }
-          if (typeof data.saves === "number") {
-            setReels((prev) =>
-              prev.map((r) => (r.id === reelId ? { ...r, saves: data.saves } : r))
-            );
-          }
-        }
-      })
-      .catch((err) => console.error("Error toggling saved reel:", err));
+        })
+        .catch((err) => console.error("Error toggling saved item:", err));
+    }
   };
 
   const handleToggleFollowUser = (targetUserId: string) => {
