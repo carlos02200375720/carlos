@@ -40,6 +40,9 @@ export interface AndroidVideoPlayerProps {
  * - Never preload the full video. Reels only need metadata until they become current.
  * - Keep only the active reel playing.
  * - Use a normal VOD HLS buffer; lowLatencyMode is for live streams and wastes work here.
+ * - The stored aspectRatio is only an initial hint. The video's real intrinsic dimensions
+ *   become authoritative once metadata is loaded, so legacy/defaulted values cannot force
+ *   every Android publication into a vertical layout.
  */
 export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVideoPlayerProps>(
   (
@@ -73,7 +76,9 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
     const lastTapTimeRef = useRef<number>(0);
     const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const effectiveAspect = aspectRatio || detectedAspect || 'vertical';
+    // Database aspectRatio is a hint only. Once the actual video metadata is available,
+    // use the video's intrinsic dimensions for the layout.
+    const effectiveAspect = detectedAspect;
 
     const checkVideoDimensions = useCallback(() => {
       const video = videoRef.current;
@@ -83,7 +88,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       if (!w || !h) return;
       const ratio = w / h;
       const detected: 'vertical' | 'horizontal' | 'square' = ratio < 0.85 ? 'vertical' : ratio > 1.18 ? 'horizontal' : 'square';
-      setDetectedAspect(detected);
+      setDetectedAspect((previous) => previous === detected ? previous : detected);
       onAspectRatioDetected?.(detected, ratio);
     }, [onAspectRatioDetected]);
 
@@ -148,6 +153,12 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       }
     }, [muted]);
 
+    // Reset to the stored value only when the actual media changes. Metadata then
+    // replaces the hint with the real dimensions of the current video.
+    useEffect(() => {
+      setDetectedAspect(aspectRatio || 'vertical');
+    }, [src, hlsUrl, aspectRatio]);
+
     const handleVideoRef = useCallback((el: HTMLVideoElement | null) => {
       videoRef.current = el;
       onVideoReady?.(el);
@@ -173,14 +184,23 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
-          backBufferLength: 8,
-          maxBufferLength: 12,
-          maxMaxBufferLength: 24,
-          startLevel: -1,
+          // Keep a modest back buffer but enough forward buffer to absorb short
+          // network/CPU hiccups without recreating multi-video memory pressure.
+          backBufferLength: 6,
+          maxBufferLength: 20,
+          maxMaxBufferLength: 40,
+          maxBufferHole: 0.5,
+          // Start at the smallest rendition so the first segment arrives quickly;
+          // ABR upgrades after it has measured the real connection.
+          startLevel: 0,
           capLevelToPlayerSize: true,
-          abrEwmaDefaultEstimate: 1000000,
-          abrBandWidthFactor: 0.75,
+          abrEwmaDefaultEstimate: 650000,
+          abrBandWidthFactor: 0.8,
           abrBandWidthUpFactor: 0.7,
+          maxStarvationDelay: 2,
+          maxLoadingDelay: 4,
+          fragLoadingMaxRetry: 3,
+          fragLoadingRetryDelay: 500,
         });
         hlsRef.current = hls;
         hls.loadSource(mediaSource);
@@ -277,7 +297,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             webkit-playsinline="true"
             // Metadata only until the reel is actually focused.
             preload={isCurrent ? 'metadata' : 'none'}
-            className={effectiveAspect === 'vertical' ? 'w-full h-full object-cover' : effectiveAspect === 'horizontal' ? 'w-full max-h-full aspect-video object-cover' : 'w-full h-full object-cover'}
+            className={effectiveAspect === 'vertical' ? 'w-full h-full object-cover' : effectiveAspect === 'horizontal' ? 'w-full max-h-full aspect-video object-contain' : 'w-full h-full object-contain'}
             onLoadedMetadata={checkVideoDimensions}
             onLoadedData={checkVideoDimensions}
             onCanPlay={() => {

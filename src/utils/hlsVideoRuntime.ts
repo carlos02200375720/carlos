@@ -96,14 +96,22 @@ function attachHls(video: HTMLVideoElement, hlsSrc: string) {
   const hls = new Hls({
     enableWorker: true,
     lowLatencyMode: false,
-    backBufferLength: 8,
-    maxBufferLength: 12,
-    maxMaxBufferLength: 24,
-    startLevel: -1,
+    // A little more forward buffer absorbs short network/CPU hiccups without
+    // keeping enough media around to recreate the original multi-video pressure.
+    backBufferLength: 6,
+    maxBufferLength: 20,
+    maxMaxBufferLength: 40,
+    maxBufferHole: 0.5,
+    // Start conservatively at 360p. ABR can move up once it has real bandwidth data.
+    startLevel: 0,
     capLevelToPlayerSize: true,
-    abrEwmaDefaultEstimate: 1000000,
-    abrBandWidthFactor: 0.75,
+    abrEwmaDefaultEstimate: 650000,
+    abrBandWidthFactor: 0.8,
     abrBandWidthUpFactor: 0.7,
+    maxStarvationDelay: 2,
+    maxLoadingDelay: 4,
+    fragLoadingMaxRetry: 3,
+    fragLoadingRetryDelay: 500,
   });
 
   attached.set(video, { hls, originalSrc, hlsSrc });
