@@ -31,19 +31,6 @@ export interface AndroidVideoPlayerProps {
   onVideoReady?: (video: HTMLVideoElement | null) => void;
 }
 
-/**
- * Reel video player optimized for Android Chrome/WebView.
- *
- * Important performance rules:
- * - Prefer the server-generated HLS stream when available instead of downloading the
- *   original MP4 progressively.
- * - Never preload the full video. Reels only need metadata until they become current.
- * - Keep only the active reel playing.
- * - Use a normal VOD HLS buffer; lowLatencyMode is for live streams and wastes work here.
- * - The stored aspectRatio is only an initial hint. The video's real intrinsic dimensions
- *   become authoritative once metadata is loaded, so legacy/defaulted values cannot force
- *   every Android publication into a vertical layout.
- */
 export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVideoPlayerProps>(
   (
     {
@@ -76,8 +63,6 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
     const lastTapTimeRef = useRef<number>(0);
     const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Database aspectRatio is a hint only. Once the actual video metadata is available,
-    // use the video's intrinsic dimensions for the layout.
     const effectiveAspect = detectedAspect;
 
     const checkVideoDimensions = useCallback(() => {
@@ -153,8 +138,6 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       }
     }, [muted]);
 
-    // Reset to the stored value only when the actual media changes. Metadata then
-    // replaces the hint with the real dimensions of the current video.
     useEffect(() => {
       setDetectedAspect(aspectRatio || 'vertical');
     }, [src, hlsUrl, aspectRatio]);
@@ -164,7 +147,6 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       onVideoReady?.(el);
     }, [onVideoReady]);
 
-    // Prefer HLS over the original MP4. The backend already creates an HLS rendition.
     const mediaSource = React.useMemo(() => {
       if (hlsUrl?.trim().includes('.m3u8')) return hlsUrl.trim();
       return (src || '').trim();
@@ -184,14 +166,10 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
-          // Keep a modest back buffer but enough forward buffer to absorb short
-          // network/CPU hiccups without recreating multi-video memory pressure.
           backBufferLength: 6,
           maxBufferLength: 20,
           maxMaxBufferLength: 40,
           maxBufferHole: 0.5,
-          // Start at the smallest rendition so the first segment arrives quickly;
-          // ABR upgrades after it has measured the real connection.
           startLevel: 0,
           capLevelToPlayerSize: true,
           abrEwmaDefaultEstimate: 650000,
@@ -212,11 +190,8 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
 
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!data.fatal) return;
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            hls.startLoad();
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            hls.recoverMediaError();
-          }
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
         });
       } else {
         video.src = mediaSource;
@@ -227,13 +202,11 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
         hlsRef.current?.destroy();
         hlsRef.current = null;
         video.pause();
-        // Releasing the source prevents an old reel from retaining decoded/buffered data.
         video.removeAttribute('src');
         video.load();
       };
     }, [mediaSource, isCurrent, autoPlay, safePlay]);
 
-    // Only the focused reel may play. When it leaves focus, immediately release playback.
     useEffect(() => {
       const video = videoRef.current;
       if (!video) return;
@@ -285,7 +258,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           <img src={poster} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20 blur-3xl scale-110 pointer-events-none" aria-hidden="true" />
         )}
 
-        <div className={effectiveAspect === 'vertical' ? 'w-full h-full flex items-center justify-center relative overflow-hidden' : effectiveAspect === 'horizontal' ? 'w-full max-h-[calc(100vh-120px)] relative z-10 flex items-center justify-center my-auto overflow-hidden' : 'w-full max-w-[min(94vw,calc(100vh-160px))] aspect-square relative z-10 mx-auto flex items-center justify-center my-auto rounded-2xl overflow-hidden'}>
+        <div className={effectiveAspect === 'vertical' ? 'w-full h-full flex items-center justify-center relative overflow-hidden' : effectiveAspect === 'horizontal' ? 'w-full max-h-[calc(100vh-120px)] relative z-10 flex items-center justify-center my-auto overflow-hidden' : 'w-full max-w-[min(94vw,calc(100vh-160px))] aspect-square relative z-10 mx-auto flex items-center justify-center my-auto overflow-hidden'}>
           <video
             ref={handleVideoRef}
             poster={poster}
@@ -295,7 +268,6 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             playsInline
             disablePictureInPicture
             webkit-playsinline="true"
-            // Metadata only until the reel is actually focused.
             preload={isCurrent ? 'metadata' : 'none'}
             className={effectiveAspect === 'vertical' ? 'w-full h-full object-cover' : effectiveAspect === 'horizontal' ? 'w-full max-h-full aspect-video object-contain' : 'w-full h-full object-contain'}
             onLoadedMetadata={checkVideoDimensions}
