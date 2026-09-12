@@ -40,6 +40,9 @@ export interface AndroidVideoPlayerProps {
  * - Never preload the full video. Reels only need metadata until they become current.
  * - Keep only the active reel playing.
  * - Use a normal VOD HLS buffer; lowLatencyMode is for live streams and wastes work here.
+ * - The stored aspectRatio is only an initial hint. The video's real intrinsic dimensions
+ *   become authoritative once metadata is loaded, so legacy/defaulted values cannot force
+ *   every Android publication into a vertical layout.
  */
 export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVideoPlayerProps>(
   (
@@ -73,7 +76,9 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
     const lastTapTimeRef = useRef<number>(0);
     const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const effectiveAspect = aspectRatio || detectedAspect || 'vertical';
+    // Database aspectRatio is a hint only. Once the actual video metadata is available,
+    // use the video's intrinsic dimensions for the layout.
+    const effectiveAspect = detectedAspect;
 
     const checkVideoDimensions = useCallback(() => {
       const video = videoRef.current;
@@ -83,7 +88,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       if (!w || !h) return;
       const ratio = w / h;
       const detected: 'vertical' | 'horizontal' | 'square' = ratio < 0.85 ? 'vertical' : ratio > 1.18 ? 'horizontal' : 'square';
-      setDetectedAspect(detected);
+      setDetectedAspect((previous) => previous === detected ? previous : detected);
       onAspectRatioDetected?.(detected, ratio);
     }, [onAspectRatioDetected]);
 
@@ -147,6 +152,12 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
         videoRef.current.defaultMuted = muted;
       }
     }, [muted]);
+
+    // Reset to the stored value only when the actual media changes. Metadata then
+    // replaces the hint with the real dimensions of the current video.
+    useEffect(() => {
+      setDetectedAspect(aspectRatio || 'vertical');
+    }, [src, hlsUrl, aspectRatio]);
 
     const handleVideoRef = useCallback((el: HTMLVideoElement | null) => {
       videoRef.current = el;
@@ -286,7 +297,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             webkit-playsinline="true"
             // Metadata only until the reel is actually focused.
             preload={isCurrent ? 'metadata' : 'none'}
-            className={effectiveAspect === 'vertical' ? 'w-full h-full object-cover' : effectiveAspect === 'horizontal' ? 'w-full max-h-full aspect-video object-cover' : 'w-full h-full object-cover'}
+            className={effectiveAspect === 'vertical' ? 'w-full h-full object-cover' : effectiveAspect === 'horizontal' ? 'w-full max-h-full aspect-video object-contain' : 'w-full h-full object-contain'}
             onLoadedMetadata={checkVideoDimensions}
             onLoadedData={checkVideoDimensions}
             onCanPlay={() => {
