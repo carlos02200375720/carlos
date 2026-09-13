@@ -5,7 +5,6 @@ import './index.css';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import ErrorBoundary from './app/web/components/ErrorBoundary';
-import { startHlsVideoRuntime } from './utils/hlsVideoRuntime';
 
 // Initialize Native Mobile Device adjustments safely
 try {
@@ -16,14 +15,6 @@ try {
   }
 } catch (err) {
   console.warn('Native status bar initialization note:', err);
-}
-
-// Start once at the application root so web Reels that still expose the original MP4
-// can transparently switch to the server-generated adaptive HLS master when available.
-try {
-  startHlsVideoRuntime();
-} catch (err) {
-  console.warn('HLS runtime initialization note:', err);
 }
 
 const rootElement = document.getElementById('root');
