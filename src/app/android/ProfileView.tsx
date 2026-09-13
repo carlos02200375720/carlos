@@ -403,6 +403,22 @@ export default function AndroidProfileView({
                   }}
                   className="relative aspect-[9/16] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 cursor-pointer group active:scale-95 transition-transform"
                 >
+                  {isMe && onDeleteReel && (
+                    <button
+                      type="button"
+                      aria-label="Eliminar publicación"
+                      title="Eliminar publicación"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm("¿Eliminar esta publicación?")) {
+                          onDeleteReel(reel.id);
+                        }
+                      }}
+                      className="absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-transparent text-white transition-all hover:bg-white/10 active:bg-white/20"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                   <img
                     src={reel.thumbnailUrl || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80"}
                     alt={reel.description || "Reel"}
