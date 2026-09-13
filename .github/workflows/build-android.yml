@@ -2,7 +2,7 @@ name: Compilar Android App en la Nube
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "fix/reels-video-performance" ]
   workflow_dispatch:
 
 jobs:
@@ -13,70 +13,53 @@ jobs:
       VITE_BACKEND_URL: https://carlos02200375720mall-113642516090.europe-west1.run.app
 
     steps:
-      - name: 1. Descargar el código
+      - name: Descargar código actual
         uses: actions/checkout@v4
 
-      - name: 2. Configurar Node.js
+      - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: 3. Configurar Java (JDK 21)
+      - name: Configurar Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: zulu
           java-version: '21'
 
-      - name: 4. Instalar dependencias
-        run: |
-          npm install
+      - name: Instalar dependencias
+        run: npm install
 
-      - name: 5. Compilar Frontend exclusivo para Android (app/android)
+      - name: Compilar frontend Android desde cero
         env:
           VITE_APP_TARGET: android
           VITE_BACKEND_URL: https://carlos02200375720mall-113642516090.europe-west1.run.app
         run: |
           npm install @tailwindcss/oxide-linux-x64-gnu --save-optional --force
-          # Limpiar compilaciones anteriores para asegurar paquete limpio
           rm -rf dist
-          # Compilar la aplicación estrictamente en modo Android (usa src/app/android)
           npm run build:android
-          # Verificar contenido compilado en dist/
-          echo "Verificación de bundle exclusivo para Android generado en dist/:"
-          ls -la dist
+          test -f dist/index.html
 
-      - name: 6. Inicializar y Sincronizar Plataforma Android (Capacitor)
+      - name: Inicializar y sincronizar Capacitor
         run: |
           npm install @capacitor/cli @capacitor/core @capacitor/android @capacitor/status-bar
           npx cap add android || true
           npx cap sync android
-          # Aplicar AndroidManifest personalizado con permisos (Cámara, Micrófono, Internet, etc.)
           if [ -f "src/app/android/AndroidManifest.xml" ] && [ -d "android/app/src/main" ]; then
             cp src/app/android/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
-            echo "AndroidManifest.xml con permisos de cámara, micrófono e internet aplicado correctamente."
           fi
 
-      - name: 6.1. Corregir clases duplicadas de Kotlin
+      - name: Corregir clases duplicadas de Kotlin
         run: |
-          node -e "
-          const fs = require('fs');
-          const file = 'android/build.gradle';
-          if (fs.existsSync(file)) {
-            const patch = \`\nsubprojects {\n    configurations.all {\n        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'\n        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'\n    }\n}\n\`;
-            fs.appendFileSync(file, patch);
-            console.log('Parche de Kotlin aplicado correctamente');
-          }
-          "
+          node -e "const fs=require('fs'); const f='android/build.gradle'; if(fs.existsSync(f)){const p='\\nsubprojects {\\n    configurations.all {\\n        exclude group: \'org.jetbrains.kotlin\', module: \'kotlin-stdlib-jdk7\'\\n        exclude group: \'org.jetbrains.kotlin\', module: \'kotlin-stdlib-jdk8\'\\n    }\\n}\\n'; fs.appendFileSync(f,p)}"
 
-      - name: 7. Permisos de Gradle
-        run: chmod +x android/gradlew
-
-      - name: 8. Compilar APK de Android (Modo Debug)
+      - name: Compilar APK Debug
         run: |
+          chmod +x android/gradlew
           cd android
           ./gradlew assembleDebug
 
-      - name: 9. Guardar APK listo para descargar
+      - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
           name: app-android-debug
