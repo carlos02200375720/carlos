@@ -1,22 +1,14 @@
-/**
- * Android-Dedicated API & Network Layer
- * 
- * This module isolates all Android frontend network requests.
- * All requests are routed through dedicated Android endpoints (/api/android/*)
- * and tagged with platform headers, allowing the server to process Android
- * requests with independent logic from web or iOS frontends.
- */
-
 import { safeStorage } from "../../utils/safeStorage";
 import { User, Reel, Product, CartItem, Order, ChatMessage } from "../../types";
-
-export const CLOUD_RUN_BACKEND_URL = "https://carlos02200375720mall-113642516090.europe-west1.run.app";
-export const BACKEND_URL: string =
-  (import.meta as any).env?.VITE_BACKEND_URL || CLOUD_RUN_BACKEND_URL;
+import { BACKEND_URL } from "../../config";
 
 /**
- * Returns true if running inside an Android native container (Capacitor/Cordova)
+ * Single Android network layer.
+ * Native Android always talks to the configured backend and never falls back
+ * to a second/unknown origin.
  */
+export { BACKEND_URL };
+
 export const isAndroidNative = (): boolean => {
   if (typeof window === "undefined") return false;
   const win = window as any;
@@ -26,32 +18,61 @@ export const isAndroidNative = (): boolean => {
   return proto === "capacitor:" || proto === "file:" || proto === "ionic:";
 };
 
-/**
- * Android-specific URL resolver. Always directs to /api/android routes.
- */
 export const getAndroidApiUrl = (endpoint: string): string => {
   let clean = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
 
-  // If already prefixed with /api/android, keep it, otherwise translate /api/* to /api/android/*
   if (clean.startsWith("/api/android/")) {
-    // Already targeted for android
+    // already canonical
   } else if (clean.startsWith("/api/")) {
     clean = clean.replace(/^\/api/, "/api/android");
   } else {
     clean = `/api/android${clean}`;
   }
 
-  if (isAndroidNative() || (typeof window !== "undefined" && window.location.hostname.includes("github.io"))) {
-    const base = (BACKEND_URL || CLOUD_RUN_BACKEND_URL).replace(/\/$/, "");
-    return `${base}${clean}`;
+  const base = (BACKEND_URL || "").replace(/\/$/, "");
+  if (!base) {
+    throw new Error("Backend Android no configurado. Define VITE_BACKEND_URL antes de compilar el APK.");
   }
-
-  return clean;
+  return `${base}${clean}`;
 };
 
-/**
- * Dedicated fetch utility for Android. Injects Android-specific metadata and user credentials.
- */
+const readResponseBody = async (response: Response): Promise<any> => {
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+
+  if (!text.trim()) {
+    return {};
+  }
+
+  if (contentType.includes("application/json")) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`El backend respondió JSON inválido (HTTP ${response.status}).`);
+    }
+  }
+
+  // Never let JSON.parse turn an HTML/proxy error into "Unexpected token '<'".
+  const preview = text.replace(/\s+/g, " ").slice(0, 180);
+  if (/^<!doctype html/i.test(text) || /<html[\s>]/i.test(text)) {
+    throw new Error(
+      `El backend de Android respondió HTML en vez de JSON (HTTP ${response.status}). ` +
+      `Revisa que el APK use el backend configurado y que /api/android esté desplegado. ` +
+      `Respuesta: ${preview}`
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(`Error HTTP ${response.status}: ${preview}`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Respuesta inesperada del backend (HTTP ${response.status}): ${preview}`);
+  }
+};
+
 export const androidApiFetch = async (
   endpoint: string,
   init?: RequestInit,
@@ -60,86 +81,61 @@ export const androidApiFetch = async (
   const url = getAndroidApiUrl(endpoint);
   const headers = new Headers(init?.headers);
 
-  // Android platform identification headers
+  headers.set("Accept", "application/json");
   headers.set("X-Platform", "android");
   headers.set("X-Client-Platform", "android");
   headers.set("X-Client-App", "MallSocial-Android");
   headers.set("X-Client-Version", "1.0.0-android");
 
-  // User credentials
   if (typeof window !== "undefined") {
     try {
       const loggedInUsername = safeStorage.getItem("loggedInUsername");
       const currentUserData = safeStorage.getItem("currentUserData");
       if (loggedInUsername && loggedInUsername !== "invitado" && loggedInUsername !== "guest") {
-        if (!headers.has("x-user-username")) {
-          headers.set("x-user-username", loggedInUsername);
-        }
+        headers.set("x-user-username", loggedInUsername);
       }
       if (currentUserData) {
         const parsed = JSON.parse(currentUserData);
         if (parsed?.username && parsed.username !== "invitado") {
-          if (!headers.has("x-user-username")) {
-            headers.set("x-user-username", parsed.username);
-          }
-          if (parsed.originalId || parsed.id) {
-            if (!headers.has("x-user-id")) {
-              headers.set("x-user-id", parsed.originalId || parsed.id);
-            }
-          }
+          if (!headers.has("x-user-username")) headers.set("x-user-username", parsed.username);
+          if (parsed.originalId || parsed.id) headers.set("x-user-id", parsed.originalId || parsed.id);
         }
       }
-    } catch {}
+    } catch {
+      // Ignore malformed local session data; the server can treat the request as guest.
+    }
   }
 
   const isUpload = endpoint.includes("upload") || (init?.body instanceof FormData);
   const effectiveTimeout = isUpload ? 300000 : timeoutMs;
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
   const signal = init?.signal || controller.signal;
 
   try {
-    const response = await fetch(url, {
-      ...init,
-      headers,
-      signal,
-    });
-    clearTimeout(timeoutId);
-    return response;
+    return await fetch(url, { ...init, headers, signal });
   } catch (err: any) {
-    clearTimeout(timeoutId);
-    // Fallback: If Android endpoint is in transition or network error, attempt direct fallback
-    if (!signal.aborted) {
-      console.warn("Android API fetch primary attempt failed, retrying alternate route:", err?.message);
-      const base = (BACKEND_URL || CLOUD_RUN_BACKEND_URL).replace(/\/$/, "");
-      const alternateUrl = url.startsWith("http") ? url.replace(base, "") : `${base}${url.startsWith("/") ? url : `/${url}`}`;
-      try {
-        return await fetch(alternateUrl, {
-          ...init,
-          headers,
-          signal,
-        });
-      } catch (fallbackErr) {
-        throw err;
+    if (signal.aborted) {
+      if (controller.signal.aborted) {
+        throw new Error(`La solicitud tardó más de ${Math.round(effectiveTimeout / 1000)} segundos.`);
       }
+      throw err;
     }
-    throw err;
+    throw new Error(`No se pudo conectar con el backend Android: ${err?.message || "error de red"}`);
+  } finally {
+    clearTimeout(timeoutId);
   }
 };
 
-/**
- * Typed Android API Service Methods
- */
 export const androidApi = {
   getHealth: async () => {
     const res = await androidApiFetch("/health");
-    return res.json();
+    return readResponseBody(res);
   },
 
   getReels: async (): Promise<Reel[]> => {
     const res = await androidApiFetch("/reels");
-    return res.json();
+    return readResponseBody(res);
   },
 
   likeReel: async (reelId: string, userId: string, username: string) => {
@@ -148,7 +144,7 @@ export const androidApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, username }),
     });
-    return res.json();
+    return readResponseBody(res);
   },
 
   commentReel: async (reelId: string, data: { userId: string; username: string; avatar: string; text: string }) => {
@@ -157,22 +153,22 @@ export const androidApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-    return res.json();
+    return readResponseBody(res);
   },
 
   getProducts: async (): Promise<Product[]> => {
     const res = await androidApiFetch("/products");
-    return res.json();
+    return readResponseBody(res);
   },
 
   getUsers: async (): Promise<User[]> => {
     const res = await androidApiFetch("/users");
-    return res.json();
+    return readResponseBody(res);
   },
 
   getCurrentUser: async (): Promise<{ user: User }> => {
     const res = await androidApiFetch("/users/current_user");
-    return res.json();
+    return readResponseBody(res);
   },
 
   switchUser: async (targetUsername: string, password?: string, isSessionRestore?: boolean) => {
@@ -181,7 +177,7 @@ export const androidApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ targetUsername, password, isSessionRestore }),
     });
-    return res.json();
+    return readResponseBody(res);
   },
 
   logoutUser: async () => {
@@ -189,7 +185,7 @@ export const androidApi = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
-    return res.json();
+    return readResponseBody(res);
   },
 
   toggleSaveReel: async (reelId: string, userId: string, username: string) => {
@@ -198,7 +194,7 @@ export const androidApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reelId, userId, username }),
     });
-    return res.json();
+    return readResponseBody(res);
   },
 
   toggleFollowUser: async (targetUserId: string, currentUserId: string, currentUsername: string) => {
@@ -207,12 +203,12 @@ export const androidApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ currentUserId, currentUsername }),
     });
-    return res.json();
+    return readResponseBody(res);
   },
 
   getCart: async (userId: string): Promise<{ items: CartItem[] }> => {
     const res = await androidApiFetch(`/cart/${encodeURIComponent(userId)}`);
-    return res.json();
+    return readResponseBody(res);
   },
 
   saveCart: async (userId: string, items: CartItem[]) => {
@@ -221,7 +217,7 @@ export const androidApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items }),
     });
-    return res.json();
+    return readResponseBody(res);
   },
 
   createOrder: async (orderData: any): Promise<Order> => {
@@ -230,12 +226,12 @@ export const androidApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(orderData),
     });
-    return res.json();
+    return readResponseBody(res);
   },
 
   getChatMessages: async (partnerId: string): Promise<ChatMessage[]> => {
     const res = await androidApiFetch(`/chats/${partnerId}`);
-    return res.json();
+    return readResponseBody(res);
   },
 
   uploadFile: async (formData: FormData): Promise<any> => {
@@ -243,6 +239,6 @@ export const androidApi = {
       method: "POST",
       body: formData,
     });
-    return res.json();
+    return readResponseBody(res);
   },
 };
