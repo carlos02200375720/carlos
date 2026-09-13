@@ -12,8 +12,9 @@ export interface AndroidVideoPlayerHandle {
 }
 
 export interface AndroidVideoPlayerProps {
-  src: string;
-  hlsUrl?: string;
+  /** Kept only for caller compatibility. It is never assigned to the video element. */
+  src?: string;
+  hlsUrl: string;
   poster?: string;
   autoPlay?: boolean;
   loop?: boolean;
@@ -34,7 +35,6 @@ export interface AndroidVideoPlayerProps {
 export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVideoPlayerProps>(
   (
     {
-      src,
       hlsUrl,
       poster,
       autoPlay = true,
@@ -135,48 +135,41 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       if (videoRef.current) {
         videoRef.current.muted = muted;
         videoRef.current.defaultMuted = muted;
+        videoRef.current.volume = muted ? 0 : 1;
       }
     }, [muted]);
 
     useEffect(() => {
       setDetectedAspect(aspectRatio || 'vertical');
-    }, [src, hlsUrl, aspectRatio]);
+    }, [hlsUrl, aspectRatio]);
 
     const handleVideoRef = useCallback((el: HTMLVideoElement | null) => {
       videoRef.current = el;
       onVideoReady?.(el);
     }, [onVideoReady]);
 
-    const mediaSource = React.useMemo(() => {
-      if (hlsUrl?.trim().includes('.m3u8')) return hlsUrl.trim();
-      return (src || '').trim();
-    }, [src, hlsUrl]);
-
     useEffect(() => {
       const video = videoRef.current;
-      if (!video || !mediaSource) return;
+      const mediaSource = hlsUrl.trim();
+      if (!video || !mediaSource || !mediaSource.includes('.m3u8')) return;
 
       hlsRef.current?.destroy();
       hlsRef.current = null;
       video.pause();
+      video.removeAttribute('src');
+      video.load();
 
-      const isM3u8 = mediaSource.includes('.m3u8');
-
-      if (isM3u8 && Hls.isSupported()) {
+      if (Hls.isSupported()) {
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
           backBufferLength: 6,
           maxBufferLength: 20,
-          maxMaxBufferLength: 40,
-          maxBufferHole: 0.5,
-          startLevel: 0,
           capLevelToPlayerSize: true,
+          startLevel: 0,
           abrEwmaDefaultEstimate: 650000,
           abrBandWidthFactor: 0.8,
           abrBandWidthUpFactor: 0.7,
-          maxStarvationDelay: 2,
-          maxLoadingDelay: 4,
           fragLoadingMaxRetry: 3,
           fragLoadingRetryDelay: 500,
         });
@@ -192,10 +185,15 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           if (!data.fatal) return;
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
           else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+          else {
+            hls.destroy();
+            hlsRef.current = null;
+          }
         });
-      } else {
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS (for browsers that support application/vnd.apple.mpegurl).
+        // This is still HLS; there is deliberately no MP4 fallback.
         video.src = mediaSource;
-        if (isCurrent && autoPlay) safePlay();
       }
 
       return () => {
@@ -205,13 +203,15 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
         video.removeAttribute('src');
         video.load();
       };
-    }, [mediaSource, isCurrent, autoPlay, safePlay]);
+    }, [hlsUrl, isCurrent, autoPlay, safePlay]);
 
     useEffect(() => {
       const video = videoRef.current;
       if (!video) return;
       if (isCurrent) {
         video.muted = isMuted;
+        video.defaultMuted = isMuted;
+        video.volume = isMuted ? 0 : 1;
         if (autoPlay) safePlay();
       } else {
         video.pause();
@@ -268,7 +268,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             playsInline
             disablePictureInPicture
             webkit-playsinline="true"
-            preload={isCurrent ? 'metadata' : 'none'}
+            preload="none"
             className={effectiveAspect === 'vertical' ? 'w-full h-full object-cover' : effectiveAspect === 'horizontal' ? 'w-full max-h-full aspect-video object-contain' : 'w-full h-full object-contain'}
             onLoadedMetadata={checkVideoDimensions}
             onLoadedData={checkVideoDimensions}
