@@ -191,6 +191,42 @@ class HlsTranscoderQueue {
     return job;
   }
 
+  public enqueueAndWait(
+    jobId: string,
+    videoBuffer: Buffer,
+    sourceName: string,
+    bucket: Bucket,
+    bucketName: string,
+    options?: {
+      reelId?: string;
+      publicacionId?: string;
+      onComplete?: (result: TranscodeHlsResult) => Promise<void> | void;
+      onError?: (err: Error) => void;
+    }
+  ): Promise<TranscodeHlsResult> {
+    return new Promise<TranscodeHlsResult>((resolve, reject) => {
+      const wrappedOnComplete = async (result: TranscodeHlsResult) => {
+        if (options?.onComplete) {
+          await options.onComplete(result);
+        }
+        resolve(result);
+      };
+
+      const wrappedOnError = (err: Error) => {
+        if (options?.onError) {
+          options.onError(err);
+        }
+        reject(err);
+      };
+
+      this.enqueue(jobId, videoBuffer, sourceName, bucket, bucketName, {
+        ...options,
+        onComplete: wrappedOnComplete,
+        onError: wrappedOnError,
+      });
+    });
+  }
+
   public getJob(id: string): HlsJob | undefined {
     return this.jobsMap.get(id);
   }
@@ -392,6 +428,7 @@ export async function transcodeVideoToHLS(
       variantUrls: [masterM3u8Url],
       totalSegments: segmentCount,
       bucketPath: destinationFolder,
+      durationSec: undefined,
       latencyMs: totalLatencyMs,
     };
   } finally {
