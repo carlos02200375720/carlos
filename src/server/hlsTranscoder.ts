@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { promisify } from "util";
-import { Storage, Bucket } from "@google-cloud/storage";
+import { Bucket } from "@google-cloud/storage";
 
 const execAsync = promisify(exec);
 
@@ -25,116 +25,34 @@ export interface H264OptimizationResult {
   codec: string;
 }
 
-/**
- * Optimizes an uploaded video to universal H.264 (AVC) profile for maximum compatibility across all mobile devices
- * (iOS Safari, Android Chrome, webviews).
- *
- * Parameters:
- * - Codec: libx264
- * - Profile: High 4.1 (supported by all modern and legacy smartphones)
- * - Pixel format: yuv420p (guarantees playback on iOS hardware decoders without black screens)
- * - Bitrate & CRF: CRF 24, maxrate 2500k, bufsize 5000k (lightweight payload, no buffering spikes)
- * - Dimension: max width 1080, max height 1920, even dimensions (divisible by 2)
- * - Instant Playback: -movflags +faststart (places moov atom at beginning of MP4 for 0-wait streaming)
- * - Audio: AAC stereo, 128 kbps, 44100 Hz
- */
-export async function optimizeVideoToH264(
-  videoBuffer: Buffer,
-  videoId: string
-): Promise<H264OptimizationResult> {
+export async function optimizeVideoToH264(videoBuffer: Buffer, videoId: string): Promise<H264OptimizationResult> {
   const startTime = Date.now();
   const tmpDir = path.join(os.tmpdir(), `h264_opt_${videoId}_${Date.now()}`);
   const inputFilePath = path.join(tmpDir, "input_source.mp4");
   const outputFilePath = path.join(tmpDir, "output_h264_faststart.mp4");
-
   await fs.promises.mkdir(tmpDir, { recursive: true });
   await fs.promises.writeFile(inputFilePath, videoBuffer);
-
   const originalSize = videoBuffer.length;
-  console.log(`🎬 [H.264 Transcoder] Iniciando procesamiento a H.264 AVC para ${videoId} (Tamaño original: ${(originalSize / (1024 * 1024)).toFixed(2)} MB)...`);
-
   try {
-    const ffmpegCmd = [
-      "ffmpeg -y -i",
-      `"${inputFilePath}"`,
-      "-map 0:v:0 -map 0:a?",
-      "-threads 0",
-      "-c:v libx264 -preset ultrafast -profile:v high -level:v 4.1",
-      "-pix_fmt yuv420p -crf 24 -maxrate 2500k -bufsize 5000k",
-      `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"`,
-      "-g 60 -keyint_min 30",
-      "-movflags +faststart",
-      "-c:a aac -b:a 128k -ar 44100 -ac 2",
-      `"${outputFilePath}"`
-    ].join(" ");
-
-    await execAsync(ffmpegCmd, { timeout: 120000 });
-
-    const optimizedBuffer = await fs.promises.readFile(outputFilePath);
-    const optimizedSize = optimizedBuffer.length;
-    const durationMs = Date.now() - startTime;
-    const savedBytes = originalSize - optimizedSize;
-    const compressionRatioPercent = Math.max(0, Math.round((savedBytes / originalSize) * 100));
-
-    console.log(
-      `✅ [H.264 Transcoder] Completado en ${durationMs}ms: ${(originalSize / (1024 * 1024)).toFixed(2)} MB -> ${(optimizedSize / (1024 * 1024)).toFixed(2)} MB (${compressionRatioPercent}% más liviano, preparado con +faststart para inicio instantáneo en móviles)`
-    );
-
-    return {
-      buffer: optimizedBuffer,
-      originalSize,
-      optimizedSize,
-      compressionRatioPercent,
-      durationMs,
-      codec: "H.264 / AVC (libx264, yuv420p, +faststart)"
-    };
+    const cmd = ["ffmpeg -y -i", `"${inputFilePath}"`, "-map 0:v:0 -map 0:a? -threads 0", "-c:v libx264 -preset ultrafast -profile:v high -level:v 4.1 -pix_fmt yuv420p", "-crf 24 -maxrate 2500k -bufsize 5000k", `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"`, "-g 60 -keyint_min 30 -movflags +faststart -c:a aac -b:a 128k -ar 44100 -ac 2", `"${outputFilePath}"`].join(" ");
+    await execAsync(cmd, { timeout: 120000 });
+    const buffer = await fs.promises.readFile(outputFilePath);
+    const optimizedSize = buffer.length;
+    return { buffer, originalSize, optimizedSize, compressionRatioPercent: Math.max(0, Math.round(((originalSize - optimizedSize) / originalSize) * 100)), durationMs: Date.now() - startTime, codec: "H.264 / AVC (libx264, yuv420p, +faststart)" };
   } catch (err: any) {
-    console.warn(`⚠️ [H.264 Transcoder] Error optimizando a H.264, usando archivo original:`, err.message);
-    return {
-      buffer: videoBuffer,
-      originalSize,
-      optimizedSize: originalSize,
-      compressionRatioPercent: 0,
-      durationMs: Date.now() - startTime,
-      codec: "Original (Fallback)"
-    };
-  } finally {
-    try {
-      await fs.promises.rm(tmpDir, { recursive: true, force: true });
-    } catch {}
-  }
+    console.warn(`[H.264 Transcoder] Fallback: ${err?.message || err}`);
+    return { buffer: videoBuffer, originalSize, optimizedSize: originalSize, compressionRatioPercent: 0, durationMs: Date.now() - startTime, codec: "Original (Fallback)" };
+  } finally { await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined); }
 }
 
-export interface HlsJob {
-  id: string;
-  reelId?: string;
-  publicacionId?: string;
-  sourceName: string;
-  status: "queued" | "transcoding" | "uploading_cdn" | "completed" | "failed";
-  progress: number;
-  queuedAt: number;
-  startedAt?: number;
-  completedAt?: number;
-  durationMs?: number;
-  totalSegments?: number;
-  masterM3u8Url?: string;
-  error?: string;
-}
+export interface HlsJob { id: string; reelId?: string; publicacionId?: string; sourceName: string; status: "queued" | "transcoding" | "uploading_cdn" | "completed" | "failed"; progress: number; queuedAt: number; startedAt?: number; completedAt?: number; durationMs?: number; totalSegments?: number; masterM3u8Url?: string; error?: string; }
 
-// Global In-Memory Queue & Telemetry Storage
+type HlsTask = { job: HlsJob; videoBuffer: Buffer; bucket: Bucket; bucketName: string; onComplete?: (result: TranscodeHlsResult) => Promise<void> | void; onError?: (err: Error) => void; resolve?: (result: TranscodeHlsResult) => void; reject?: (err: Error) => void };
+
 class HlsTranscoderQueue {
-  private queue: Array<{
-    job: HlsJob;
-    videoBuffer: Buffer;
-    bucket: Bucket;
-    bucketName: string;
-    onComplete?: (result: TranscodeHlsResult) => Promise<void> | void;
-    onError?: (err: Error) => void;
-  }> = [];
-
+  private queue: HlsTask[] = [];
   private jobsMap = new Map<string, HlsJob>();
-  private isProcessing = false;
-  private maxConcurrent = 2;
+  private maxConcurrent = 1;
   private activeWorkers = 0;
 
   // Latency & performance telemetry stats
@@ -227,87 +145,23 @@ class HlsTranscoderQueue {
     });
   }
 
-  public getJob(id: string): HlsJob | undefined {
-    return this.jobsMap.get(id);
-  }
-
-  public getAllJobs(): HlsJob[] {
-    return Array.from(this.jobsMap.values()).sort((a, b) => b.queuedAt - a.queuedAt);
-  }
-
-  public getTelemetry() {
-    return {
-      ...this.telemetry,
-      activeWorkers: this.activeWorkers,
-      queueLength: this.queue.length,
-    };
-  }
+  public getJob(id: string) { return this.jobsMap.get(id); }
+  public getAllJobs() { return Array.from(this.jobsMap.values()).sort((a, b) => b.queuedAt - a.queuedAt); }
+  public getTelemetry() { return { ...this.telemetry, activeWorkers: this.activeWorkers, queueLength: this.queue.length }; }
 
   private async processNext() {
-    if (this.activeWorkers >= this.maxConcurrent || this.queue.length === 0) {
-      return;
-    }
-
-    const task = this.queue.shift();
-    if (!task) return;
-
-    this.activeWorkers++;
-    const { job, videoBuffer, bucket, bucketName, onComplete, onError } = task;
-
-    job.status = "transcoding";
-    job.startedAt = Date.now();
-    job.progress = 20;
-
-    console.log(`⚡ [HLS Worker] Started background transcoding for job ${job.id} (${job.sourceName})...`);
-
+    if (this.activeWorkers >= this.maxConcurrent || !this.queue.length) return;
+    const task = this.queue.shift(); if (!task) return; this.activeWorkers++;
+    const { job, videoBuffer, bucket, bucketName, onComplete, onError, resolve, reject } = task;
+    job.status = "transcoding"; job.startedAt = Date.now(); job.progress = 15;
     try {
-      const result = await transcodeVideoToHLS(videoBuffer, job.id, bucket, bucketName, (progressPercent) => {
-        job.progress = progressPercent;
-        if (progressPercent > 80) {
-          job.status = "uploading_cdn";
-        }
-      });
-
-      job.status = "completed";
-      job.progress = 100;
-      job.completedAt = Date.now();
-      job.durationMs = job.completedAt - (job.startedAt || job.queuedAt);
-      job.totalSegments = result.totalSegments;
-      job.masterM3u8Url = result.masterM3u8Url;
-
-      // Update telemetry
-      this.telemetry.completedJobs++;
-      this.telemetry.totalSegmentsGenerated += result.totalSegments;
-      this.telemetry.latencies.push(job.durationMs);
-      if (this.telemetry.latencies.length > 100) this.telemetry.latencies.shift();
-      const sum = this.telemetry.latencies.reduce((a, b) => a + b, 0);
-      this.telemetry.averageLatencyMs = Math.round(sum / this.telemetry.latencies.length);
-
-      console.log(`🏁 [HLS Worker] Finished job ${job.id} in ${job.durationMs}ms with ${result.totalSegments} segments.`);
-
-      if (onComplete) {
-        try {
-          await onComplete(result);
-        } catch (callErr) {
-          console.error("Error in job onComplete callback:", callErr);
-        }
-      }
+      const result = await transcodeVideoToHLS(videoBuffer, job.id, bucket, bucketName, p => { job.progress = p; if (p >= 80) job.status = "uploading_cdn"; });
+      job.status = "completed"; job.progress = 100; job.completedAt = Date.now(); job.durationMs = job.completedAt - (job.startedAt || job.queuedAt); job.totalSegments = result.totalSegments; job.masterM3u8Url = result.masterM3u8Url;
+      this.telemetry.completedJobs++; this.telemetry.totalSegmentsGenerated += result.totalSegments; this.telemetry.latencies.push(job.durationMs); if (this.telemetry.latencies.length > 100) this.telemetry.latencies.shift(); this.telemetry.averageLatencyMs = Math.round(this.telemetry.latencies.reduce((a, b) => a + b, 0) / this.telemetry.latencies.length);
+      await onComplete?.(result); resolve?.(result);
     } catch (err: any) {
-      console.error(`❌ [HLS Worker] Failed job ${job.id}:`, err);
-      job.status = "failed";
-      job.error = err.message || String(err);
-      job.completedAt = Date.now();
-      job.durationMs = job.completedAt - (job.startedAt || job.queuedAt);
-      this.telemetry.failedJobs++;
-
-      if (onError) {
-        onError(err);
-      }
-    } finally {
-      this.activeWorkers--;
-      // Trigger next task if available
-      setImmediate(() => this.processNext());
-    }
+      job.status = "failed"; job.error = err?.message || String(err); job.completedAt = Date.now(); job.durationMs = job.completedAt - (job.startedAt || job.queuedAt); this.telemetry.failedJobs++; onError?.(err instanceof Error ? err : new Error(String(err))); reject?.(err instanceof Error ? err : new Error(String(err)));
+    } finally { this.activeWorkers--; setImmediate(() => this.processNext()); }
   }
 }
 

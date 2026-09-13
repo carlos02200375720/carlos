@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Reel, Product, User, Comment, CartItem } from "../../types";
-import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X, RefreshCw, Video, Minus, Trash2 } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X, RefreshCw, Video, Minus, Trash2, CreditCard, Check } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { AndroidVideoPlayer, AndroidVideoPlayerHandle } from "./components/AndroidVideoPlayer";
 import { AndroidProgressBar } from "./components/AndroidProgressBar";
@@ -80,8 +80,40 @@ export default function AndroidReelsView({
   const [progressVideo, setProgressVideo] = useState<HTMLVideoElement | null>(null);
   const [showCartPanel, setShowCartPanel] = useState(false);
 
+  const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>([]);
+
+  // Synchronize cart selection when cart items change
+  useEffect(() => {
+    setSelectedCartIndices((prev) => {
+      if (!cart || cart.length === 0) return [];
+      const valid = prev.filter((i) => i < cart.length);
+      if (valid.length > 0) return valid;
+      return cart.map((_, i) => i);
+    });
+  }, [cart?.length]);
+
+  const toggleSelectCartItem = (idx: number) => {
+    setSelectedCartIndices((prev) =>
+      prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+    );
+  };
+
+  const isAllSelected = (cart?.length || 0) > 0 && selectedCartIndices.length === cart.length;
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedCartIndices([]);
+    } else {
+      setSelectedCartIndices((cart || []).map((_, i) => i));
+    }
+  };
+
+  const selectedCartItems = (cart || []).filter((_, idx) => selectedCartIndices.includes(idx));
+  const selectedCartTotal = selectedCartItems.reduce((sum, item) => {
+    return sum + (item.product?.price || 0) * (item.quantity || 1);
+  }, 0);
   const totalCartCount = (cart || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
-  const cartTotal = cart.reduce((sum, item) => sum + (item.product.price * (item.quantity || 1)), 0);
+  const cartTotal = selectedCartTotal;
 
   // Track bottom navigation bar height dynamically for pixel-perfect alignment
   useEffect(() => {
@@ -135,12 +167,12 @@ export default function AndroidReelsView({
   }, [reels.length]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (showComments) return;
+    if (showComments || showCartPanel) return;
     touchStartY.current = e.touches[0].clientY;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (showComments) return;
+    if (showComments || showCartPanel) return;
     const touchEndY = e.changedTouches[0].clientY;
     const diff = touchStartY.current - touchEndY;
     const SWIPE_THRESHOLD = 45;
@@ -153,13 +185,13 @@ export default function AndroidReelsView({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (showComments) return;
+    if (showComments || showCartPanel) return;
     isMouseDownRef.current = true;
     touchStartY.current = e.clientY;
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
-    if (showComments || !isMouseDownRef.current) return;
+    if (showComments || showCartPanel || !isMouseDownRef.current) return;
     isMouseDownRef.current = false;
     const diff = touchStartY.current - e.clientY;
     const SWIPE_THRESHOLD = 45;
@@ -173,19 +205,19 @@ export default function AndroidReelsView({
   // Keyboard navigation (ArrowDown / ArrowUp)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (showComments) return;
+      if (showComments || showCartPanel) return;
       if (e.key === "ArrowDown") handleNext();
       if (e.key === "ArrowUp") handlePrev();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleNext, handlePrev, showComments]);
+  }, [handleNext, handlePrev, showComments, showCartPanel]);
 
   // Infinite mouse wheel scroll navigation
   useEffect(() => {
     let lastWheelTime = 0;
     const handleWheel = (e: WheelEvent) => {
-      if (showComments) return;
+      if (showComments || showCartPanel) return;
       const now = Date.now();
       if (now - lastWheelTime < 400) return;
       if (e.deltaY > 25) {
@@ -204,7 +236,7 @@ export default function AndroidReelsView({
     return () => {
       if (container) container.removeEventListener("wheel", handleWheel);
     };
-  }, [handleNext, handlePrev, showComments]);
+  }, [handleNext, handlePrev, showComments, showCartPanel]);
 
   if (!currentReel) {
     if (isLoading) {
@@ -242,7 +274,9 @@ export default function AndroidReelsView({
 
   const isLiked = currentReel.likedBy?.includes(currentUser?.originalId || currentUser?.id) || false;
   const isSaved = savedReelIds.includes(currentReel.id);
-  const taggedProduct = products.find((p) => p.id === (currentReel.productId || (currentReel as any).taggedProductId));
+  const taggedProduct =
+    (currentReel as any).product ||
+    products.find((p) => p.id === (currentReel.productId || (currentReel as any).taggedProductId));
   const isFollowing = currentUser?.followingUserIds?.includes(currentReel.creatorId) || false;
 
   // Resolve creator username, display name, and avatar reliably
@@ -558,24 +592,46 @@ export default function AndroidReelsView({
           )}
 
           {taggedProduct && handleProductSelect && (
-            <div
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.2 }}
               onClick={() => handleProductSelect(taggedProduct)}
-              className="mt-2 inline-flex w-auto max-w-[min(50vw,210px)] items-center rounded-2xl overflow-hidden border border-amber-400/50 bg-slate-950/60 pointer-events-auto cursor-pointer active:scale-95 transition-transform shadow-[0_8px_20px_rgba(0,0,0,0.45)]"
-              style={{ maxHeight: "calc(100vh - 10px - env(safe-area-inset-bottom))" }}
+              className="mt-2 bg-black/60 border border-white/20 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/75 hover:border-amber-500/50 active:scale-[0.98] transition-all shadow-lg overflow-hidden pointer-events-auto select-none"
+              id={`tagged-product-${currentReel.id}`}
+              style={{
+                width: "285.606px",
+                maxWidth: "100%",
+                height: "68.3438px"
+              }}
             >
-              <img
-                src={taggedProduct.imageUrl || taggedProduct.images?.[0] || ""}
-                alt={taggedProduct.name}
-                className="w-11 h-11 object-cover border-r border-white/25 bg-white/10"
-              />
-              <div className="min-w-0 flex flex-col px-2 py-1.5">
-                <span className="flex items-center gap-1 text-[11px] font-bold text-white truncate">
-                  <ShoppingBag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="truncate">{taggedProduct.name}</span>
-                </span>
-                <span className="text-[10px] font-black text-amber-300">${taggedProduct.price}</span>
+              <div className="w-20 shrink-0 h-full relative overflow-hidden bg-black/20 border-r border-white/10">
+                {taggedProduct.imageUrl || (taggedProduct.images && taggedProduct.images[0]) ? (
+                  <img
+                    src={taggedProduct.imageUrl || (taggedProduct.images && taggedProduct.images[0])}
+                    alt={taggedProduct.name}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-slate-800 text-amber-400">
+                    <ShoppingBag className="w-5 h-5" />
+                  </div>
+                )}
               </div>
-            </div>
+              <div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-transparent">
+                <span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center">
+                  <ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado
+                </span>
+                <h4 className="text-xs font-bold truncate text-slate-100">{taggedProduct.name}</h4>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-emerald-400 font-mono">
+                    ${(Number(taggedProduct.price) || 0).toFixed(2)}
+                  </span>
+                  <span className="text-[9px] text-amber-400 font-semibold">Ver detalles →</span>
+                </div>
+              </div>
+            </motion.div>
           )}
         </div>
       </div>
@@ -583,25 +639,84 @@ export default function AndroidReelsView({
       {/* Left Cart Side Panel */}
       <AnimatePresence>
         {showCartPanel && (
-          <div className="fixed inset-0 z-[60] flex items-stretch">
+          <div
+            className="fixed inset-0 z-[60] flex items-stretch"
+            onWheel={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+          >
             <motion.aside
               initial={{ x: -360, opacity: 0.8 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -360, opacity: 0.8 }}
               transition={{ type: "spring", damping: 26, stiffness: 260 }}
               className="w-[86vw] max-w-[380px] h-full bg-white text-slate-900 shadow-2xl border-r border-slate-200 overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchMove={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onMouseUp={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-amber-50" style={{ paddingTop: "max(14px, env(safe-area-inset-top))" }}>
-                <div className="flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-amber-600" />
-                  <span className="text-sm font-black text-slate-900">Carrito</span>
+              <div className="flex flex-col border-b border-slate-200 bg-amber-50 px-4 py-3 gap-2" style={{ paddingTop: "max(14px, env(safe-area-inset-top))" }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShoppingBag className="w-5 h-5 text-amber-600" />
+                    <span className="text-sm font-black text-slate-900">Carrito</span>
+                    {cart.length > 0 && (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-200/90 text-amber-950">
+                        {selectedCartIndices.length}/{cart.length}
+                      </span>
+                    )}
+                  </div>
+                  <button onClick={() => setShowCartPanel(false)} className="p-1 rounded-full hover:bg-slate-100 cursor-pointer">
+                    <X className="w-5 h-5 text-slate-500" />
+                  </button>
                 </div>
-                <button onClick={() => setShowCartPanel(false)} className="p-1 rounded-full hover:bg-slate-100">
-                  <X className="w-5 h-5 text-slate-500" />
-                </button>
+
+                {cart.length > 0 && (
+                  <div className="flex items-center justify-between pt-1 border-t border-amber-200/60">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAll}
+                      className="flex items-center gap-1.5 text-xs font-bold text-slate-800 hover:text-amber-700 transition-colors cursor-pointer select-none"
+                    >
+                      <div
+                        className={`w-4 h-4 rounded-md flex items-center justify-center transition-all ${
+                          isAllSelected
+                            ? "bg-amber-500 text-slate-950 shadow-xs"
+                            : selectedCartIndices.length > 0
+                            ? "bg-amber-200 text-amber-900"
+                            : "border border-slate-300 bg-white"
+                        }`}
+                      >
+                        {isAllSelected ? (
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        ) : selectedCartIndices.length > 0 ? (
+                          <div className="w-1.5 h-1.5 bg-amber-900 rounded-xs" />
+                        ) : null}
+                      </div>
+                      <span className="text-[11px]">
+                        {isAllSelected ? "Deseleccionar todo" : "Seleccionar todo"}
+                      </span>
+                    </button>
+                    <span className="text-[10.5px] font-extrabold text-amber-800">
+                      {selectedCartIndices.length} para pagar
+                    </span>
+                  </div>
+                )}
               </div>
 
-              <div className="flex-1 overflow-y-auto px-4 py-3">
+              <div
+                className="flex-1 overflow-y-auto px-4 py-3 overscroll-contain"
+                style={{ touchAction: "pan-y" }}
+                onWheel={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchMove={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
+              >
                 {cart.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-12">
                     <ShoppingBag className="w-10 h-10 text-slate-300" />
@@ -610,61 +725,126 @@ export default function AndroidReelsView({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {cart.map((item, idx) => (
-                      <div key={`${item.product.id}-${idx}`} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                        <img src={item.product.imageUrl} alt={item.product.name} className="w-14 h-14 rounded-xl object-cover border border-slate-200" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[11px] font-black text-slate-900 truncate">{item.product.name}</p>
-                          <p className="text-[10px] font-bold text-amber-600 mt-1">${item.product.price.toFixed(2)}</p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <button
-                              onClick={() => {
-                                const newQty = Math.max(1, (item.quantity || 1) - 1);
-                                if (onUpdateCartQuantity) onUpdateCartQuantity(item.product.id, newQty, idx);
-                                else if (onRemoveFromCart) onRemoveFromCart(item.product.id, idx);
-                              }}
-                              className="p-1 rounded-full bg-slate-200 text-slate-700"
+                    {cart.map((item, idx) => {
+                      const isSelected = selectedCartIndices.includes(idx);
+                      return (
+                        <div
+                          key={`${item.product.id}-${idx}`}
+                          className={`flex items-center gap-2.5 rounded-2xl border p-2.5 transition-all ${
+                            isSelected
+                              ? "border-amber-300/90 bg-amber-50/50 shadow-xs ring-1 ring-amber-400/30"
+                              : "border-slate-200 bg-slate-50/60 opacity-60 hover:opacity-80"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleSelectCartItem(idx)}
+                            aria-label={isSelected ? "Deseleccionar producto" : "Seleccionar producto"}
+                            className="shrink-0 p-0.5 cursor-pointer"
+                          >
+                            <div
+                              className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all ${
+                                isSelected
+                                  ? "bg-amber-500 text-slate-950 shadow-xs font-black"
+                                  : "border-2 border-slate-300 bg-white hover:border-amber-400"
+                              }`}
                             >
-                              <Minus className="w-3 h-3" />
-                            </button>
-                            <span className="text-[11px] font-bold text-slate-900 w-5 text-center">{item.quantity || 1}</span>
-                            <button
-                              onClick={() => {
-                                if (onUpdateCartQuantity) onUpdateCartQuantity(item.product.id, (item.quantity || 1) + 1, idx);
-                              }}
-                              className="p-1 rounded-full bg-slate-200 text-slate-700"
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (onRemoveFromCart) onRemoveFromCart(item.product.id, idx);
-                              }}
-                              className="ml-auto p-1 rounded-full text-rose-500 hover:bg-rose-50"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                            </div>
+                          </button>
+
+                          <img
+                            src={item.product.imageUrl}
+                            alt={item.product.name}
+                            className="w-14 h-14 rounded-xl object-cover border border-slate-200 shrink-0"
+                          />
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-1">
+                              <p className="text-[11px] font-black text-slate-900 truncate">{item.product.name}</p>
+                              <span
+                                className={`text-[9px] font-black px-1.5 py-0.5 rounded-md shrink-0 ${
+                                  isSelected ? "bg-amber-100 text-amber-900" : "bg-slate-200 text-slate-500"
+                                }`}
+                              >
+                                {isSelected ? "A pagar" : "Omitido"}
+                              </span>
+                            </div>
+                            <p className="text-[10px] font-bold text-amber-600 mt-0.5">${item.product.price.toFixed(2)} c/u</p>
+                            <div className="flex items-center gap-2 mt-2">
+                              <button
+                                onClick={() => {
+                                  const newQty = Math.max(1, (item.quantity || 1) - 1);
+                                  if (onUpdateCartQuantity) onUpdateCartQuantity(item.product.id, newQty, idx);
+                                  else if (onRemoveFromCart) onRemoveFromCart(item.product.id, idx);
+                                }}
+                                className="p-1 rounded-full bg-slate-200 text-slate-700 active:scale-90 transition-transform cursor-pointer"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="text-[11px] font-bold text-slate-900 w-5 text-center">{item.quantity || 1}</span>
+                              <button
+                                onClick={() => {
+                                  if (onUpdateCartQuantity) onUpdateCartQuantity(item.product.id, (item.quantity || 1) + 1, idx);
+                                }}
+                                className="p-1 rounded-full bg-slate-200 text-slate-700 active:scale-90 transition-transform cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (onRemoveFromCart) onRemoveFromCart(item.product.id, idx);
+                                }}
+                                className="ml-auto p-1 rounded-full text-rose-500 hover:bg-rose-50 active:scale-90 transition-colors cursor-pointer"
+                                title="Eliminar del carrito"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
               <div className="border-t border-slate-200 bg-white px-4 py-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 5px)" }}>
                 <div className="flex items-center justify-between text-sm font-black text-slate-900">
-                  <span>Total</span>
-                  <span className="text-amber-600">${cartTotal.toFixed(2)}</span>
+                  <div className="flex flex-col">
+                    <span>Total a pagar</span>
+                    <span className="text-[10px] font-bold text-slate-500">
+                      {selectedCartItems.length} de {cart.length} {cart.length === 1 ? "artículo" : "artículos"}
+                    </span>
+                  </div>
+                  <span className="text-amber-600 text-base font-black">${cartTotal.toFixed(2)}</span>
                 </div>
                 <button
+                  type="button"
+                  id="android-reels-cart-checkout-btn"
+                  disabled={cart.length > 0 && selectedCartItems.length === 0}
                   onClick={() => {
                     setShowCartPanel(false);
-                    if (onNavigateToShop) onNavigateToShop();
+                    if (cart.length > 0 && onNavigateToCheckout) {
+                      onNavigateToCheckout(selectedCartIndices);
+                    } else if (onNavigateToShop) {
+                      onNavigateToShop();
+                    }
                   }}
-                  className="mt-3 w-full rounded-2xl bg-slate-950 text-white font-black text-xs py-3 active:scale-95"
+                  className={`mt-3 w-full rounded-2xl font-black text-xs py-3.5 shadow-lg transition-all flex items-center justify-center space-x-2 ${
+                    cart.length > 0 && selectedCartItems.length === 0
+                      ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                      : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 active:scale-[0.98] cursor-pointer"
+                  }`}
                 >
-                  Ver tienda
+                  <CreditCard className="w-4 h-4" />
+                  <span>
+                    {cart.length === 0
+                      ? "Ver tienda"
+                      : selectedCartItems.length === 0
+                      ? "Selecciona productos para pagar"
+                      : `Completar Compra (${selectedCartItems.length}) - $${cartTotal.toFixed(2)}`}
+                  </span>
                 </button>
               </div>
             </motion.aside>

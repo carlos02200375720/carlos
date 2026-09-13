@@ -1524,7 +1524,13 @@ async function startServer() {
 
   // Toggle save/unsave a reel
   app.post("/api/users/current/save", async (req, res) => {
-    const { reelId, userId, username } = req.body;
+    const { reelId, productId, id, userId, username } = req.body;
+    const targetItemId = reelId || productId || id;
+    if (!targetItemId) {
+      res.status(400).json({ error: "ID de publicación o producto requerido." });
+      return;
+    }
+
     let currentUserObj: any = null;
     
     if (mongoose.connection.readyState === 1) {
@@ -1551,12 +1557,12 @@ async function startServer() {
       currentUserObj.savedReelIds = [];
     }
 
-    const index = currentUserObj.savedReelIds.indexOf(reelId);
+    const index = currentUserObj.savedReelIds.indexOf(targetItemId);
     let saved = false;
     if (index > -1) {
       currentUserObj.savedReelIds.splice(index, 1);
     } else {
-      currentUserObj.savedReelIds.push(reelId);
+      currentUserObj.savedReelIds.push(targetItemId);
       saved = true;
     }
 
@@ -1567,8 +1573,8 @@ async function startServer() {
       );
     }
 
-    // Update saves count on target reel
-    const reel = reels.find((r) => r.id === reelId);
+    // Update saves count on target reel if it's a reel
+    const reel = reels.find((r) => r.id === targetItemId);
     let newSavesCount = 0;
     if (reel) {
       if (saved) {

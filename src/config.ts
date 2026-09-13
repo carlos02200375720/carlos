@@ -50,22 +50,12 @@ export const isNativeMobileWrapper = (): boolean => {
     return true;
   }
 
-  // 4. Android native webview / Capacitor localhost hosting / Android device browser
-  if (typeof navigator !== "undefined") {
+  // 4. In native Android webview or standalone app wrapper (not a standard web browser on http/https)
+  if (typeof navigator !== "undefined" && !proto.startsWith("http")) {
     const ua = navigator.userAgent || "";
-    if (/Android/i.test(ua) || (window.location.hostname === "localhost" && /Android/i.test(ua))) {
+    if (/Android/i.test(ua)) {
       return true;
     }
-  }
-
-  // 5. URL parameter override or explicit build target
-  if (typeof window !== "undefined" && window.location.search.includes("platform=android")) {
-    return true;
-  }
-
-  // 6. Explicit Android build target
-  if ((import.meta as any).env?.VITE_APP_TARGET === "android") {
-    return true;
   }
 
   return false;

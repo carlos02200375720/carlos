@@ -27,5 +27,3 @@ if (rootElement) {
     </StrictMode>,
   );
 }
-
-

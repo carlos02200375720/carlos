@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect, useCallback } from "react";
-import { Play, Pause, Volume2, VolumeX } from "lucide-react";
+import { Play, Pause } from "lucide-react";
 import Hls from "hls.js";
 
 export interface AndroidVideoPlayerHandle {
@@ -12,8 +12,9 @@ export interface AndroidVideoPlayerHandle {
 }
 
 export interface AndroidVideoPlayerProps {
-  src: string;
-  hlsUrl?: string;
+  /** Kept only for caller compatibility. It is never assigned to the video element. */
+  src?: string;
+  hlsUrl: string;
   poster?: string;
   autoPlay?: boolean;
   loop?: boolean;
@@ -31,16 +32,9 @@ export interface AndroidVideoPlayerProps {
   onVideoReady?: (video: HTMLVideoElement | null) => void;
 }
 
-/**
- * Android Native Video Player Component
- * Optimized for Android Chrome and Android WebView (Capacitor/Cordova)
- * Handles native HTML5 MP4 playback with AAC audio decoding and HLS fallback.
- * Dynamically supports Vertical (100% full bleed above nav bar), Horizontal (16:9 landscape), and Square (1:1).
- */
 export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVideoPlayerProps>(
   (
     {
-      src,
       hlsUrl,
       poster,
       autoPlay = true,
@@ -62,314 +56,237 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
   ) => {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const hlsRef = useRef<Hls | null>(null);
-    const [isPlaying, setIsPlaying] = useState(autoPlay);
+    const [isPlaying, setIsPlaying] = useState(false);
     const [isMuted, setIsMuted] = useState(muted);
     const [showTapIndicator, setShowTapIndicator] = useState(false);
-    const [detectedAspect, setDetectedAspect] = useState<'vertical' | 'horizontal' | 'square'>(
-      aspectRatio || 'vertical'
-    );
+    const [detectedAspect, setDetectedAspect] = useState<'vertical' | 'horizontal' | 'square'>(aspectRatio || 'vertical');
     const lastTapTimeRef = useRef<number>(0);
+    const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Evaluate effective aspect ratio: prop takes precedence if specified, otherwise auto-detected
-    const effectiveAspect = aspectRatio || detectedAspect || 'vertical';
+    const effectiveAspect = detectedAspect;
 
-    // Auto-detect video dimensions and aspect ratio
     const checkVideoDimensions = useCallback(() => {
       const video = videoRef.current;
       if (!video) return;
-      const w = video.videoWidth || 0;
-      const h = video.videoHeight || 0;
-      if (w > 0 && h > 0) {
-        const ratio = w / h;
-        let detected: 'vertical' | 'horizontal' | 'square' = 'vertical';
-        if (ratio < 0.85) {
-          detected = 'vertical';
-        } else if (ratio > 1.18) {
-          detected = 'horizontal';
-        } else {
-          detected = 'square';
-        }
-        setDetectedAspect(detected);
-        onAspectRatioDetected?.(detected, ratio);
-      }
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      if (!w || !h) return;
+      const ratio = w / h;
+      const detected: 'vertical' | 'horizontal' | 'square' = ratio < 0.85 ? 'vertical' : ratio > 1.18 ? 'horizontal' : 'square';
+      setDetectedAspect((previous) => previous === detected ? previous : detected);
+      onAspectRatioDetected?.(detected, ratio);
     }, [onAspectRatioDetected]);
 
-    // Sync external muted prop
+    const safePlay = useCallback(async () => {
+      const video = videoRef.current;
+      if (!video || !isCurrent) return;
+      try {
+        await video.play();
+        setIsPlaying(true);
+      } catch {
+        video.muted = true;
+        setIsMuted(true);
+        onMuteChange?.(true);
+        try {
+          await video.play();
+          setIsPlaying(true);
+        } catch {}
+      }
+    }, [isCurrent, onMuteChange]);
+
+    useImperativeHandle(ref, () => ({
+      getVideoElement: () => videoRef.current,
+      play: safePlay,
+      pause: () => {
+        videoRef.current?.pause();
+        setIsPlaying(false);
+      },
+      togglePlay: () => {
+        const video = videoRef.current;
+        if (!video) return;
+        if (video.paused) safePlay();
+        else {
+          video.pause();
+          setIsPlaying(false);
+        }
+      },
+      toggleMute: () => {
+        const video = videoRef.current;
+        if (!video) return;
+        const next = !video.muted;
+        video.muted = next;
+        setIsMuted(next);
+        onMuteChange?.(next);
+        if (!next) safePlay();
+      },
+      unmute: () => {
+        const video = videoRef.current;
+        if (!video) return;
+        video.muted = false;
+        video.volume = 1;
+        setIsMuted(false);
+        onMuteChange?.(false);
+        safePlay();
+      },
+    }), [safePlay, onMuteChange]);
+
     useEffect(() => {
       setIsMuted(muted);
       if (videoRef.current) {
         videoRef.current.muted = muted;
-        if (!muted) {
-          videoRef.current.volume = 1.0;
-        }
+        videoRef.current.defaultMuted = muted;
+        videoRef.current.volume = muted ? 0 : 1;
       }
     }, [muted]);
 
-    useImperativeHandle(ref, () => ({
-      getVideoElement: () => videoRef.current,
-      play: async () => {
-        if (videoRef.current) {
-          try {
-            await videoRef.current.play();
-            setIsPlaying(true);
-          } catch {}
-        }
-      },
-      pause: () => {
-        if (videoRef.current) {
-          videoRef.current.pause();
-          setIsPlaying(false);
-        }
-      },
-      togglePlay: () => {
-        if (videoRef.current) {
-          if (videoRef.current.paused) {
-            videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-          } else {
-            videoRef.current.pause();
-            setIsPlaying(false);
-          }
-        }
-      },
-      toggleMute: () => {
-        if (videoRef.current) {
-          const next = !videoRef.current.muted;
-          videoRef.current.muted = next;
-          if (!next) {
-            videoRef.current.volume = 1.0;
-            videoRef.current.play().catch(() => {});
-          }
-          setIsMuted(next);
-          onMuteChange?.(next);
-        }
-      },
-      unmute: () => {
-        if (videoRef.current) {
-          videoRef.current.muted = false;
-          videoRef.current.volume = 1.0;
-          setIsMuted(false);
-          videoRef.current.play().catch(() => {});
-          onMuteChange?.(false);
-        }
-      },
-    }));
+    useEffect(() => {
+      setDetectedAspect(aspectRatio || 'vertical');
+    }, [hlsUrl, aspectRatio]);
 
-    // Choose proper media source (Direct MP4 vs HLS .m3u8)
-    const mediaSource = React.useMemo(() => {
-      // Prioritize direct mp4 / webm source for native audio reproduction
-      if (src && (src.includes(".mp4") || src.includes(".webm") || src.startsWith("blob:") || !hlsUrl)) {
-        return src.trim();
-      }
-      if (hlsUrl && hlsUrl.includes(".m3u8")) {
-        return hlsUrl.trim();
-      }
-      return (src || hlsUrl || "").trim();
-    }, [src, hlsUrl]);
+    const handleVideoRef = useCallback((el: HTMLVideoElement | null) => {
+      videoRef.current = el;
+      onVideoReady?.(el);
+    }, [onVideoReady]);
 
     useEffect(() => {
       const video = videoRef.current;
-      if (video) {
-        onVideoReady?.(video);
-      }
+      const mediaSource = hlsUrl.trim();
+      if (!video || !mediaSource || !mediaSource.includes('.m3u8')) return;
 
-      return () => {
-        onVideoReady?.(null);
-      };
-    }, [onVideoReady, mediaSource]);
+      hlsRef.current?.destroy();
+      hlsRef.current = null;
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
 
-    // Media Setup & Lifecycle
-    useEffect(() => {
-      const video = videoRef.current;
-      if (!video || !mediaSource) return;
-
-      // Clean up any existing HLS instance
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-
-      const isM3u8 = mediaSource.includes(".m3u8");
-
-      if (isM3u8 && Hls.isSupported()) {
+      if (Hls.isSupported()) {
         const hls = new Hls({
           enableWorker: true,
-          lowLatencyMode: true,
-          backBufferLength: 30,
+          lowLatencyMode: false,
+          backBufferLength: 6,
+          maxBufferLength: 20,
+          capLevelToPlayerSize: true,
+          startLevel: 0,
+          abrEwmaDefaultEstimate: 650000,
+          abrBandWidthFactor: 0.8,
+          abrBandWidthUpFactor: 0.7,
+          fragLoadingMaxRetry: 3,
+          fragLoadingRetryDelay: 500,
         });
         hlsRef.current = hls;
         hls.loadSource(mediaSource);
         hls.attachMedia(video);
+
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          if (isCurrent) {
-            video.muted = isMuted;
-            video.play().catch(() => {
-              // If browser blocks audio autoplay on mobile, mute and retry
-              video.muted = true;
-              setIsMuted(true);
-              video.play().catch(() => {});
-            });
+          if (isCurrent && autoPlay) safePlay();
+        });
+
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (!data.fatal) return;
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+          else {
+            hls.destroy();
+            hlsRef.current = null;
           }
         });
-      } else {
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS (for browsers that support application/vnd.apple.mpegurl).
+        // This is still HLS; there is deliberately no MP4 fallback.
         video.src = mediaSource;
-        if (isCurrent) {
-          video.muted = isMuted;
-          if (!isMuted) {
-            video.volume = 1.0;
-          }
-          const p = video.play();
-          if (p !== undefined) {
-            p.then(() => setIsPlaying(true)).catch(() => {
-              // Autoplay with sound restricted by mobile browser policy: fallback to muted play
-              video.muted = true;
-              setIsMuted(true);
-              onMuteChange?.(true);
-              video.play().then(() => setIsPlaying(true)).catch(() => {});
-            });
-          }
-        }
       }
 
       return () => {
-        if (hlsRef.current) {
-          hlsRef.current.destroy();
-          hlsRef.current = null;
-        }
+        hlsRef.current?.destroy();
+        hlsRef.current = null;
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
       };
-    }, [mediaSource]);
+    }, [hlsUrl, isCurrent, autoPlay, safePlay]);
 
-    // Synchronize play/pause with isCurrent state
     useEffect(() => {
       const video = videoRef.current;
       if (!video) return;
-
       if (isCurrent) {
         video.muted = isMuted;
-        if (!isMuted) video.volume = 1.0;
-        const p = video.play();
-        if (p !== undefined) {
-          p.then(() => setIsPlaying(true)).catch(() => {
-            // Autoplay with audio restricted by browser: mute and play
-            video.muted = true;
-            setIsMuted(true);
-            onMuteChange?.(true);
-            video.play().then(() => setIsPlaying(true)).catch(() => {});
-          });
-        }
+        video.defaultMuted = isMuted;
+        video.volume = isMuted ? 0 : 1;
+        if (autoPlay) safePlay();
       } else {
         video.pause();
         setIsPlaying(false);
+        video.removeAttribute('src');
+        video.load();
       }
-    }, [isCurrent]);
+    }, [isCurrent, autoPlay, isMuted, safePlay]);
 
-    const handleTap = (e: React.MouseEvent | React.TouchEvent) => {
+    useEffect(() => () => {
+      if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+      hlsRef.current?.destroy();
+      hlsRef.current = null;
+      videoRef.current?.pause();
+    }, []);
+
+    const handleTap = () => {
       const now = Date.now();
-      const DOUBLE_TAP_DELAY = 300;
-      if (now - lastTapTimeRef.current < DOUBLE_TAP_DELAY) {
-        // Double tap
+      if (now - lastTapTimeRef.current < 300) {
         lastTapTimeRef.current = 0;
-        if (onDoubleTap) {
-          onDoubleTap();
-          return;
-        }
+        onDoubleTap?.();
+        return;
       }
       lastTapTimeRef.current = now;
 
-      // Single tap
-      const video = videoRef.current;
-      if (video) {
-        // If muted due to browser autoplay policy, tapping the video immediately enables audio!
-        if (video.muted || isMuted) {
-          video.muted = false;
-          video.volume = 1.0;
-          setIsMuted(false);
-          onMuteChange?.(false);
-          video.play().catch(() => {});
-          setShowTapIndicator(true);
-          setTimeout(() => setShowTapIndicator(false), 600);
-          return;
+      if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = setTimeout(() => {
+        const video = videoRef.current;
+        if (!video) return;
+        if (video.paused) safePlay();
+        else if (onClick) onClick();
+        else {
+          video.pause();
+          setIsPlaying(false);
         }
-
-        if (onClick) {
-          onClick();
-        } else {
-          if (video.paused) {
-            video.play().then(() => setIsPlaying(true)).catch(() => {});
-          } else {
-            video.pause();
-            setIsPlaying(false);
-          }
-          setShowTapIndicator(true);
-          setTimeout(() => setShowTapIndicator(false), 600);
-        }
-      }
+        setShowTapIndicator(true);
+        tapTimerRef.current = setTimeout(() => setShowTapIndicator(false), 450);
+      }, 280);
     };
 
     return (
-      <div
-        className={`relative w-full h-full flex flex-col items-center justify-center overflow-hidden bg-black ${className}`}
-        onClick={handleTap}
-        id="android-video-player-container"
-      >
-        {/* Ambient Blurred Backdrop for Horizontal and Square Videos to eliminate harsh black voids */}
-        {effectiveAspect !== "vertical" && (
-          <div
-            className="absolute inset-0 overflow-hidden pointer-events-none opacity-30 filter blur-3xl scale-125 select-none"
-            aria-hidden="true"
-          >
-            {poster ? (
-              <img src={poster} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-b from-slate-900 via-slate-800 to-black" />
-            )}
-          </div>
+      <div className={`relative w-full h-full flex flex-col items-center justify-center overflow-hidden bg-black ${className}`} onClick={handleTap}>
+        {effectiveAspect !== 'vertical' && poster && (
+          <img src={poster} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20 blur-3xl scale-110 pointer-events-none" aria-hidden="true" />
         )}
 
-        {/* Dynamic Video Frame: Vertical (100% full bleed above nav), Horizontal (16:9 edge-to-edge), or Square (1:1) */}
-        <div
-          className={
-            effectiveAspect === "vertical"
-              ? "w-full h-full flex items-center justify-center relative overflow-hidden"
-              : effectiveAspect === "horizontal"
-              ? "w-full max-h-[calc(100vh-120px)] relative z-10 flex items-center justify-center my-auto px-0 rounded-none overflow-hidden"
-              : "w-full max-w-[min(94vw,calc(100vh-160px))] aspect-square relative z-10 mx-auto flex items-center justify-center my-auto rounded-2xl overflow-hidden shadow-2xl border border-white/10"
-          }
-        >
+        <div className={effectiveAspect === 'vertical' ? 'w-full h-full flex items-center justify-center relative overflow-hidden' : effectiveAspect === 'horizontal' ? 'w-full max-h-[calc(100vh-120px)] relative z-10 flex items-center justify-center my-auto overflow-hidden' : 'w-full max-w-[min(94vw,calc(100vh-160px))] aspect-square relative z-10 mx-auto flex items-center justify-center my-auto overflow-hidden'}>
           <video
-            ref={videoRef}
+            ref={handleVideoRef}
             poster={poster}
+            autoPlay={autoPlay && isCurrent}
             loop={loop}
             muted={isMuted}
             playsInline
             disablePictureInPicture
             webkit-playsinline="true"
-            preload="auto"
-            className={
-              effectiveAspect === "vertical"
-                ? "w-full h-full object-cover"
-                : effectiveAspect === "horizontal"
-                ? "w-full max-h-full aspect-video object-cover rounded-none shadow-none"
-                : "w-full h-full object-cover"
-            }
+            preload="none"
+            className={effectiveAspect === 'vertical' ? 'w-full h-full object-cover' : effectiveAspect === 'horizontal' ? 'w-full max-h-full aspect-video object-contain' : 'w-full h-full object-contain'}
             onLoadedMetadata={checkVideoDimensions}
             onLoadedData={checkVideoDimensions}
-            onEnded={onEnded}
-            onPlay={() => {
+            onCanPlay={() => {
               checkVideoDimensions();
-              setIsPlaying(true);
-              onPlay?.();
+              if (isCurrent && videoRef.current?.paused && autoPlay) safePlay();
             }}
-            onPause={() => {
-              setIsPlaying(false);
-              onPause?.();
-            }}
+            onWaiting={() => setIsPlaying(false)}
+            onPlaying={() => setIsPlaying(true)}
+            onEnded={onEnded}
+            onPlay={() => { setIsPlaying(true); onPlay?.(); }}
+            onPause={() => { setIsPlaying(false); onPause?.(); }}
           />
         </div>
 
-        {/* Tap Feedback Indicator for Android */}
         {showTapIndicator && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-            <div className="w-16 h-16 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white scale-105 transition-transform shadow-lg">
+            <div className="w-16 h-16 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white shadow-lg">
               {isPlaying ? <Play className="w-8 h-8 fill-white" /> : <Pause className="w-8 h-8 fill-white" />}
             </div>
           </div>
@@ -379,4 +296,4 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
   }
 );
 
-AndroidVideoPlayer.displayName = "AndroidVideoPlayer";
+AndroidVideoPlayer.displayName = 'AndroidVideoPlayer';

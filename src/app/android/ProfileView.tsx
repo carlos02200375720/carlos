@@ -71,6 +71,7 @@ export default function AndroidProfileView({
     currentUser;
 
   const [activeTab, setActiveTab] = useState<TabType>("reels");
+  const [savedSubTab, setSavedSubTab] = useState<"all" | "products" | "reels">("all");
   const [selectedFeedReelId, setSelectedFeedReelId] = useState<string | null>(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isPublishingOpen, setIsPublishingOpen] = useState(false);
@@ -173,7 +174,29 @@ export default function AndroidProfileView({
     });
   }, [products, activeUser.id, activeUser.originalId, activeUser.username, isMe, currentUser.username]);
 
-  const savedReels = reels.filter((r) => savedReelIds.includes(r.id));
+  const savedReels = React.useMemo(() => {
+    const allCandidates = [...reels, ...extraPublications];
+    const map = new Map<string, Reel>();
+    allCandidates.forEach((r) => {
+      if (savedReelIds.includes(r.id) && !map.has(r.id)) {
+        map.set(r.id, r);
+      }
+    });
+    return Array.from(map.values());
+  }, [reels, extraPublications, savedReelIds]);
+
+  const savedProducts = React.useMemo(() => {
+    const seen = new Set<string>();
+    return products.filter((p) => {
+      if (savedReelIds.includes(p.id) && !seen.has(p.id)) {
+        seen.add(p.id);
+        return true;
+      }
+      return false;
+    });
+  }, [products, savedReelIds]);
+
+  const totalSavedCount = savedReels.length + savedProducts.length;
   const userOrders = orders.filter((o) => o.buyerId === activeUser.id || o.buyerId === currentUser.id);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -417,28 +440,174 @@ export default function AndroidProfileView({
         )}
 
         {activeTab === "saved" && (
-          <div className="grid grid-cols-3 gap-2">
-            {savedReels.length === 0 ? (
-              <div className="col-span-3 py-16 text-center text-xs text-slate-400">
-                No tienes Reels guardados en Android.
+          <div className="space-y-3">
+            {/* Filter Pills */}
+            <div className="flex items-center space-x-1.5 pb-1 overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                id="android-saved-filter-all"
+                onClick={() => setSavedSubTab("all")}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  savedSubTab === "all"
+                    ? "bg-amber-500 text-slate-950 shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                Todos ({totalSavedCount})
+              </button>
+              <button
+                type="button"
+                id="android-saved-filter-products"
+                onClick={() => setSavedSubTab("products")}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 flex items-center space-x-1.5 cursor-pointer ${
+                  savedSubTab === "products"
+                    ? "bg-amber-500 text-slate-950 shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>Productos ({savedProducts.length})</span>
+              </button>
+              <button
+                type="button"
+                id="android-saved-filter-reels"
+                onClick={() => setSavedSubTab("reels")}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 flex items-center space-x-1.5 cursor-pointer ${
+                  savedSubTab === "reels"
+                    ? "bg-amber-500 text-slate-950 shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                <Grid className="w-3.5 h-3.5" />
+                <span>Reels ({savedReels.length})</span>
+              </button>
+            </div>
+
+            {totalSavedCount === 0 ? (
+              <div className="py-16 text-center text-xs text-slate-400 flex flex-col items-center">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-2.5 text-slate-400">
+                  <Bookmark className="w-6 h-6" />
+                </div>
+                <p className="font-bold text-slate-700">No tienes publicaciones ni productos guardados</p>
+                <p className="text-[11px] text-slate-400 mt-1 max-w-xs text-center">
+                  Guarda productos en la tienda o reels tocando el icono de guardado para encontrarlos aquí fácilmente.
+                </p>
               </div>
             ) : (
-              savedReels.map((reel) => (
-                <div
-                  key={reel.id}
-                  onClick={() => {
-                    if (onSelectReel) onSelectReel(reel);
-                    setSelectedFeedReelId(reel.id);
-                  }}
-                  className="relative aspect-[9/16] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 cursor-pointer active:scale-95 transition-transform"
-                >
-                  <img
-                    src={reel.thumbnailUrl || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80"}
-                    alt={reel.description || "Reel"}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              ))
+              <div className="space-y-4">
+                {/* Saved Products */}
+                {(savedSubTab === "all" || savedSubTab === "products") && savedProducts.length > 0 && (
+                  <div>
+                    {savedSubTab === "all" && (
+                      <div className="flex items-center space-x-1.5 text-xs font-bold text-slate-800 mb-2">
+                        <ShoppingBag className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Productos guardados ({savedProducts.length})</span>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {savedProducts.map((p) => (
+                        <div
+                          key={p.id}
+                          id={`android-saved-product-card-${p.id}`}
+                          onClick={() => onSelectProduct?.(p)}
+                          className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between active:scale-[0.98] transition-transform cursor-pointer shadow-xs hover:border-amber-300"
+                        >
+                          <div className="relative w-full aspect-square overflow-hidden bg-slate-100">
+                            <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                            <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-[9px] font-bold text-amber-400">
+                              {p.category || "Tienda"}
+                            </span>
+                            {onToggleSaveReel && (
+                              <button
+                                type="button"
+                                id={`android-unsave-prod-${p.id}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onToggleSaveReel(p.id);
+                                }}
+                                className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-amber-400 hover:bg-black/80 active:scale-90 transition-transform"
+                                title="Quitar de guardados"
+                                aria-label="Quitar de guardados"
+                              >
+                                <Bookmark className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="p-2.5">
+                            <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{p.name}</h4>
+                            <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5">{p.description}</p>
+                            <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100">
+                              <span className="text-xs font-black text-amber-600">${p.price.toFixed(2)}</span>
+                              <span className="text-[9px] font-bold text-slate-400">Ver detalles</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Saved Reels */}
+                {(savedSubTab === "all" || savedSubTab === "reels") && savedReels.length > 0 && (
+                  <div>
+                    {savedSubTab === "all" && (
+                      <div className="flex items-center space-x-1.5 text-xs font-bold text-slate-800 mb-2">
+                        <Grid className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Reels guardados ({savedReels.length})</span>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-3 gap-2">
+                      {savedReels.map((reel) => (
+                        <div
+                          key={reel.id}
+                          id={`android-saved-reel-card-${reel.id}`}
+                          onClick={() => {
+                            if (onSelectReel) onSelectReel(reel);
+                            setSelectedFeedReelId(reel.id);
+                          }}
+                          className="relative aspect-[9/16] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 cursor-pointer active:scale-95 transition-transform group"
+                        >
+                          <img
+                            src={reel.thumbnailUrl || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80"}
+                            alt={reel.description || "Reel"}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2">
+                            <span className="text-[10px] font-bold text-white line-clamp-1">{reel.description || "Reel"}</span>
+                          </div>
+                          {onToggleSaveReel && (
+                            <button
+                              type="button"
+                              id={`android-unsave-reel-${reel.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleSaveReel(reel.id);
+                              }}
+                              className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/60 backdrop-blur-xs text-amber-400 hover:bg-black/80"
+                              title="Quitar de guardados"
+                              aria-label="Quitar de guardados"
+                            >
+                              <Bookmark className="w-3 h-3 fill-amber-400 text-amber-400" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {savedSubTab === "products" && savedProducts.length === 0 && (
+                  <div className="py-12 text-center text-xs text-slate-400">
+                    No tienes productos guardados en tu perfil.
+                  </div>
+                )}
+
+                {savedSubTab === "reels" && savedReels.length === 0 && (
+                  <div className="py-12 text-center text-xs text-slate-400">
+                    No tienes Reels guardados en tu perfil.
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}

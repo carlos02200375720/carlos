@@ -121,6 +121,7 @@ export default function AndroidApp({
   const isDarkNavActive = activeTab === 'reels';
   const [navBarHeight, setNavBarHeight] = React.useState(56);
   const [cartDrawerRequest, setCartDrawerRequest] = React.useState(0);
+  const [isCartPageOpen, setIsCartPageOpen] = React.useState(false);
 
   React.useEffect(() => {
     const updateNavHeight = () => {
@@ -228,6 +229,7 @@ export default function AndroidApp({
                   setActiveTab('profile');
                 }}
                 onToggleDetailView={setIsProductDetailOpen}
+                onToggleCart={setIsCartPageOpen}
                 initialStep={shopInitialStep}
                 initialSelectedCartIndices={shopInitialSelectedIndices}
                 onClearInitialStep={() => {
@@ -235,6 +237,8 @@ export default function AndroidApp({
                   setShopInitialSelectedIndices([]);
                 }}
                 cartDrawerRequest={cartDrawerRequest}
+                savedReelIds={savedReelIds}
+                onToggleSave={handleToggleSaveReel}
               />
             )}
 
@@ -314,7 +318,7 @@ export default function AndroidApp({
       </main>
 
       {/* Android Material Design Navigation Bar */}
-      {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && (
+      {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && !(activeTab === 'shop' && isCartPageOpen) && (
         <div
           id="android-bottom-nav-bar"
           className={`fixed bottom-0 inset-x-0 pt-1 px-1 z-30 transition-colors shadow-[0_-2px_10px_rgba(0,0,0,0.15)] ${

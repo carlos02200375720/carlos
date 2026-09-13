@@ -89,16 +89,13 @@ const UserReelVideo = memo(function UserReelVideo({
     }
   }, [isCurrent, isPlaying, isMuted]);
 
-  // Clean unmount to release GPU decoders
+  // Clean unmount - pause video safely
   useEffect(() => {
     return () => {
       const video = videoRef.current;
       if (video) {
         try {
           video.pause();
-          video.muted = true;
-          video.removeAttribute("src");
-          video.load(); // Vital: immediately releases hardware decoder context in browser/OS
         } catch {}
       }
       onRegisterRef(index, null);
@@ -227,7 +224,7 @@ export default function UserPublicationsFeed({
     }
   }, []);
 
-  // Stop and release all video instances on unmount to eliminate background audio
+  // Stop all video instances on unmount to eliminate background audio
   useEffect(() => {
     return () => {
       Object.keys(videoRefs.current).forEach((key) => {
@@ -235,9 +232,6 @@ export default function UserPublicationsFeed({
         if (v) {
           try {
             v.pause();
-            v.muted = true;
-            v.removeAttribute("src");
-            v.load();
           } catch {}
         }
       });

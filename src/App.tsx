@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { User as UserIcon, Camera, Upload, AlertTriangle } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession } from "./types";
@@ -22,9 +22,9 @@ export default function App() {
   // Navigation states: 'reels' | 'shop' | 'messages' | 'profile'
   const [activeTab, setActiveTab] = useState<'reels' | 'shop' | 'messages' | 'profile'>('reels');
 
-  // Stop all media playback when switching tabs (reels, shop, messages, profile)
+  // Stop all media playback when switching away from reels tab (shop, messages, profile)
   useEffect(() => {
-    if (typeof document !== "undefined") {
+    if (activeTab !== 'reels' && typeof document !== "undefined") {
       document.querySelectorAll("video").forEach((v) => {
         try {
           v.pause();
@@ -135,7 +135,13 @@ export default function App() {
   const [activeChatUser, setActiveChatUser] = useState<User | null>(null);
   const [privateMessages, setPrivateMessages] = useState<ChatMessage[]>([]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
-  const [savedReelIds, setSavedReelIds] = useState<string[]>([]);
+  const [savedReelIds, setSavedReelIds] = useState<string[]>(() => {
+    try {
+      const cached = safeStorage.getItem("saved_publication_ids");
+      if (cached) return JSON.parse(cached);
+    } catch (e) {}
+    return [];
+  });
 
   // Force upload profile photo state
   const [selectedForceAvatar, setSelectedForceAvatar] = useState<string | null>(null);
@@ -143,6 +149,28 @@ export default function App() {
   const [forceAvatarError, setForceAvatarError] = useState("");
   const [guestInteractionAlert, setGuestInteractionAlert] = useState<string | null>(null);
   const [isLiveViewerOpen, setIsLiveViewerOpen] = useState(false);
+
+  // Platform Target: 'android' vs 'web' (defaults to 'android' as requested to preview and develop Android app)
+  const [activePlatform, setActivePlatform] = useState<'android' | 'web'>(() => {
+    if (typeof window !== "undefined") {
+      const saved = safeStorage.getItem("mallsocial_platform_target");
+      if (saved === "android" || saved === "web") return saved;
+      if (window.location.search.includes("platform=android")) return "android";
+      if (window.location.search.includes("platform=web")) return "web";
+      if ((import.meta as any).env?.VITE_APP_TARGET === "android") return "android";
+      if ((import.meta as any).env?.VITE_APP_TARGET === "web") return "web";
+      const win = window as any;
+      if (typeof win.Capacitor?.isNativePlatform === "function" && win.Capacitor.isNativePlatform()) {
+        return "android";
+      }
+    }
+    return "android";
+  });
+
+  const handleSwitchPlatform = useCallback((target: 'android' | 'web') => {
+    setActivePlatform(target);
+    safeStorage.setItem("mallsocial_platform_target", target);
+  }, []);
 
   // App Startup & Server Connection Splash State (disabled by default on web for instant paint)
   const [isInitialLoading, setIsInitialLoading] = useState(() => {
@@ -720,11 +748,6 @@ export default function App() {
   };
 
   const handleToggleSaveReel = (reelId: string) => {
-    if (!currentUser || currentUser.username === "invitado" || currentUser.isGuest || !currentUser.username) {
-      setGuestInteractionAlert("Para guardar publicaciones, por favor inicia sesión o crea una cuenta.");
-      return;
-    }
-
     const isSaved = savedReelIds.includes(reelId);
     const newSavedIds = isSaved
       ? savedReelIds.filter((id) => id !== reelId)
@@ -732,12 +755,13 @@ export default function App() {
 
     // Optimistic update for UI state
     setSavedReelIds(newSavedIds);
+    safeStorage.setItem("saved_publication_ids", JSON.stringify(newSavedIds));
     setCurrentUser((prev) => ({
       ...prev,
       savedReelIds: newSavedIds
     }));
 
-    // Optimistic update for reel saves count
+    // Optimistic update for reel saves count if it's a reel
     setReels((prev) =>
       prev.map((r) => {
         if (r.id === reelId) {
@@ -751,33 +775,39 @@ export default function App() {
       })
     );
 
-    apiFetch("/api/users/current/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        reelId,
-        userId: currentUser.originalId || currentUser.id,
-        username: currentUser.username
+    // Sync to backend if logged in
+    if (currentUser && currentUser.username !== "invitado" && !currentUser.isGuest && currentUser.username) {
+      apiFetch("/api/users/current/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reelId,
+          productId: reelId,
+          id: reelId,
+          userId: currentUser.originalId || currentUser.id,
+          username: currentUser.username
+        })
       })
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          if (data.savedReelIds) {
-            setSavedReelIds(data.savedReelIds);
-            setCurrentUser((prev) => ({
-              ...prev,
-              savedReelIds: data.savedReelIds
-            }));
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            if (data.savedReelIds) {
+              setSavedReelIds(data.savedReelIds);
+              safeStorage.setItem("saved_publication_ids", JSON.stringify(data.savedReelIds));
+              setCurrentUser((prev) => ({
+                ...prev,
+                savedReelIds: data.savedReelIds
+              }));
+            }
+            if (typeof data.saves === "number") {
+              setReels((prev) =>
+                prev.map((r) => (r.id === reelId ? { ...r, saves: data.saves } : r))
+              );
+            }
           }
-          if (typeof data.saves === "number") {
-            setReels((prev) =>
-              prev.map((r) => (r.id === reelId ? { ...r, saves: data.saves } : r))
-            );
-          }
-        }
-      })
-      .catch((err) => console.error("Error toggling saved reel:", err));
+        })
+        .catch((err) => console.error("Error toggling saved item:", err));
+    }
   };
 
   const handleToggleFollowUser = (targetUserId: string) => {
@@ -1259,60 +1289,97 @@ export default function App() {
         onContinueAnyway={() => setIsInitialLoading(false)}
       />
 
-      {/* Main Target Routing: Android vs iOS vs Web */}
-      {(((import.meta as any).env?.VITE_APP_TARGET === "android") || (typeof window !== "undefined" && window.location.search.includes("platform=android")) || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.getPlatform && Capacitor.getPlatform() === "android") || (typeof window !== "undefined" && typeof Capacitor !== "undefined" && Capacitor?.isNativePlatform && Capacitor.isNativePlatform() && !/iPhone|iPad|iPod/.test(navigator.userAgent || ""))) ? (
-        <div className="flex flex-1 w-full min-h-screen" id="app-android-container">
-          <AndroidApp
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            users={users}
-            reels={reels}
-            products={products}
-            cart={cart}
-            currentUser={currentUser}
-            directSelectedProduct={directSelectedProduct}
-            setDirectSelectedProduct={setDirectSelectedProduct}
-            selectedCreatorProfileId={selectedCreatorProfileId}
-            setSelectedCreatorProfileId={setSelectedCreatorProfileId}
-            isProductDetailOpen={isProductDetailOpen}
-            setIsProductDetailOpen={setIsProductDetailOpen}
-            shopInitialStep={shopInitialStep}
-            setShopInitialStep={setShopInitialStep}
-            shopInitialSelectedIndices={shopInitialSelectedIndices}
-            setShopInitialSelectedIndices={setShopInitialSelectedIndices}
-            activeChatUser={activeChatUser}
-            setActiveChatUser={setActiveChatUser}
-            privateMessages={privateMessages}
-            unreadCounts={unreadCounts}
-            savedReelIds={savedReelIds}
-            isLiveViewerOpen={isLiveViewerOpen}
-            totalUnreads={totalUnreads}
-            handleAddToCart={handleAddToCart}
-            handleRemoveFromCart={handleRemoveFromCart}
-            handleUpdateCartQuantity={handleUpdateCartQuantity}
-            handleCheckoutCart={handleCheckoutCart}
-            handleCreatorProfileLink={handleCreatorProfileLink}
-            handleProductDetailsLink={handleProductDetailsLink}
-            handleReelLink={handleReelLink}
-            handleLikeReel={handleLikeReel}
-            handleAddComment={handleAddComment}
-            handleToggleSaveReel={handleToggleSaveReel}
-            handleToggleFollowUser={handleToggleFollowUser}
-            handleSendPrivateMessage={handleSendPrivateMessage}
-            handleClearUnreads={handleClearUnreads}
-            refreshReels={refreshReels}
-            refreshProducts={refreshProducts}
-            refreshAllData={refreshAllData}
-            isInitialLoading={isInitialLoading}
-            setCurrentUser={setCurrentUser}
-            setUsers={setUsers}
-            isLoggedIn={isLoggedIn}
-            setIsLoggedIn={setIsLoggedIn}
-            handleLogout={handleLogout}
-            setGuestInteractionAlert={setGuestInteractionAlert}
-            openPrivateChatDirectly={openPrivateChatDirectly}
-            socket={socketRef.current}
-          />
+      {/* Floating Platform Switcher for Preview / Development */}
+      {typeof window !== "undefined" && !(typeof (window as any).Capacitor !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) && (
+        <div
+          className="fixed top-3 right-3 z-[9999] flex items-center bg-slate-900/90 backdrop-blur-md p-1 border border-slate-700/80 rounded-full shadow-2xl text-xs font-semibold text-white select-none transition-all"
+          id="preview-platform-switcher"
+        >
+          <button
+            type="button"
+            onClick={() => handleSwitchPlatform('android')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all cursor-pointer ${
+              activePlatform === 'android'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+            title="Visualizar versión Android"
+          >
+            <span>📱</span>
+            <span>Android</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSwitchPlatform('web')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all cursor-pointer ${
+              activePlatform === 'web'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+            title="Visualizar versión Web"
+          >
+            <span>🌐</span>
+            <span>Web</span>
+          </button>
+        </div>
+      )}
+
+      {/* Main Target Routing: Android vs Web */}
+      {activePlatform === "android" ? (
+        <div className="flex flex-1 w-full min-h-screen justify-center bg-slate-950" id="app-android-container">
+          <div className="w-full sm:max-w-[430px] min-h-screen flex flex-col relative sm:border-x sm:border-slate-800 sm:shadow-2xl bg-black">
+            <AndroidApp
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              users={users}
+              reels={reels}
+              products={products}
+              cart={cart}
+              currentUser={currentUser}
+              directSelectedProduct={directSelectedProduct}
+              setDirectSelectedProduct={setDirectSelectedProduct}
+              selectedCreatorProfileId={selectedCreatorProfileId}
+              setSelectedCreatorProfileId={setSelectedCreatorProfileId}
+              isProductDetailOpen={isProductDetailOpen}
+              setIsProductDetailOpen={setIsProductDetailOpen}
+              shopInitialStep={shopInitialStep}
+              setShopInitialStep={setShopInitialStep}
+              shopInitialSelectedIndices={shopInitialSelectedIndices}
+              setShopInitialSelectedIndices={setShopInitialSelectedIndices}
+              activeChatUser={activeChatUser}
+              setActiveChatUser={setActiveChatUser}
+              privateMessages={privateMessages}
+              unreadCounts={unreadCounts}
+              savedReelIds={savedReelIds}
+              isLiveViewerOpen={isLiveViewerOpen}
+              totalUnreads={totalUnreads}
+              handleAddToCart={handleAddToCart}
+              handleRemoveFromCart={handleRemoveFromCart}
+              handleUpdateCartQuantity={handleUpdateCartQuantity}
+              handleCheckoutCart={handleCheckoutCart}
+              handleCreatorProfileLink={handleCreatorProfileLink}
+              handleProductDetailsLink={handleProductDetailsLink}
+              handleReelLink={handleReelLink}
+              handleLikeReel={handleLikeReel}
+              handleAddComment={handleAddComment}
+              handleToggleSaveReel={handleToggleSaveReel}
+              handleToggleFollowUser={handleToggleFollowUser}
+              handleSendPrivateMessage={handleSendPrivateMessage}
+              handleClearUnreads={handleClearUnreads}
+              refreshReels={refreshReels}
+              refreshProducts={refreshProducts}
+              refreshAllData={refreshAllData}
+              isInitialLoading={isInitialLoading}
+              setCurrentUser={setCurrentUser}
+              setUsers={setUsers}
+              isLoggedIn={isLoggedIn}
+              setIsLoggedIn={setIsLoggedIn}
+              handleLogout={handleLogout}
+              setGuestInteractionAlert={setGuestInteractionAlert}
+              openPrivateChatDirectly={openPrivateChatDirectly}
+              socket={socketRef.current}
+            />
+          </div>
         </div>
       ) : (
         <div className="flex flex-1 w-full min-h-screen" id="app-web-container">
