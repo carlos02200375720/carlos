@@ -1,0 +1,66 @@
+name: one-time-server-migration
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.event.head_commit.message != 'refactor(server): migrate model definitions into server models'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Migrate inline Mongoose models
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('server.ts')
+          text = p.read_text()
+          start = text.index('// Mongoose User Schema')
+          end_marker = 'const MongoOrder = (mongoose.models.Order || mongoose.model("Order", OrderSchema)) as any;'
+          end = text.index(end_marker) + len(end_marker)
+
+          replacement = '''// Mongoose models are centralized under src/server/models.
+// Keeping these imports here preserves the existing Mongo* names used by the routes.
+import { MongoUser, MongoPublicacion, MongoProduct, MongoReel, MongoCart, MongoOrder } from "./src/server/models";'''
+
+          # The import must live with the other imports, not in the middle of the module.
+          block = replacement + '\n\n'
+          text = text[:start] + text[end:]
+          import_anchor = 'import { createAndroidRouter } from "./src/server/androidRouter";'
+          text = text.replace(import_anchor, import_anchor + '\n' + block, 1)
+          p.write_text(text)
+          PY
+
+      - name: Verify TypeScript structure
+        run: |
+          test -f server.ts
+          test -f src/server/models/User.ts
+          test -f src/server/models/Publicacion.ts
+          test -f src/server/models/Product.ts
+          test -f src/server/models/Reel.ts
+          test -f src/server/models/Cart.ts
+          test -f src/server/models/Order.ts
+          ! grep -q 'const UserSchema = new mongoose.Schema' server.ts
+          ! grep -q 'const PublicacionSchema = new mongoose.Schema' server.ts
+          ! grep -q 'const ProductSchema = new mongoose.Schema' server.ts
+          ! grep -q 'const ReelSchema = new mongoose.Schema' server.ts
+          ! grep -q 'const CartSchema = new mongoose.Schema' server.ts
+          ! grep -q 'const OrderSchema = new mongoose.Schema' server.ts
+
+      - name: Commit migration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server.ts
+          git commit -m 'refactor(server): migrate model definitions into server models' || exit 0
+          git push origin main
