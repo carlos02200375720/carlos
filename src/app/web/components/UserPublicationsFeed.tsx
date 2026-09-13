@@ -102,8 +102,8 @@ const UserReelVideo = memo(function UserReelVideo({
     };
   }, [index, onRegisterRef]);
 
-  const rawVid = reel.videoUrl || (reel.thumbnailUrl?.endsWith(".mp4") ? reel.thumbnailUrl : "");
-  const videoSrc = rawVid && rawVid.trim().length > 0 ? rawVid.trim() : undefined;
+  const rawVid = reel.hlsUrl || "";
+  const videoSrc = rawVid && rawVid.trim().length > 0 && rawVid.includes(".m3u8") ? rawVid.trim() : undefined;
   const posterUrl =
     reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".mp4") ? reel.thumbnailUrl : undefined;
 

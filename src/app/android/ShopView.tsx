@@ -3,6 +3,7 @@ import { Product, CartItem, User, Order, Reel } from "../../types";
 import { ShoppingBag, Search, Plus, Minus, Trash2, X, Check, ArrowRight, Sparkles, Filter, CreditCard, Tag, Truck, ShieldCheck, Heart, RefreshCw, Star, Eye, AlertCircle, ShoppingCart, Volume2, VolumeX, Play, CheckCircle2, Bookmark } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
+import { AndroidVideoPlayer } from "./components/AndroidVideoPlayer";
 
 export interface AndroidShopViewProps {
   products: Product[];
@@ -1443,18 +1444,15 @@ export default function AndroidShopView({
                     key={idx}
                     className="w-full h-full flex-shrink-0 snap-center relative flex items-center justify-center bg-black overflow-hidden group/vid"
                   >
-                    {isVideo ? (
+                    {isVideo && mediaUrl.includes(".m3u8") ? (
                       <div className="w-full h-full relative flex items-center justify-center bg-black">
-                        <video
-                          ref={(el) => {
-                            galleryVideoRefs.current[idx] = el;
-                          }}
-                          src={mediaUrl}
+                        <AndroidVideoPlayer
+                          hlsUrl={mediaUrl}
                           poster={selectedProduct.imageUrl || selectedProduct.images?.[0]}
-                          controls
-                          playsInline
-                          loop
+                          autoPlay={false}
+                          loop={true}
                           muted={isGalleryVideoMuted}
+                          isCurrent={true}
                           className="w-full h-full object-contain bg-black"
                         />
                       </div>

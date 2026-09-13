@@ -1174,19 +1174,17 @@ export default function ShopView({
                             key={idx}
                             className="w-full h-full flex-shrink-0 snap-center relative flex items-center justify-center bg-black overflow-hidden group/vid"
                           >
-                            {isVideo ? (
+                            {isVideo && mediaUrl.includes(".m3u8") ? (
                               <div className="w-full h-full relative flex items-center justify-center bg-black">
-                                <video
-                                  ref={(el) => {
-                                    galleryVideoRefs.current[idx] = el;
-                                  }}
-                                  src={mediaUrl}
+                                <NativeVideoPlayer
+                                  src=""
+                                  hlsUrl={mediaUrl}
                                   poster={selectedProduct.imageUrl || selectedProduct.images?.[0]}
-                                  controls
-                                  playsInline
-                                  loop
+                                  autoPlay={false}
+                                  loop={true}
                                   muted={isGalleryVideoMuted}
                                   preload="auto"
+                                  isCurrent={true}
                                   className="w-full h-full object-contain bg-black"
                                 />
                               </div>
