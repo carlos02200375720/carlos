@@ -12,6 +12,8 @@ export interface AndroidVideoPlayerHandle {
 }
 
 export interface AndroidVideoPlayerProps {
+  /** Kept only for caller compatibility. It is never assigned to the video element. */
+  src?: string;
   hlsUrl: string;
   poster?: string;
   autoPlay?: boolean;
@@ -189,6 +191,8 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           }
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS (for browsers that support application/vnd.apple.mpegurl).
+        // This is still HLS; there is deliberately no MP4 fallback.
         video.src = mediaSource;
       }
 
