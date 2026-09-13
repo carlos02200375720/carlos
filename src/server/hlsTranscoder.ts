@@ -47,7 +47,14 @@ export async function optimizeVideoToH264(videoBuffer: Buffer, videoId: string):
 
 export interface HlsJob { id: string; reelId?: string; publicacionId?: string; sourceName: string; status: "queued" | "transcoding" | "uploading_cdn" | "completed" | "failed"; progress: number; queuedAt: number; startedAt?: number; completedAt?: number; durationMs?: number; totalSegments?: number; masterM3u8Url?: string; error?: string; }
 
-type HlsTask = { job: HlsJob; videoBuffer: Buffer; bucket: Bucket; bucketName: string; onComplete?: (result: TranscodeHlsResult) => Promise<void> | void; onError?: (err: Error) => void; resolve?: (result: TranscodeHlsResult) => void; reject?: (err: Error) => void };
+type HlsTask = {
+  job: HlsJob;
+  videoBuffer: Buffer;
+  bucket: Bucket;
+  bucketName: string;
+  onComplete?: (result: TranscodeHlsResult) => Promise<void> | void;
+  onError?: (err: Error) => void;
+};
 
 class HlsTranscoderQueue {
   private queue: HlsTask[] = [];
@@ -123,17 +130,23 @@ class HlsTranscoderQueue {
   ): Promise<TranscodeHlsResult> {
     return new Promise<TranscodeHlsResult>((resolve, reject) => {
       const wrappedOnComplete = async (result: TranscodeHlsResult) => {
-        if (options?.onComplete) {
-          await options.onComplete(result);
+        try {
+          if (options?.onComplete) {
+            await options.onComplete(result);
+          }
+        } finally {
+          resolve(result);
         }
-        resolve(result);
       };
 
       const wrappedOnError = (err: Error) => {
-        if (options?.onError) {
-          options.onError(err);
+        try {
+          if (options?.onError) {
+            options.onError(err);
+          }
+        } finally {
+          reject(err);
         }
-        reject(err);
       };
 
       this.enqueue(jobId, videoBuffer, sourceName, bucket, bucketName, {
@@ -151,15 +164,15 @@ class HlsTranscoderQueue {
   private async processNext() {
     if (this.activeWorkers >= this.maxConcurrent || !this.queue.length) return;
     const task = this.queue.shift(); if (!task) return; this.activeWorkers++;
-    const { job, videoBuffer, bucket, bucketName, onComplete, onError, resolve, reject } = task;
+    const { job, videoBuffer, bucket, bucketName, onComplete, onError } = task;
     job.status = "transcoding"; job.startedAt = Date.now(); job.progress = 15;
     try {
       const result = await transcodeVideoToHLS(videoBuffer, job.id, bucket, bucketName, p => { job.progress = p; if (p >= 80) job.status = "uploading_cdn"; });
       job.status = "completed"; job.progress = 100; job.completedAt = Date.now(); job.durationMs = job.completedAt - (job.startedAt || job.queuedAt); job.totalSegments = result.totalSegments; job.masterM3u8Url = result.masterM3u8Url;
       this.telemetry.completedJobs++; this.telemetry.totalSegmentsGenerated += result.totalSegments; this.telemetry.latencies.push(job.durationMs); if (this.telemetry.latencies.length > 100) this.telemetry.latencies.shift(); this.telemetry.averageLatencyMs = Math.round(this.telemetry.latencies.reduce((a, b) => a + b, 0) / this.telemetry.latencies.length);
-      await onComplete?.(result); resolve?.(result);
+      await onComplete?.(result);
     } catch (err: any) {
-      job.status = "failed"; job.error = err?.message || String(err); job.completedAt = Date.now(); job.durationMs = job.completedAt - (job.startedAt || job.queuedAt); this.telemetry.failedJobs++; onError?.(err instanceof Error ? err : new Error(String(err))); reject?.(err instanceof Error ? err : new Error(String(err)));
+      job.status = "failed"; job.error = err?.message || String(err); job.completedAt = Date.now(); job.durationMs = job.completedAt - (job.startedAt || job.queuedAt); this.telemetry.failedJobs++; onError?.(err instanceof Error ? err : new Error(String(err)));
     } finally { this.activeWorkers--; setImmediate(() => this.processNext()); }
   }
 }

@@ -828,6 +828,9 @@ async function startServer() {
       uploadBase64ToGCS,
       broadcastToAll,
       generateId,
+      bucket,
+      bucketName,
+      hlsQueue,
     })
   );
 

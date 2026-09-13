@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
+import { Bucket } from "@google-cloud/storage";
 import { User, Reel, Product, Order } from "../types";
 
 export interface AndroidRouterDependencies {
@@ -19,6 +20,23 @@ export interface AndroidRouterDependencies {
   uploadBase64ToGCS: (base64Str: string, folder?: string) => Promise<string>;
   broadcastToAll: (data: any) => void;
   generateId: () => string;
+  bucket?: Bucket;
+  bucketName?: string;
+  hlsQueue?: {
+    enqueueAndWait: (
+      jobId: string,
+      videoBuffer: Buffer,
+      sourceName: string,
+      bucket: Bucket,
+      bucketName: string,
+      options?: {
+        reelId?: string;
+        publicacionId?: string;
+        onComplete?: (result: any) => Promise<void> | void;
+        onError?: (err: Error) => void;
+      }
+    ) => Promise<any>;
+  };
 }
 
 export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
@@ -40,6 +58,9 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
     uploadBase64ToGCS,
     broadcastToAll,
     generateId,
+    bucket,
+    bucketName,
+    hlsQueue,
   } = deps;
 
   // Dedicated Android middleware
@@ -670,18 +691,70 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         return;
       }
 
-      console.log(`📱 [Android Gateway] Subiendo archivo desde Android: ${req.file.originalname}`);
-      const publicUrl = await uploadToGCS(req.file, "android_media");
+      const originalName = req.file.originalname || "upload";
+      const mimeType = (req.file.mimetype || "").toLowerCase();
+      const isVideo = mimeType.startsWith("video/") || originalName.toLowerCase().endsWith(".mp4");
+
       const pubId = "pub_" + generateId();
       const creatorId = req.body?.creatorId || req.headers["x-user-id"] || "creator";
       const creatorUsername = req.body?.creatorUsername || req.headers["x-user-username"] || "creador";
+
+      if (!isVideo) {
+        console.log(`📱 [Android Gateway] Subiendo archivo no-video desde Android: ${originalName}`);
+        const publicUrl = await uploadToGCS(req.file, "android_media");
+
+        if (mongoose.connection.readyState === 1) {
+          try {
+            const newPub = new MongoPublicacion({
+              id: pubId,
+              url: publicUrl,
+              title: req.body?.title || originalName,
+              description: req.body?.description || "Publicado desde Android",
+              creatorId,
+              creatorUsername,
+              createdAt: new Date(),
+            });
+            await newPub.save();
+          } catch {}
+        }
+
+        return res.json({
+          success: true,
+          platform: "android",
+          url: publicUrl,
+          publicacionId: pubId,
+        });
+      }
+
+      // Video branch: Android uses the same HLS queue as the web backend and never answers with an MP4.
+      if (!bucket || !bucketName || !hlsQueue) {
+        return res.status(500).json({ error: "No está disponible la cola HLS del backend Android" });
+      }
+
+      const jobId = "hls_" + generateId();
+      console.log(`📱 [Android Gateway] Procesando video HLS-only desde Android: ${originalName}`);
+
+      const hlsResult = await hlsQueue.enqueueAndWait(
+        jobId,
+        req.file.buffer,
+        originalName,
+        bucket,
+        bucketName,
+        { publicacionId: pubId }
+      );
+
+      const hlsUrl = hlsResult.masterM3u8Url;
+      if (!hlsUrl) {
+        throw new Error("La transcodificación HLS terminó sin devolver una URL HLS válida");
+      }
 
       if (mongoose.connection.readyState === 1) {
         try {
           const newPub = new MongoPublicacion({
             id: pubId,
-            url: publicUrl,
-            title: req.body?.title || req.file.originalname,
+            url: hlsUrl,
+            hlsUrl,
+            title: req.body?.title || originalName,
             description: req.body?.description || "Publicado desde Android",
             creatorId,
             creatorUsername,
@@ -694,7 +767,8 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       res.json({
         success: true,
         platform: "android",
-        url: publicUrl,
+        url: hlsUrl,
+        hlsUrl,
         publicacionId: pubId,
       });
     } catch (err: any) {
