@@ -135,6 +135,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       if (videoRef.current) {
         videoRef.current.muted = muted;
         videoRef.current.defaultMuted = muted;
+        videoRef.current.volume = muted ? 0 : 1;
       }
     }, [muted]);
 
@@ -148,7 +149,8 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
     }, [onVideoReady]);
 
     const mediaSource = React.useMemo(() => {
-      if (hlsUrl?.trim().includes('.m3u8')) return hlsUrl.trim();
+      const hlsSource = hlsUrl?.trim();
+      if (hlsSource && hlsSource.includes('.m3u8')) return hlsSource;
       return (src || '').trim();
     }, [src, hlsUrl]);
 
@@ -159,6 +161,8 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       hlsRef.current?.destroy();
       hlsRef.current = null;
       video.pause();
+      video.removeAttribute('src');
+      video.load();
 
       const isM3u8 = mediaSource.includes('.m3u8');
 
@@ -168,15 +172,11 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           lowLatencyMode: false,
           backBufferLength: 6,
           maxBufferLength: 20,
-          maxMaxBufferLength: 40,
-          maxBufferHole: 0.5,
-          startLevel: 0,
           capLevelToPlayerSize: true,
+          startLevel: 0,
           abrEwmaDefaultEstimate: 650000,
           abrBandWidthFactor: 0.8,
           abrBandWidthUpFactor: 0.7,
-          maxStarvationDelay: 2,
-          maxLoadingDelay: 4,
           fragLoadingMaxRetry: 3,
           fragLoadingRetryDelay: 500,
         });
@@ -192,10 +192,15 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           if (!data.fatal) return;
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
           else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+          else {
+            hls.destroy();
+            hlsRef.current = null;
+          }
         });
+      } else if (isM3u8 && video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = mediaSource;
       } else {
         video.src = mediaSource;
-        if (isCurrent && autoPlay) safePlay();
       }
 
       return () => {
@@ -212,6 +217,8 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       if (!video) return;
       if (isCurrent) {
         video.muted = isMuted;
+        video.defaultMuted = isMuted;
+        video.volume = isMuted ? 0 : 1;
         if (autoPlay) safePlay();
       } else {
         video.pause();
@@ -268,7 +275,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             playsInline
             disablePictureInPicture
             webkit-playsinline="true"
-            preload={isCurrent ? 'metadata' : 'none'}
+            preload="none"
             className={effectiveAspect === 'vertical' ? 'w-full h-full object-cover' : effectiveAspect === 'horizontal' ? 'w-full max-h-full aspect-video object-contain' : 'w-full h-full object-contain'}
             onLoadedMetadata={checkVideoDimensions}
             onLoadedData={checkVideoDimensions}
