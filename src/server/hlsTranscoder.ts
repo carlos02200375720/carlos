@@ -288,7 +288,7 @@ export async function transcodeVideoToHLS(
       console.log(`📦 [HLS Pre-Transcoder] Attempting upload of ${files.length} HLS files to GCS bucket "${bucketName}"...`);
       let uploadedCount = 0;
 
-      const uploadPromises = files.map(async (fileName) => {
+      for (const fileName of files) {
         const filePath = path.join(outputDir, fileName);
         const isPlaylist = fileName.endsWith(".m3u8");
         const isSegment = fileName.endsWith(".ts");
@@ -308,7 +308,7 @@ export async function transcodeVideoToHLS(
 
         const fileBuffer = await fs.promises.readFile(filePath);
 
-        return new Promise<void>((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
           const stream = gcsFile.createWriteStream({
             resumable: false,
             metadata: {
@@ -327,9 +327,8 @@ export async function transcodeVideoToHLS(
           });
           stream.end(fileBuffer);
         });
-      });
+      }
 
-      await Promise.all(uploadPromises);
       usedGcs = true;
       masterM3u8Url = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/index.m3u8`;
       console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed direct static HLS stream to GCS: ${masterM3u8Url}`);
