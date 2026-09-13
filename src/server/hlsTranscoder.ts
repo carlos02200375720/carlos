@@ -222,7 +222,7 @@ export async function transcodeVideoToHLS(
 
     if (onProgress) onProgress(40);
 
-    await execAsync(ffmpegCmd, { timeout: 60000 });
+    await execAsync(ffmpegCmd, { timeout: 300000 });
     console.log(`✅ [HLS Pre-Transcoder] Local HLS segmentation finished for ${videoId}`);
 
     const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
