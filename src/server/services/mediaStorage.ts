@@ -1,33 +1,40 @@
+import fs from "fs";
+import path from "path";
 import { bucket, bucketName } from "../config/storage";
-import { optimizeVideoToH264 } from "../hlsTranscoder";
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
-// Helper: Upload file to GCS (with H.264 mobile optimization for all videos)
+// Helper: Save buffer to local uploads directory
+export async function saveToLocalStorage(
+  buffer: Buffer,
+  folder: string,
+  fileName: string
+): Promise<string> {
+  const uploadsDir = path.join(process.cwd(), "uploads", folder);
+  await fs.promises.mkdir(uploadsDir, { recursive: true });
+  const cleanName = fileName.replace(/\s+/g, "_");
+  const uniqueName = `${Date.now()}-${generateId()}-${cleanName}`;
+  const filePath = path.join(uploadsDir, uniqueName);
+  await fs.promises.writeFile(filePath, buffer);
+  return `/uploads/${folder}/${uniqueName}`;
+}
+
+// Helper: Upload file to GCS (with HLS stream conversion for all videos) with local storage fallback
 export const uploadToGCS = async (file: Express.Multer.File, folder: string = "publicaciones"): Promise<string> => {
   let originalName = file.originalname.replace(/\s+/g, "_");
   const mimeType = file.mimetype.toLowerCase();
 
-  const isVideo = mimeType.startsWith("video/") || originalName.toLowerCase().endsWith(".mp4");
+  const isVideo = mimeType.startsWith("video/") || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(originalName);
   if (isVideo) {
-    if (!originalName.toLowerCase().endsWith(".mp4")) {
-      const dotIdx = originalName.lastIndexOf(".");
-      if (dotIdx !== -1) {
-        originalName = originalName.substring(0, dotIdx) + ".mp4";
-      } else {
-        originalName += ".mp4";
-      }
-    }
-
     try {
-      console.log(`🎬 [Upload] Procesando video ${originalName} a formato H.264 universal para móviles...`);
-      const optResult = await optimizeVideoToH264(file.buffer, generateId());
-      file.buffer = optResult.buffer;
-      file.size = optResult.optimizedSize;
-      (file as any).h264Optimization = optResult;
-      console.log(`✨ [Upload] Video optimizado con éxito: ${optResult.compressionRatioPercent}% de compresión`);
-    } catch (optErr: any) {
-      console.warn("⚠️ [Upload] No se pudo completar la optimización H.264, usando buffer original:", optErr.message);
+      console.log(`🎬 [Upload] Transcodificando video a formato HLS exclusivo (.m3u8): ${originalName}...`);
+      const { transcodeVideoToHLS } = await import("../hlsTranscoder");
+      const hlsRes = await transcodeVideoToHLS(file.buffer, generateId(), bucket, bucketName);
+      return hlsRes.masterM3u8Url;
+    } catch (hlsErr: any) {
+      console.warn("⚠️ [Upload] Fallback a transcodificación HLS local directa:", hlsErr.message);
+      const { transcodeVideoToLocalHlsDirect } = await import("../hlsTranscoder");
+      return await transcodeVideoToLocalHlsDirect(file.buffer, generateId());
     }
   } else if (mimeType.startsWith("image/")) {
     const lowerName = originalName.toLowerCase();
@@ -48,26 +55,43 @@ export const uploadToGCS = async (file: Express.Multer.File, folder: string = "p
 
   return new Promise((resolve, reject) => {
     const uniqueName = `${Date.now()}-${generateId()}-${originalName}`;
-    const blob = bucket.file(`${folder}/${uniqueName}`);
+    try {
+      const blob = bucket.file(`${folder}/${uniqueName}`);
 
-    const blobStream = blob.createWriteStream({
-      resumable: false,
-      metadata: {
-        contentType: isVideo ? "video/mp4" : file.mimetype,
-        cacheControl: isVideo ? "public, max-age=31536000, immutable" : "public, max-age=86400",
-      },
-    });
+      const blobStream = blob.createWriteStream({
+        resumable: false,
+        metadata: {
+          contentType: file.mimetype || "application/octet-stream",
+          cacheControl: "public, max-age=86400",
+        },
+      });
 
-    blobStream.on("error", (err) => reject(err));
-    blobStream.on("finish", () => {
-      const publicUrl = `https://storage.googleapis.com/${bucketName}/${blob.name}`;
-      resolve(publicUrl);
-    });
-    blobStream.end(file.buffer);
+      blobStream.on("error", async (err: any) => {
+        console.warn(`⚠️ [Upload] Error en GCS (${err.message}). Guardando en almacenamiento local...`);
+        try {
+          const localUrl = await saveToLocalStorage(file.buffer, folder, originalName);
+          resolve(localUrl);
+        } catch (saveErr) {
+          reject(err);
+        }
+      });
+
+      blobStream.on("finish", () => {
+        const publicUrl = `https://storage.googleapis.com/${bucketName}/${blob.name}`;
+        resolve(publicUrl);
+      });
+
+      blobStream.end(file.buffer);
+    } catch (createErr: any) {
+      console.warn(`⚠️ [Upload] No se pudo inicializar stream de GCS (${createErr.message}). Guardando localmente...`);
+      saveToLocalStorage(file.buffer, folder, originalName)
+        .then(resolve)
+        .catch(reject);
+    }
   });
 };
 
-// Helper: Upload base64 data URL to GCS
+// Helper: Upload base64 data URL to GCS with local storage fallback
 export async function uploadBase64ToGCS(base64Str: string, folder: string = "profiles"): Promise<string> {
   if (!base64Str || !base64Str.startsWith("data:")) return base64Str;
 
@@ -90,39 +114,65 @@ export async function uploadBase64ToGCS(base64Str: string, folder: string = "pro
   else if (lowerMime.includes("jpeg") || lowerMime.includes("jpg")) extension = "jpeg";
 
   const filename = `${Date.now()}-${generateId()}.${extension}`;
-  const blob = bucket.file(`${folder}/${filename}`);
 
   return new Promise<string>((resolve, reject) => {
-    const blobStream = blob.createWriteStream({
-      resumable: false,
-      metadata: { contentType: mimeType },
-    });
+    try {
+      const blob = bucket.file(`${folder}/${filename}`);
 
-    blobStream.on("error", (err) => {
-      console.error("❌ Error uploading base64 to GCS:", err);
-      reject(err);
-    });
-    blobStream.on("finish", () => {
-      const publicUrl = `https://storage.googleapis.com/${bucketName}/${blob.name}`;
-      resolve(publicUrl);
-    });
-    blobStream.end(buffer);
+      const blobStream = blob.createWriteStream({
+        resumable: false,
+        metadata: { contentType: mimeType },
+      });
+
+      blobStream.on("error", async (err: any) => {
+        console.warn(`⚠️ [Upload] Error base64 en GCS (${err.message}). Guardando en almacenamiento local...`);
+        try {
+          const localUrl = await saveToLocalStorage(buffer, folder, filename);
+          resolve(localUrl);
+        } catch (saveErr) {
+          reject(err);
+        }
+      });
+
+      blobStream.on("finish", () => {
+        const publicUrl = `https://storage.googleapis.com/${bucketName}/${blob.name}`;
+        resolve(publicUrl);
+      });
+
+      blobStream.end(buffer);
+    } catch (createErr: any) {
+      console.warn(`⚠️ [Upload] No se pudo inicializar stream base64 de GCS (${createErr.message}). Guardando localmente...`);
+      saveToLocalStorage(buffer, folder, filename)
+        .then(resolve)
+        .catch(reject);
+    }
   });
 }
 
-// Helper: Delete file from GCS by URL
+// Helper: Delete file from GCS or local storage by URL
 export async function deleteFromGCS(fileUrl?: string): Promise<void> {
   try {
-    if (!fileUrl || typeof fileUrl !== "string" || !fileUrl.includes(`storage.googleapis.com/${bucketName}/`)) return;
+    if (!fileUrl || typeof fileUrl !== "string") return;
+
+    if (fileUrl.startsWith("/uploads/")) {
+      const localFilePath = path.join(process.cwd(), fileUrl);
+      if (fs.existsSync(localFilePath)) {
+        await fs.promises.unlink(localFilePath).catch(() => {});
+        console.log(`🗑️ Archivo local eliminado: ${localFilePath}`);
+      }
+      return;
+    }
+
+    if (!fileUrl.includes(`storage.googleapis.com/${bucketName}/`)) return;
 
     const prefix = `storage.googleapis.com/${bucketName}/`;
     const idx = fileUrl.indexOf(prefix);
     if (idx !== -1) {
       const filePath = decodeURIComponent(fileUrl.substring(idx + prefix.length));
       const file = bucket.file(filePath);
-      const [exists] = await file.exists();
+      const [exists] = await file.exists().catch(() => [false]);
       if (exists) {
-        await file.delete();
+        await file.delete().catch(() => {});
         console.log(`🗑️ Archivo eliminado de GCS (${bucketName}): ${filePath}`);
       }
     }

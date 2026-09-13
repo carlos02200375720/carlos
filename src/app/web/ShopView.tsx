@@ -245,11 +245,7 @@ export default function ShopView({
     const lower = url.toLowerCase();
     return (
       Boolean(selectedProduct?.videos && selectedProduct.videos.some(v => v === url || lower.includes(v.toLowerCase()))) ||
-      lower.includes(".mp4") ||
-      lower.includes(".webm") ||
-      lower.includes(".mov") ||
       lower.includes(".m3u8") ||
-      lower.includes(".ogg") ||
       lower.includes("video") ||
       lower.startsWith("data:video") ||
       lower.startsWith("blob:")

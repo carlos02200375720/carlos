@@ -116,7 +116,7 @@ export default function AndroidUserPublicationsFeed({
       <div className="relative flex-1 w-full h-full flex items-center justify-center overflow-hidden bg-slate-950">
         <video
           ref={(el) => { videoRefs.current[activeIndex] = el; }}
-          src={currentReel.hlsUrl && currentReel.hlsUrl.includes(".m3u8") ? currentReel.hlsUrl : undefined}
+          src={currentReel.hlsUrl && currentReel.hlsUrl.includes(".m3u8") ? currentReel.hlsUrl : (currentReel.videoUrl || undefined)}
           playsInline
           loop
           autoPlay

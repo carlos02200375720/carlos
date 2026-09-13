@@ -19,10 +19,10 @@ const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
 
 function PublicationCover({ reel }: { reel: Reel }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(() => {
-    if (reel.thumbnailUrl && !reel.thumbnailUrl.toLowerCase().endsWith(".mp4") && !reel.thumbnailUrl.toLowerCase().endsWith(".mov") && !reel.thumbnailUrl.includes("photo-1618005182384")) {
+    if (reel.thumbnailUrl && !reel.thumbnailUrl.toLowerCase().endsWith(".m3u8") && !reel.thumbnailUrl.includes("photo-1618005182384")) {
       return reel.thumbnailUrl;
     }
-    if (reel.images && reel.images.length > 0 && !reel.images[0].toLowerCase().endsWith(".mp4")) {
+    if (reel.images && reel.images.length > 0 && !reel.images[0].toLowerCase().endsWith(".m3u8")) {
       return reel.images[0];
     }
     return null;
@@ -4008,7 +4008,7 @@ export default function ProfileView({
               </h3>
 
               <div className="my-3.5 p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center space-x-3 text-left">
-                {deletingReel.thumbnailUrl && !deletingReel.thumbnailUrl.endsWith(".mp4") ? (
+                {deletingReel.thumbnailUrl && !deletingReel.thumbnailUrl.endsWith(".m3u8") ? (
                   <img
                     src={deletingReel.thumbnailUrl}
                     alt={deletingReel.description || "Publicación"}

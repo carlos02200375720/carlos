@@ -270,16 +270,23 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
     }, [title, creatorName, poster, isCurrent]);
 
-    // Target source resolution - Prioritize hardware-accelerated MP4 for instant Reel response
+    // Target source resolution - Prioritize HLS (.m3u8) stream for smooth playback
     const targetSource = React.useMemo(() => {
-      // Direct MP4 / WebM / blob video files play with zero decoding delay (<50ms)
-      if (src && (src.includes(".mp4") || src.startsWith("blob:") || !hlsUrl)) {
-        const trimmed = src.trim();
-        return trimmed.length > 0 ? trimmed : null;
+      // 1. If explicit hlsUrl is provided and contains .m3u8, prioritize it
+      if (hlsUrl && hlsUrl.trim().length > 0 && hlsUrl.includes(".m3u8")) {
+        return hlsUrl.trim();
       }
-      if (hlsUrl && hlsUrl.trim().length > 0 && hlsUrl.includes(".m3u8")) return hlsUrl.trim();
-      if (src && src.includes(".m3u8")) return src.trim();
-      return (src && src.trim().length > 0) ? src.trim() : null;
+      // 2. If src contains an HLS playlist (.m3u8)
+      if (src && src.includes(".m3u8")) {
+        return src.trim();
+      }
+      // 3. Local in-memory blob for upload preview
+      if (src && src.startsWith("blob:")) {
+        return src.trim();
+      }
+      // 4. Fallback to clean source
+      const trimmed = (src || hlsUrl || "").trim();
+      return trimmed.length > 0 ? trimmed : null;
     }, [src, hlsUrl]);
 
     const isM3u8 = Boolean(targetSource && targetSource.includes(".m3u8"));
@@ -321,14 +328,16 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
             } else {
               hls.destroy();
               hlsRef.current = null;
-              video.src = src;
-              video.load();
-              if (isCurrent) video.play().catch(() => {});
+              if (targetSource) {
+                video.src = targetSource;
+                video.load();
+                if (isCurrent) video.play().catch(() => {});
+              }
             }
           }
         });
       }
-      // Case 3: Standard Native HTML5 Video (.mp4 / webm)
+      // Case 3: Standard Native HTML5 Video stream or local blob preview
       else {
         if (!video.src || !video.src.includes(targetSource)) {
           video.src = targetSource;

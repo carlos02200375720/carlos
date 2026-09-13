@@ -302,7 +302,7 @@ export default function ReelsView({
                   <div className="relative w-full h-full md:w-auto md:aspect-[9/16] md:h-full md:max-w-[520px] lg:max-w-[580px] xl:max-w-[640px] 2xl:max-w-[700px] md:rounded-2xl md:border md:border-white/15 md:shadow-[0_16px_50px_rgba(0,0,0,0.9)] overflow-hidden flex items-center justify-center bg-black select-none shrink-0" id={`reel-card-${reel.id}`}>
                     <div className="hidden md:flex absolute top-3.5 right-3.5 z-30 items-center space-x-2"><button type="button" onClick={handleToggleMute} className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md hover:bg-black/70 active:scale-95 text-white flex items-center justify-center transition-all border border-white/20 cursor-pointer shadow-lg" title={isMuted ? "Activar sonido" : "Silenciar video"} id={`desktop-frame-mute-btn-${reel.id}`}>{isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}</button></div>
                     <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none z-10" />
-                    {(!reel.videoUrl || reel.videoUrl.trim() === "") && (!reel.thumbnailUrl || !reel.thumbnailUrl.endsWith(".mp4")) ? (
+                    {(!reel.hlsUrl && (!reel.videoUrl || reel.videoUrl.trim() === "")) ? (
                       ((reel.images && reel.images.length > 1) || reel.type === "carousel") ? (
                         <div className="w-full h-full flex items-center justify-center bg-black"><ReelCarousel images={(reel.images && reel.images.length > 0 ? reel.images : [reel.thumbnailUrl]).filter((img): img is string => !!img && !img.includes("1618005182384"))} onDoubleClick={() => handleDoubleTap(reel.id)} onIndexChange={(idx) => setCarouselIndices((prev) => ({ ...prev, [`${reel.id}_${index}`]: idx }))} /></div>
                       ) : (() => {
@@ -311,7 +311,7 @@ export default function ReelsView({
                       })()
                     ) : (
                       <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
-                        {isCurrent ? <ReelVideoItem key={`${reel.id}_${index}`} reel={reel} index={index} isCurrent={true} isPlaying={isPlaying} isMuted={isMuted} mediaAspectRatio={mediaAspectRatios[reel.id]} onVideoClick={handleVideoClick} onDoubleTap={handleDoubleTap} onAspectRatioDetected={handleAspectRatioDetected} onRegisterRef={handleRegisterRef} /> : <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">{reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".mp4") && !reel.thumbnailUrl.includes("1618005182384") ? <img src={reel.thumbnailUrl} alt={reel.description || ""} draggable={false} className={`w-full h-full block relative z-10 select-none object-center ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`} referrerPolicy="no-referrer" loading="lazy" /> : <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-500"><Play className="w-12 h-12 text-white/20 mb-2 fill-white/10" /><span className="text-xs text-white/30 font-medium">Video</span></div>}</div>}
+                        {isCurrent ? <ReelVideoItem key={`${reel.id}_${index}`} reel={reel} index={index} isCurrent={true} isPlaying={isPlaying} isMuted={isMuted} mediaAspectRatio={mediaAspectRatios[reel.id]} onVideoClick={handleVideoClick} onDoubleTap={handleDoubleTap} onAspectRatioDetected={handleAspectRatioDetected} onRegisterRef={handleRegisterRef} /> : <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">{reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") && !reel.thumbnailUrl.includes("1618005182384") ? <img src={reel.thumbnailUrl} alt={reel.description || ""} draggable={false} className={`w-full h-full block relative z-10 select-none object-center ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`} referrerPolicy="no-referrer" loading="lazy" /> : <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-500"><Play className="w-12 h-12 text-white/20 mb-2 fill-white/10" /><span className="text-xs text-white/30 font-medium">Video</span></div>}</div>}
                       </div>
                     )}
 
@@ -410,7 +410,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     video.removeAttribute("src");
     video.load();
 
-    const hlsSource = reel.hlsUrl?.trim();
+    const hlsSource = (reel.hlsUrl || reel.videoUrl)?.trim();
 
     if (hlsSource && Hls.isSupported()) {
       const hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 6, maxBufferLength: 20, capLevelToPlayerSize: true });
@@ -467,7 +467,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     onRegisterRef(index, null);
   }, [index, onRegisterRef]);
 
-  const posterUrl = reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".mp4") ? reel.thumbnailUrl : undefined;
+  const posterUrl = reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".m3u8") ? reel.thumbnailUrl : undefined;
 
   const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
     const video = e.currentTarget;

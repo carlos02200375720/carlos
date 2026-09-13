@@ -211,17 +211,9 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     });
   };
 
-  const ensureCorrectVideoExtension = (file: File): File => {
-    if (file.name.toLowerCase().endsWith(".mp4")) {
-      return file;
-    }
-    const cleanName = file.name.replace(/\.[^/.]+$/, "") + ".mp4";
-    return new File([file], cleanName, { type: "video/mp4" });
-  };
-
   const uploadFileToGCS = async (file: File): Promise<{ url: string; hlsUrl?: string }> => {
-    const isVideo = file.type.startsWith("video/") || file.name.toLowerCase().endsWith(".mp4");
-    const fileToUpload = isVideo ? ensureCorrectVideoExtension(file) : file;
+    const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts|m3u8)$/i.test(file.name);
+    const fileToUpload = file;
 
     const formData = new FormData();
     formData.append("file", fileToUpload);
@@ -366,8 +358,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         if (!singleVideoFile) {
           throw new Error("Por favor, selecciona un video para tu publicación.");
         }
-        if (!validateFileExtension(singleVideoFile, ["mp4", "mov", "m4v", "webm"])) {
-          throw new Error("El video debe tener una extensión válida (.mp4, .mov, .m4v, .webm)");
+        if (!validateFileExtension(singleVideoFile, ["mp4", "mov", "m4v", "webm", "avi", "mkv", "3gp", "ts", "m3u8"])) {
+          throw new Error("El archivo de video debe tener un formato válido (.mp4, .mov, .m4v, .webm, etc.)");
         }
 
         // 1. Upload video
@@ -425,7 +417,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
           throw new Error(resData?.error || resData?.message || "Error al guardar la publicación en el servidor");
         }
 
-        setSuccessMessage("¡Tu video se ha procesado a H.264 ultra-compatible y publicado con éxito!");
+        setSuccessMessage("¡Tu video se ha procesado a stream HLS (.m3u8) y publicado con éxito!");
         setTimeout(() => {
           onSuccess();
         }, 1500);
@@ -538,8 +530,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         }
 
         // Validate product video extension if exists
-        if (productVideoFile && !validateFileExtension(productVideoFile, ["mp4", "mov", "m4v", "webm"])) {
-          throw new Error("El video del producto debe tener una extensión válida (.mp4, .mov, .m4v, .webm)");
+        if (productVideoFile && !validateFileExtension(productVideoFile, ["mp4", "mov", "m4v", "webm", "avi", "mkv", "3gp", "ts", "m3u8"])) {
+          throw new Error("El video del producto debe tener una extensión válida");
         }
 
         // 1. Upload new product photos and combine with imported CJ photos
@@ -831,7 +823,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                   </div>
                   <div>
                     <p className="text-xs font-bold text-slate-700">Arrastra o haz clic para subir tu Video Reel</p>
-                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">Soporta .mp4, .mov (procesamiento automático a H.264 para móviles)</p>
+                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">Soporta cualquier formato de video (transcodificación exclusiva a HLS .m3u8)</p>
                   </div>
                 </div>
               )}
@@ -1017,7 +1009,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                   </div>
                 ) : (
                   <div className="h-[48px] flex items-center justify-center text-center text-slate-400 text-[10px] italic border border-dashed border-slate-200 rounded mb-3">
-                    Sin video seleccionado (.mp4)
+                    Sin video seleccionado (se procesará a stream HLS)
                   </div>
                 )}
 
@@ -1419,7 +1411,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                 <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
                 <span>
                   {publishType === "video" || (publishType === "product" && productVideoFile)
-                    ? "Procesando video a H.264..."
+                    ? "Transcodificando a stream HLS (.m3u8)..."
                     : "Publicando en GCS..."}
                 </span>
               </>

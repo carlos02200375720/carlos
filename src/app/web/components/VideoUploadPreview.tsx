@@ -252,7 +252,7 @@ export default function VideoUploadPreview({
               {file.name}
             </p>
             <p className="text-[10px] text-slate-400 font-mono">
-              {formatFileSize(file.size)} • {file.type || "video/mp4"}
+              {formatFileSize(file.size)} • {file.type || "video"}
             </p>
           </div>
         </div>
@@ -441,10 +441,10 @@ export default function VideoUploadPreview({
             <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-1">
               <p className="text-[11px] font-bold text-amber-900 flex items-center space-x-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>Aceleración H.264 ultrafast</span>
+                <span>Transmisión HLS adaptativa (.m3u8)</span>
               </p>
               <p className="text-[10px] text-amber-800 leading-tight">
-                Al publicar, el servidor procesará el video con átomo faststart para que en los Reels comience a reproducirse al instante sin tiempos de carga.
+                Al publicar, el servidor segmentará y codificará el video en formato HLS (.m3u8) para reproducción fluida e instantánea en la app.
               </p>
             </div>
           </div>

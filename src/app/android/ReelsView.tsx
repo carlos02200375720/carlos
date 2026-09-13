@@ -254,9 +254,9 @@ export default function AndroidReelsView({
         <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-4 text-amber-400">
           <Video className="w-8 h-8" />
         </div>
-        <p className="text-base font-bold text-slate-200">No hay Reels disponibles en este momento</p>
+        <p className="text-base font-bold text-slate-200">No hay publicaciones disponibles</p>
         <p className="text-xs text-slate-400 mt-1 max-w-xs">
-          Comprueba tu conexión o reintenta sincronizar con el catálogo de videos.
+          Aún no se han publicado reels o videos en la aplicación.
         </p>
         {onRefreshReels && (
           <button
@@ -265,7 +265,7 @@ export default function AndroidReelsView({
             className="mt-5 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold text-xs flex items-center space-x-2 transition-transform shadow-lg shadow-amber-500/10"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>Reintentar conexión</span>
+            <span>Actualizar</span>
           </button>
         )}
       </div>

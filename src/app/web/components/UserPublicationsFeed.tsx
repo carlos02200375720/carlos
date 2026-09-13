@@ -105,7 +105,7 @@ const UserReelVideo = memo(function UserReelVideo({
   const rawVid = reel.hlsUrl || "";
   const videoSrc = rawVid && rawVid.trim().length > 0 && rawVid.includes(".m3u8") ? rawVid.trim() : undefined;
   const posterUrl =
-    reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".mp4") ? reel.thumbnailUrl : undefined;
+    reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") ? reel.thumbnailUrl : undefined;
 
   const handlePointerDown = (e: React.MouseEvent) => {
     e.stopPropagation();

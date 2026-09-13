@@ -225,7 +225,7 @@ export default function App() {
       } catch (e) {
         console.warn("Primary reels fetch failed, trying android reels route:", e);
       }
-      if (!Array.isArray(data) || data.length === 0) {
+      if (!Array.isArray(data)) {
         try {
           const res = await apiFetch("/api/android/reels");
           if (res.ok) data = await res.json();
@@ -233,7 +233,7 @@ export default function App() {
           console.warn("Android reels route also failed:", e);
         }
       }
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         const unique = deduplicateById(data) as Reel[];
         setReels(unique);
         safeStorage.setItem("cached_reels", JSON.stringify(unique));
@@ -334,23 +334,28 @@ export default function App() {
 
       // Hydrate reels with dedicated Android route fallback
       let loadedReels: Reel[] = [];
+      let reelsSyncCompleted = false;
       if (reelsRes.status === "fulfilled") {
         const val = reelsRes.value;
         const list = Array.isArray(val) ? val : (val && Array.isArray(val.reels) ? val.reels : []);
-        if (list.length > 0) loadedReels = list;
+        loadedReels = list;
+        reelsSyncCompleted = true;
       }
-      if (loadedReels.length === 0) {
+      if (!reelsSyncCompleted || loadedReels.length === 0) {
         try {
           const aRes = await apiFetch("/api/android/reels");
           if (aRes.ok) {
             const aData = await aRes.json();
-            if (Array.isArray(aData) && aData.length > 0) loadedReels = aData;
+            if (Array.isArray(aData)) {
+              loadedReels = aData;
+              reelsSyncCompleted = true;
+            }
           }
         } catch (e) {
           console.warn("Android fallback reels fetch failed:", e);
         }
       }
-      if (loadedReels.length > 0) {
+      if (reelsSyncCompleted) {
         const uniqueReels = deduplicateById(loadedReels) as Reel[];
         setReels(uniqueReels);
         safeStorage.setItem("cached_reels", JSON.stringify(uniqueReels));

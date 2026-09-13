@@ -139,9 +139,7 @@ export default function AndroidProfileView({
               }
             });
           }
-          if (apiReels.length > 0) {
-            setExtraPublications(apiReels);
-          }
+          setExtraPublications(apiReels);
         }
       })
       .catch(() => {});
@@ -391,7 +389,7 @@ export default function AndroidProfileView({
           <div className="grid grid-cols-3 gap-2">
             {userReels.length === 0 ? (
               <div className="col-span-3 py-16 text-center text-xs text-slate-400">
-                Aún no has publicado ningún Reel en Android.
+                {isMe ? "Aún no tienes publicaciones ni reels." : "Este usuario aún no tiene publicaciones."}
               </div>
             ) : (
               userReels.map((reel) => (

@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
+import fs from "fs";
+import path from "path";
 import { Bucket } from "@google-cloud/storage";
 import { User, Reel, Product, Order } from "../types";
 
@@ -683,8 +685,48 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
     }
   });
 
+  // Android Delete Publication / Reel
+  router.delete(["/reels/:id", "/publicaciones/:id"], async (req: Request, res: Response) => {
+    try {
+      const targetId = req.params.id;
+      if (!targetId) {
+        res.status(400).json({ error: "ID de publicación requerido" });
+        return;
+      }
+
+      console.log(`🗑️ [Android Gateway] Eliminando publicación / reel ${targetId}...`);
+
+      const isObjectId = mongoose.Types.ObjectId.isValid(targetId) && String(targetId).length === 24;
+      const mongoQuery = isObjectId ? { $or: [{ id: targetId }, { _id: targetId }] } : { id: targetId };
+
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoReel.deleteMany(mongoQuery);
+          await MongoPublicacion.deleteMany(mongoQuery);
+        } catch (dbErr) {
+          console.error("Error al eliminar de MongoDB:", dbErr);
+        }
+      }
+
+      // Update in-memory reels
+      const current = getReels();
+      setReels(current.filter((r) => r.id !== targetId));
+
+      broadcastToAll({
+        type: "reel_deleted",
+        reelId: targetId,
+      });
+
+      res.json({ success: true, deletedId: targetId });
+    } catch (err: any) {
+      console.error("❌ [Android Gateway] Error deleting reel:", err);
+      res.status(500).json({ error: "Error al eliminar publicación", details: err.message });
+    }
+  });
+
   // Android Upload
   router.post("/upload", uploadSingleSafe("file"), async (req: any, res: Response) => {
+    const pubId = "pub_" + generateId();
     try {
       if (!req.file) {
         res.status(400).json({ error: "No se proporcionó ningún archivo" });
@@ -693,9 +735,8 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
 
       const originalName = req.file.originalname || "upload";
       const mimeType = (req.file.mimetype || "").toLowerCase();
-      const isVideo = mimeType.startsWith("video/") || originalName.toLowerCase().endsWith(".mp4");
+      const isVideo = mimeType.startsWith("video/") || /\.(mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts|m3u8)$/i.test(originalName);
 
-      const pubId = "pub_" + generateId();
       const creatorId = req.body?.creatorId || req.headers["x-user-id"] || "creator";
       const creatorUsername = req.body?.creatorUsername || req.headers["x-user-username"] || "creador";
 
@@ -727,7 +768,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       }
 
       // Video branch: Android uses the same HLS queue as the web backend and never answers with an MP4.
-      if (!bucket || !bucketName || !hlsQueue) {
+      if (!hlsQueue) {
         return res.status(500).json({ error: "No está disponible la cola HLS del backend Android" });
       }
 
@@ -773,6 +814,25 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       });
     } catch (err: any) {
       console.error("❌ [Android Gateway] Error en upload:", err);
+
+      try {
+        if (req.file?.buffer) {
+          const { transcodeVideoToLocalHlsDirect } = await import("./hlsTranscoder");
+          const emergencyHlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId);
+          console.log(`🛡️ [Android Gateway] Fallback HLS stream generated: ${emergencyHlsUrl}`);
+
+          return res.json({
+            success: true,
+            platform: "android",
+            url: emergencyHlsUrl,
+            hlsUrl: emergencyHlsUrl,
+            publicacionId: pubId,
+          });
+        }
+      } catch (fbErr) {
+        console.error("❌ Android emergency fallback failed:", fbErr);
+      }
+
       res.status(500).json({ error: "Error al procesar archivo en Android", details: err.message });
     }
   });

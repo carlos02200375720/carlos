@@ -1,7 +1,7 @@
 import multer from "multer";
 
 // Configure multer for memory storage (200MB limit for high-definition video/image uploads)
-const upload = multer({
+export const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 200 * 1024 * 1024, // 200MB max limit
@@ -9,7 +9,7 @@ const upload = multer({
 });
 
 // Safe Multer middleware wrapper that catches errors and always returns clean JSON
-const uploadSingleSafe = (fieldName: string) => (req: any, res: any, next: any) => {
+export const uploadSingleSafe = (fieldName: string) => (req: any, res: any, next: any) => {
   upload.single(fieldName)(req, res, (err: any) => {
     if (err) {
       console.error(`❌ Multer upload error on field '${fieldName}':`, err);

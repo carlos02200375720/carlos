@@ -6,9 +6,8 @@ import { createServer as createViteServer } from "vite";
 import { User, Reel, Product, Order, ChatMessage, LiveSession, Comment } from "./src/types";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import { Storage } from "@google-cloud/storage";
 import fs from "fs";
-import { transcodeVideoToHLS, hlsQueue, deleteHlsStreamBatch, optimizeVideoToH264 } from "./src/server/hlsTranscoder";
+import { transcodeVideoToHLS, hlsQueue, deleteHlsStreamBatch } from "./src/server/hlsTranscoder";
 import { createAndroidRouter } from "./src/server/androidRouter";
 import {
   MongoUser,
@@ -18,7 +17,9 @@ import {
   MongoCart,
   MongoOrder,
 } from "./src/server/models";
-import { bucket } from "./src/server/config/storage";
+import { bucket, bucketName } from "./src/server/config/storage";
+import { uploadToGCS, uploadBase64ToGCS, deleteFromGCS } from "./src/server/services/mediaStorage";
+import { upload, uploadSingleSafe } from "./src/server/middleware/upload";
 
 // Configure dotenv to read environment variables first
 dotenv.config();
@@ -27,313 +28,6 @@ dotenv.config();
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
 const cartMemoryStore = new Map<string, any[]>();
-
-// Google Cloud Storage setup
-let storage: Storage;
-const googleJsonPath = path.join(process.cwd(), "google.json");
-const mallJsonPath = path.join(process.cwd(), "mall-1bucket.json");
-
-// Helper to ensure bucketName is a clean GCS bucket name and not JSON credentials
-function getValidBucketName(): string {
-  const raw = (process.env.BUCKET_NAME || "").trim();
-  if (raw && !raw.startsWith("{") && !raw.includes("service_account") && raw.length <= 63) {
-    return raw;
-  }
-  return "mall-1bucket";
-}
-
-const bucketName = getValidBucketName();
-
-// Extract service account JSON if it was accidentally put in BUCKET_NAME instead of GOOGLE
-let googleJsonFromEnv = process.env.GOOGLE;
-if (!googleJsonFromEnv && process.env.BUCKET_NAME && process.env.BUCKET_NAME.trim().startsWith("{")) {
-  googleJsonFromEnv = process.env.BUCKET_NAME.trim();
-}
-
-if (fs.existsSync(googleJsonPath)) {
-  storage = new Storage({
-    keyFilename: googleJsonPath,
-  });
-  console.log("📂 Storage client initialized using google.json");
-} else if (fs.existsSync(mallJsonPath)) {
-  storage = new Storage({
-    keyFilename: mallJsonPath,
-  });
-  console.log("📂 Storage client initialized using mall-1bucket.json");
-} else if (googleJsonFromEnv) {
-  try {
-    const googleCredentials = JSON.parse(googleJsonFromEnv);
-    storage = new Storage({
-      credentials: {
-        client_email: googleCredentials.client_email,
-        private_key: googleCredentials.private_key,
-      },
-      projectId: googleCredentials.project_id,
-    });
-    console.log("📂 Storage client initialized using GOOGLE env variable JSON");
-  } catch (err) {
-    console.error("❌ Error parsing GOOGLE env var JSON:", err);
-    storage = new Storage();
-  }
-} else {
-  storage = new Storage();
-  console.log("📂 Storage client initialized with default environment credentials");
-}
-
-const bucket = storage.bucket(bucketName);
-
-import { upload, uploadSingleSafe } from "./src/server/middleware/upload";
-
-// Helper: Upload file to GCS (with H.264 mobile optimization for all videos)
-const uploadToGCS = async (file: Express.Multer.File, folder: string = "publicaciones"): Promise<string> => {
-  let originalName = file.originalname.replace(/\s+/g, "_");
-  const mimeType = file.mimetype.toLowerCase();
-
-  // Enforce correct extensions on upload as requested
-  const isVideo = mimeType.startsWith("video/") || originalName.toLowerCase().endsWith(".mp4");
-  if (isVideo) {
-    if (!originalName.toLowerCase().endsWith(".mp4")) {
-      const dotIdx = originalName.lastIndexOf(".");
-      if (dotIdx !== -1) {
-        originalName = originalName.substring(0, dotIdx) + ".mp4";
-      } else {
-        originalName += ".mp4";
-      }
-    }
-
-    // Process video to universal H.264 (AVC) with adjusted bitrate and +faststart for instant mobile playback
-    try {
-      console.log(`🎬 [Upload] Procesando video ${originalName} a formato H.264 universal para móviles...`);
-      const optResult = await optimizeVideoToH264(file.buffer, generateId());
-      file.buffer = optResult.buffer;
-      file.size = optResult.optimizedSize;
-      (file as any).h264Optimization = optResult;
-      console.log(`✨ [Upload] Video optimizado con éxito: ${optResult.compressionRatioPercent}% de compresión`);
-    } catch (optErr: any) {
-      console.warn("⚠️ [Upload] No se pudo completar la optimización H.264, usando buffer original:", optErr.message);
-    }
-  } else if (mimeType.startsWith("image/")) {
-    const lowerName = originalName.toLowerCase();
-    const validExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".heic", ".heif"];
-    const hasValidExt = validExtensions.some(ext => lowerName.endsWith(ext));
-    if (!hasValidExt) {
-      if (mimeType.includes("png")) {
-        originalName += ".png";
-      } else if (mimeType.includes("webp")) {
-        originalName += ".webp";
-      } else if (mimeType.includes("gif")) {
-        originalName += ".gif";
-      } else if (mimeType.includes("svg")) {
-        originalName += ".svg";
-      } else if (mimeType.includes("avif")) {
-        originalName += ".avif";
-      } else if (mimeType.includes("heic")) {
-        originalName += ".heic";
-      } else if (mimeType.includes("heif")) {
-        originalName += ".heif";
-      } else if (mimeType.includes("jpeg") || mimeType.includes("jpg")) {
-        originalName += ".jpeg";
-      } else {
-        originalName += ".jpeg";
-      }
-    }
-  }
-
-  return new Promise((resolve, reject) => {
-    const u
-
-// Configure multer for memory storage (200MB limit for high-definition video/image uploads)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 200 * 1024 * 1024, // 200MB max limit
-  }
-});
-
-// Safe Multer middleware wrapper that catches errors and always returns clean JSON
-const uploadSingleSafe = (fieldName: string) => (req: any, res: any, next: any) => {
-  upload.single(fieldName)(req, res, (err: any) => {
-    if (err) {
-      console.error(`❌ Multer upload error on field '${fieldName}':`, err);
-      if (err.code === "LIMIT_FILE_SIZE") {
-        return res.status(413).json({
-          error: "El archivo seleccionado supera el límite permitido de 200MB. Por favor, selecciona un archivo más liviano.",
-          code: "LIMIT_FILE_SIZE"
-        });
-      }
-      return res.status(400).json({
-        error: `Error al procesar el archivo: ${err.message || err}`,
-        code: err.code || "UPLOAD_ERROR"
-      });
-    }
-    next();
-  });
-};
-
-// Helper: Upload file to GCS (with H.264 mobile optimization for all videos)
-const uploadToGCS = async (file: Express.Multer.File, folder: string = "publicaciones"): Promise<string> => {
-  let originalName = file.originalname.replace(/\s+/g, "_");
-  const mimeType = file.mimetype.toLowerCase();
-
-  // Enforce correct extensions on upload as requested
-  const isVideo = mimeType.startsWith("video/") || originalName.toLowerCase().endsWith(".mp4");
-  if (isVideo) {
-    if (!originalName.toLowerCase().endsWith(".mp4")) {
-      const dotIdx = originalName.lastIndexOf(".");
-      if (dotIdx !== -1) {
-        originalName = originalName.substring(0, dotIdx) + ".mp4";
-      } else {
-        originalName += ".mp4";
-      }
-    }
-
-    // Process video to universal H.264 (AVC) with adjusted bitrate and +faststart for instant mobile playback
-    try {
-      console.log(`🎬 [Upload] Procesando video ${originalName} a formato H.264 universal para móviles...`);
-      const optResult = await optimizeVideoToH264(file.buffer, generateId());
-      file.buffer = optResult.buffer;
-      file.size = optResult.optimizedSize;
-      (file as any).h264Optimization = optResult;
-      console.log(`✨ [Upload] Video optimizado con éxito: ${optResult.compressionRatioPercent}% de compresión`);
-    } catch (optErr: any) {
-      console.warn("⚠️ [Upload] No se pudo completar la optimización H.264, usando buffer original:", optErr.message);
-    }
-  } else if (mimeType.startsWith("image/")) {
-    const lowerName = originalName.toLowerCase();
-    const validExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".heic", ".heif"];
-    const hasValidExt = validExtensions.some(ext => lowerName.endsWith(ext));
-    if (!hasValidExt) {
-      if (mimeType.includes("png")) {
-        originalName += ".png";
-      } else if (mimeType.includes("webp")) {
-        originalName += ".webp";
-      } else if (mimeType.includes("gif")) {
-        originalName += ".gif";
-      } else if (mimeType.includes("svg")) {
-        originalName += ".svg";
-      } else if (mimeType.includes("avif")) {
-        originalName += ".avif";
-      } else if (mimeType.includes("heic")) {
-        originalName += ".heic";
-      } else if (mimeType.includes("heif")) {
-        originalName += ".heif";
-      } else if (mimeType.includes("jpeg") || mimeType.includes("jpg")) {
-        originalName += ".jpeg";
-      } else {
-        originalName += ".jpeg";
-      }
-    }
-  }
-
-  return new Promise((resolve, reject) => {
-    const uniqueName = `${Date.now()}-${generateId()}-${originalName}`;
-    const blob = bucket.file(`${folder}/${uniqueName}`);
-    
-    const blobStream = blob.createWriteStream({
-      resumable: false,
-      metadata: {
-        contentType: isVideo ? "video/mp4" : file.mimetype,
-        cacheControl: isVideo ? "public, max-age=31536000, immutable" : "public, max-age=86400",
-      },
-    });
-
-    blobStream.on("error", (err) => {
-      reject(err);
-    });
-
-    blobStream.on("finish", () => {
-      const publicUrl = `https://storage.googleapis.com/${bucketName}/${blob.name}`;
-      resolve(publicUrl);
-    });
-
-    blobStream.end(file.buffer);
-  });
-};
-
-// Helper: Upload base64 data URL to GCS
-async function uploadBase64ToGCS(base64Str: string, folder: string = "profiles"): Promise<string> {
-  // Check if it's a valid data URL
-  if (!base64Str || !base64Str.startsWith("data:")) {
-    return base64Str;
-  }
-
-  // Parse the data URL
-  const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-  if (!matches || matches.length !== 3) {
-    return base64Str;
-  }
-
-  const mimeType = matches[1];
-  const base64Data = matches[2];
-  const buffer = Buffer.from(base64Data, "base64");
-
-  // Determine file extension
-  let extension = "jpg";
-  const lowerMime = mimeType.toLowerCase();
-  if (lowerMime.includes("png")) {
-    extension = "png";
-  } else if (lowerMime.includes("webp")) {
-    extension = "webp";
-  } else if (lowerMime.includes("gif")) {
-    extension = "gif";
-  } else if (lowerMime.includes("svg")) {
-    extension = "svg";
-  } else if (lowerMime.includes("avif")) {
-    extension = "avif";
-  } else if (lowerMime.includes("heic")) {
-    extension = "heic";
-  } else if (lowerMime.includes("heif")) {
-    extension = "heif";
-  } else if (lowerMime.includes("jpeg") || lowerMime.includes("jpg")) {
-    extension = "jpeg";
-  }
-
-  const filename = `${Date.now()}-${generateId()}.${extension}`;
-  const blob = bucket.file(`${folder}/${filename}`);
-
-  return new Promise<string>((resolve, reject) => {
-    const blobStream = blob.createWriteStream({
-      resumable: false,
-      metadata: {
-        contentType: mimeType,
-      },
-    });
-
-    blobStream.on("error", (err) => {
-      console.error("❌ Error uploading base64 to GCS:", err);
-      reject(err);
-    });
-
-    blobStream.on("finish", () => {
-      const publicUrl = `https://storage.googleapis.com/${bucketName}/${blob.name}`;
-      resolve(publicUrl);
-    });
-
-    blobStream.end(buffer);
-  });
-}
-
-// Helper: Delete file from GCS by URL
-async function deleteFromGCS(fileUrl?: string): Promise<void> {
-  try {
-    if (!fileUrl || typeof fileUrl !== "string" || !fileUrl.includes(`storage.googleapis.com/${bucketName}/`)) {
-      return;
-    }
-    const prefix = `storage.googleapis.com/${bucketName}/`;
-    const idx = fileUrl.indexOf(prefix);
-    if (idx !== -1) {
-      const filePath = decodeURIComponent(fileUrl.substring(idx + prefix.length));
-      const file = bucket.file(filePath);
-      const [exists] = await file.exists();
-      if (exists) {
-        await file.delete();
-        console.log(`🗑️ Archivo eliminado de GCS (${bucketName}): ${filePath}`);
-      }
-    }
-  } catch (err) {
-    console.error("⚠️ Error al eliminar archivo de GCS:", err);
-  }
-}
 
 // Helper: Get all users from MongoDB Atlas directly (0% mock data, always real-time database state)
 async function getUsers(): Promise<User[]> {
@@ -721,6 +415,34 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+  // Serve uploaded media files with proper HLS & video streaming headers
+  const uploadsDir = path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  app.use("/uploads", (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
+    next();
+  }, express.static(uploadsDir, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".m3u8")) {
+        res.setHeader("Content-Type", "application/x-mpegURL");
+        res.setHeader("Cache-Control", "public, max-age=60");
+      } else if (filePath.endsWith(".ts")) {
+        res.setHeader("Content-Type", "video/MP2T");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else if (filePath.endsWith(".mp4")) {
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Accept-Ranges", "bytes");
+      }
+    }
+  }));
+
   // --- API ENDPOINTS ---
 
   // --- DEDICATED ANDROID API ROUTER ---
@@ -763,6 +485,7 @@ async function startServer() {
   // Upload file to Google Cloud Storage & register in MongoDB
   // Videos: HLS ONLY. The original video is never persisted to GCS.
   const processUploadHlsOnly = async (req: any, res: any) => {
+    const pubId = "pub_" + generateId();
     try {
       if (!req.file) {
         res.status(400).json({ error: "No se proporcionó ningún archivo" });
@@ -774,9 +497,7 @@ async function startServer() {
       const originalName = req.file.originalname || "upload";
       const isVideo =
         mimeType.startsWith("video/") ||
-        originalName.toLowerCase().endsWith(".mp4");
-
-      const pubId = "pub_" + generateId();
+        /\.(mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts|m3u8)$/i.test(originalName);
 
       // ------------------------------------------------------------
       // IMÁGENES / ARCHIVOS NO-VIDEO
@@ -881,7 +602,7 @@ async function startServer() {
           console.log(`💾 [HLS ONLY] Publicación guardada en MongoDB: ${pubId}`);
         } catch (dbErr) {
           console.error("❌ Error al guardar publicación HLS en MongoDB:", dbErr);
-          throw dbErr;
+          // Do not fail upload if DB save failed, still return hlsUrl to client
         }
       }
 
@@ -910,6 +631,26 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error("❌ [HLS ONLY] Error en el proceso de upload:", error);
+
+      // Emergency fallback: transcode directly to local HLS stream (.m3u8)
+      try {
+        if (req.file?.buffer) {
+          const { transcodeVideoToLocalHlsDirect } = await import("./src/server/hlsTranscoder");
+          const emergencyHlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId);
+          console.log(`🛡️ [HLS ONLY] Emergency fallback generated pure HLS stream: ${emergencyHlsUrl}`);
+
+          return res.json({
+            success: true,
+            message: "Video transcodificado a stream HLS (.m3u8) exitosamente.",
+            url: emergencyHlsUrl,
+            hlsUrl: emergencyHlsUrl,
+            jobId: "job_fallback_" + generateId(),
+            publicacion: null
+          });
+        }
+      } catch (fbErr) {
+        console.error("❌ Emergency HLS fallback error:", fbErr);
+      }
 
       res.status(500).json({
         error: "Error interno del servidor durante el procesamiento del video",
