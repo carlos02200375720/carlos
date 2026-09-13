@@ -16,6 +16,35 @@ export interface TranscodeHlsResult {
   latencyMs: number;
 }
 
+export interface H264OptimizationResult {
+  buffer: Buffer;
+  originalSize: number;
+  optimizedSize: number;
+  compressionRatioPercent: number;
+  durationMs: number;
+  codec: string;
+}
+
+export async function optimizeVideoToH264(videoBuffer: Buffer, videoId: string): Promise<H264OptimizationResult> {
+  const startTime = Date.now();
+  const tmpDir = path.join(os.tmpdir(), `h264_opt_${videoId}_${Date.now()}`);
+  const inputFilePath = path.join(tmpDir, "input_source.mp4");
+  const outputFilePath = path.join(tmpDir, "output_h264_faststart.mp4");
+  await fs.promises.mkdir(tmpDir, { recursive: true });
+  await fs.promises.writeFile(inputFilePath, videoBuffer);
+  const originalSize = videoBuffer.length;
+  try {
+    const cmd = ["ffmpeg -y -i", `"${inputFilePath}"`, "-map 0:v:0 -map 0:a? -threads 0", "-c:v libx264 -preset ultrafast -profile:v high -level:v 4.1 -pix_fmt yuv420p", "-crf 24 -maxrate 2500k -bufsize 5000k", `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"`, "-g 60 -keyint_min 30 -movflags +faststart -c:a aac -b:a 128k -ar 44100 -ac 2", `"${outputFilePath}"`].join(" ");
+    await execAsync(cmd, { timeout: 120000 });
+    const buffer = await fs.promises.readFile(outputFilePath);
+    const optimizedSize = buffer.length;
+    return { buffer, originalSize, optimizedSize, compressionRatioPercent: Math.max(0, Math.round(((originalSize - optimizedSize) / originalSize) * 100)), durationMs: Date.now() - startTime, codec: "H.264 / AVC (libx264, yuv420p, +faststart)" };
+  } catch (err: any) {
+    console.warn(`[H.264 Transcoder] Fallback: ${err?.message || err}`);
+    return { buffer: videoBuffer, originalSize, optimizedSize: originalSize, compressionRatioPercent: 0, durationMs: Date.now() - startTime, codec: "Original (Fallback)" };
+  } finally { await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined); }
+}
+
 export interface HlsJob { id: string; reelId?: string; publicacionId?: string; sourceName: string; status: "queued" | "transcoding" | "uploading_cdn" | "completed" | "failed"; progress: number; queuedAt: number; startedAt?: number; completedAt?: number; durationMs?: number; totalSegments?: number; masterM3u8Url?: string; error?: string; }
 
 type HlsTask = { job: HlsJob; videoBuffer: Buffer; bucket: Bucket; bucketName: string; onComplete?: (result: TranscodeHlsResult) => Promise<void> | void; onError?: (err: Error) => void; resolve?: (result: TranscodeHlsResult) => void; reject?: (err: Error) => void };
