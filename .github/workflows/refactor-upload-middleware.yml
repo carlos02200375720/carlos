@@ -1,0 +1,66 @@
+name: Refactor upload middleware
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  extract-upload-middleware:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Extract upload middleware from server.ts
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path('server.ts')
+          s = p.read_text()
+
+          start_marker = '// Configure multer for memory storage (200MB limit for high-definition video/image uploads)'
+          end_marker = '// Helper: Upload file to GCS (with H.264 mobile optimization for all videos)'
+
+          start = s.find(start_marker)
+          end = s.find(end_marker, start)
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit('Upload middleware block not found')
+
+          block = s[start:end].rstrip() + '\n'
+
+          Path('src/server/middleware').mkdir(parents=True, exist_ok=True)
+          Path('src/server/middleware/upload.ts').write_text(
+              'import multer from "multer";\n\n' + block + '\n',
+              encoding='utf-8'
+          )
+
+          replacement = 'import { upload, uploadSingleSafe } from "./src/server/middleware/upload";\n\n'
+          s = s[:start] + replacement + s[end:]
+          s = s.replace('import multer from "multer";\n', '')
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Verify and commit
+        shell: bash
+        run: |
+          grep -q 'from "./src/server/middleware/upload"' server.ts
+          test -s src/server/middleware/upload.ts
+          if grep -q 'const upload = multer' server.ts; then
+            echo 'Old upload declaration still exists in server.ts'
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server.ts src/server/middleware/upload.ts .github/workflows/refactor-upload-middleware.yml
+          git rm .github/workflows/refactor-upload-middleware.yml
+          git commit -m 'refactor(server): extract upload middleware' || exit 0
+          git push origin main
