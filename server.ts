@@ -11,6 +11,15 @@ import multer from "multer";
 import fs from "fs";
 import { transcodeVideoToHLS, hlsQueue, deleteHlsStreamBatch, optimizeVideoToH264 } from "./src/server/hlsTranscoder";
 import { createAndroidRouter } from "./src/server/androidRouter";
+import {
+  MongoUser,
+  MongoPublicacion,
+  MongoProduct,
+  MongoReel,
+  MongoCart,
+  MongoOrder,
+} from "./src/server/models";
+import { bucket } from "./src/server/config/storage";
 
 // Configure dotenv to read environment variables first
 dotenv.config();
@@ -18,160 +27,7 @@ dotenv.config();
 // Unique ID generator
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
-// Mongoose User Schema
-const UserSchema = new mongoose.Schema({
-  id: { type: String, required: true, unique: true },
-  username: { type: String, required: true },
-  name: { type: String, required: true },
-  avatar: { type: String },
-  bio: { type: String },
-  isOnline: { type: Boolean, default: false },
-  followers: { type: Number, default: 0 },
-  following: { type: Number, default: 0 },
-  followingUserIds: { type: [String], default: [] },
-  savedReelIds: { type: [String], default: [] },
-  coverPhoto: { type: String },
-  isGuest: { type: Boolean, default: false },
-  password: { type: String },
-  email: { type: String, default: "" },
-  privacyPolicy: { type: String, default: "" }
-});
-
-const MongoUser = (mongoose.models.User || mongoose.model("User", UserSchema)) as any;
-
-// Mongoose Publicacion Schema
-const PublicacionSchema = new mongoose.Schema({
-  id: { type: String, required: true, unique: true },
-  url: { type: String, required: true },
-  hlsUrl: { type: String },
-  title: { type: String },
-  description: { type: String },
-  createdAt: { type: Date, default: Date.now },
-  creatorId: { type: String }
-});
-
-const MongoPublicacion = (mongoose.models.Publicacion || mongoose.model("Publicacion", PublicacionSchema)) as any;
-
-// Mongoose Product Schema
-const ProductSchema = new mongoose.Schema({
-  id: { type: String, required: true, unique: true },
-  name: { type: String, required: true },
-  description: { type: String },
-  price: { type: Number, required: true },
-  imageUrl: { type: String },
-  stock: { type: Number, default: 0 },
-  sellerId: { type: String },
-  rating: { type: Number, default: 5 },
-  shippingCost: { type: Number, default: 0 },
-  images: { type: [String], default: [] },
-  videos: { type: [String], default: [] },
-  variants: [{
-    name: { type: String },
-    options: { type: [String] }
-  }],
-  variantList: [{
-    vid: { type: String },
-    name: { type: String },
-    color: { type: String },
-    size: { type: String },
-    price: { type: Number },
-    imageUrl: { type: String },
-    sku: { type: String }
-  }],
-  category: { type: String },
-  cjVid: { type: String },
-  cjPid: { type: String },
-  views: { type: Number, default: 0 }
-});
-
-const MongoProduct = (mongoose.models.Product || mongoose.model("Product", ProductSchema)) as any;
-
-// Mongoose Reel Schema
-const ReelSchema = new mongoose.Schema({
-  id: { type: String, required: true, unique: true },
-  videoUrl: { type: String },
-  thumbnailUrl: { type: String },
-  description: { type: String },
-  creatorId: { type: String },
-  creatorName: { type: String },
-  creatorUsername: { type: String },
-  creatorAvatar: { type: String },
-  likes: { type: Number, default: 0 },
-  likedBy: { type: [String], default: [] },
-  comments: [{
-    id: { type: String },
-    username: { type: String },
-    avatar: { type: String },
-    text: { type: String },
-    createdAt: { type: String }
-  }],
-  shares: { type: Number, default: 0 },
-  saves: { type: Number, default: 0 },
-  views: { type: Number, default: 0 },
-  productId: { type: String },
-  type: { type: String, default: "video" },
-  images: { type: [String], default: [] },
-  hlsUrl: { type: String },
-  aspectRatio: { type: String, default: "vertical" }
-});
-
-const MongoReel = (mongoose.models.Reel || mongoose.model("Reel", ReelSchema)) as any;
-
-// Mongoose Cart Schema for persistent shopping cart per user/client
-const CartSchema = new mongoose.Schema({
-  userId: { type: String, required: true, unique: true },
-  items: [{
-    product: { type: mongoose.Schema.Types.Mixed, required: true },
-    quantity: { type: Number, required: true, default: 1 }
-  }],
-  updatedAt: { type: Date, default: Date.now }
-}, { strict: false });
-
-const MongoCart = (mongoose.models.Cart || mongoose.model("Cart", CartSchema)) as any;
 const cartMemoryStore = new Map<string, any[]>();
-
-// Mongoose Order Schema for persistent orders, tracking numbers, and seller fulfillment
-const OrderSchema = new mongoose.Schema({
-  id: { type: String, required: true, unique: true },
-  buyerId: { type: String },
-  buyerName: { type: String },
-  buyerUsername: { type: String },
-  buyerAvatar: { type: String },
-  buyerEmail: { type: String },
-  items: [{
-    productId: { type: String, required: true },
-    name: { type: String, required: true },
-    price: { type: Number, required: true },
-    quantity: { type: Number, required: true },
-    imageUrl: { type: String },
-    sellerId: { type: String },
-    sellerName: { type: String },
-    sellerUsername: { type: String },
-    carrier: { type: String }
-  }],
-  total: { type: Number, required: true },
-  shippingCost: { type: Number, default: 0 },
-  shippingAddress: { type: String, required: true },
-  paymentStatus: { type: String, default: "paid" },
-  status: { type: String, default: "processing" },
-  trackingNumber: { type: String, default: "" },
-  carrier: { type: String, default: "" },
-  trackingUrl: { type: String, default: "" },
-  estimatedDelivery: { type: String, default: "" },
-  sellerNotes: { type: String, default: "" },
-  statusHistory: [{
-    status: { type: String },
-    label: { type: String },
-    timestamp: { type: String },
-    note: { type: String },
-    trackingNumber: { type: String },
-    carrier: { type: String }
-  }],
-  createdAt: { type: String },
-  updatedAt: { type: String }
-}, { strict: false });
-
-const MongoOrder = (mongoose.models.Order || mongoose.model("Order", OrderSchema)) as any;
 
 // Google Cloud Storage setup
 let storage: Storage;
@@ -226,6 +82,92 @@ if (fs.existsSync(googleJsonPath)) {
 }
 
 const bucket = storage.bucket(bucketName);
+
+// Configure multer for memory storage (200MB limit for high-definition video/image uploads)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 200 * 1024 * 1024, // 200MB max limit
+  }
+});
+
+// Safe Multer middleware wrapper that catches errors and always returns clean JSON
+const uploadSingleSafe = (fieldName: string) => (req: any, res: any, next: any) => {
+  upload.single(fieldName)(req, res, (err: any) => {
+    if (err) {
+      console.error(`❌ Multer upload error on field '${fieldName}':`, err);
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({
+          error: "El archivo seleccionado supera el límite permitido de 200MB. Por favor, selecciona un archivo más liviano.",
+          code: "LIMIT_FILE_SIZE"
+        });
+      }
+      return res.status(400).json({
+        error: `Error al procesar el archivo: ${err.message || err}`,
+        code: err.code || "UPLOAD_ERROR"
+      });
+    }
+    next();
+  });
+};
+
+// Helper: Upload file to GCS (with H.264 mobile optimization for all videos)
+const uploadToGCS = async (file: Express.Multer.File, folder: string = "publicaciones"): Promise<string> => {
+  let originalName = file.originalname.replace(/\s+/g, "_");
+  const mimeType = file.mimetype.toLowerCase();
+
+  // Enforce correct extensions on upload as requested
+  const isVideo = mimeType.startsWith("video/") || originalName.toLowerCase().endsWith(".mp4");
+  if (isVideo) {
+    if (!originalName.toLowerCase().endsWith(".mp4")) {
+      const dotIdx = originalName.lastIndexOf(".");
+      if (dotIdx !== -1) {
+        originalName = originalName.substring(0, dotIdx) + ".mp4";
+      } else {
+        originalName += ".mp4";
+      }
+    }
+
+    // Process video to universal H.264 (AVC) with adjusted bitrate and +faststart for instant mobile playback
+    try {
+      console.log(`🎬 [Upload] Procesando video ${originalName} a formato H.264 universal para móviles...`);
+      const optResult = await optimizeVideoToH264(file.buffer, generateId());
+      file.buffer = optResult.buffer;
+      file.size = optResult.optimizedSize;
+      (file as any).h264Optimization = optResult;
+      console.log(`✨ [Upload] Video optimizado con éxito: ${optResult.compressionRatioPercent}% de compresión`);
+    } catch (optErr: any) {
+      console.warn("⚠️ [Upload] No se pudo completar la optimización H.264, usando buffer original:", optErr.message);
+    }
+  } else if (mimeType.startsWith("image/")) {
+    const lowerName = originalName.toLowerCase();
+    const validExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".heic", ".heif"];
+    const hasValidExt = validExtensions.some(ext => lowerName.endsWith(ext));
+    if (!hasValidExt) {
+      if (mimeType.includes("png")) {
+        originalName += ".png";
+      } else if (mimeType.includes("webp")) {
+        originalName += ".webp";
+      } else if (mimeType.includes("gif")) {
+        originalName += ".gif";
+      } else if (mimeType.includes("svg")) {
+        originalName += ".svg";
+      } else if (mimeType.includes("avif")) {
+        originalName += ".avif";
+      } else if (mimeType.includes("heic")) {
+        originalName += ".heic";
+      } else if (mimeType.includes("heif")) {
+        originalName += ".heif";
+      } else if (mimeType.includes("jpeg") || mimeType.includes("jpg")) {
+        originalName += ".jpeg";
+      } else {
+        originalName += ".jpeg";
+      }
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const u
 
 // Configure multer for memory storage (200MB limit for high-definition video/image uploads)
 const upload = multer({
