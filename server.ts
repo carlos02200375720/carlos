@@ -1029,21 +1029,6 @@ async function startServer() {
     }
   });
 
-  // HLS Dynamic Streaming Fallback Endpoint (Redirects directly to avoid CPU overhead)
-  app.get("/api/hls/stream", async (req: any, res: any) => {
-    try {
-      const videoUrl = (req.query.url as string || "").trim();
-      if (!videoUrl) {
-        res.status(400).send("#EXTM3U\n# Error: video url required");
-        return;
-      }
-      // Redirect directly to source video URL for native playback
-      res.redirect(videoUrl);
-    } catch (err: any) {
-      res.status(500).send("#EXTM3U\n# Error streaming video");
-    }
-  });
-
   // Batch Cleanup & Deletion Endpoint for Reels & HLS segments in GCS
   app.delete(["/api/reels/:id", "/api/publicaciones/:id"], async (req: any, res: any) => {
     try {
@@ -2891,7 +2876,7 @@ async function startServer() {
         return;
       }
 
-      const resolvedHlsUrl = hlsUrl || (videoUrl ? `/api/hls/stream?url=${encodeURIComponent(videoUrl)}` : undefined);
+      const resolvedHlsUrl = hlsUrl || undefined;
 
       const newReel: Reel = {
         id: "reel_" + generateId(),
