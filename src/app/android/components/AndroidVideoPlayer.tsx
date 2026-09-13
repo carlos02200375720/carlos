@@ -12,8 +12,7 @@ export interface AndroidVideoPlayerHandle {
 }
 
 export interface AndroidVideoPlayerProps {
-  src: string;
-  hlsUrl?: string;
+  hlsUrl: string;
   poster?: string;
   autoPlay?: boolean;
   loop?: boolean;
@@ -34,7 +33,6 @@ export interface AndroidVideoPlayerProps {
 export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVideoPlayerProps>(
   (
     {
-      src,
       hlsUrl,
       poster,
       autoPlay = true,
@@ -141,22 +139,17 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
 
     useEffect(() => {
       setDetectedAspect(aspectRatio || 'vertical');
-    }, [src, hlsUrl, aspectRatio]);
+    }, [hlsUrl, aspectRatio]);
 
     const handleVideoRef = useCallback((el: HTMLVideoElement | null) => {
       videoRef.current = el;
       onVideoReady?.(el);
     }, [onVideoReady]);
 
-    const mediaSource = React.useMemo(() => {
-      const hlsSource = hlsUrl?.trim();
-      if (hlsSource && hlsSource.includes('.m3u8')) return hlsSource;
-      return (src || '').trim();
-    }, [src, hlsUrl]);
-
     useEffect(() => {
       const video = videoRef.current;
-      if (!video || !mediaSource) return;
+      const mediaSource = hlsUrl.trim();
+      if (!video || !mediaSource || !mediaSource.includes('.m3u8')) return;
 
       hlsRef.current?.destroy();
       hlsRef.current = null;
@@ -164,9 +157,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       video.removeAttribute('src');
       video.load();
 
-      const isM3u8 = mediaSource.includes('.m3u8');
-
-      if (isM3u8 && Hls.isSupported()) {
+      if (Hls.isSupported()) {
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
@@ -197,9 +188,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             hlsRef.current = null;
           }
         });
-      } else if (isM3u8 && video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = mediaSource;
-      } else {
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = mediaSource;
       }
 
@@ -210,7 +199,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
         video.removeAttribute('src');
         video.load();
       };
-    }, [mediaSource, isCurrent, autoPlay, safePlay]);
+    }, [hlsUrl, isCurrent, autoPlay, safePlay]);
 
     useEffect(() => {
       const video = videoRef.current;
