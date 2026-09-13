@@ -118,5 +118,3 @@ export async function transcodeVideoToHLS(videoBuffer: Buffer, videoId: string, 
 }
 
 export async function deleteHlsStreamBatch(bucket: Bucket, hlsUrlOrVideoId: string): Promise<{ success: boolean; deletedCount: number; prefix: string }> { try { let prefix = ""; if (hlsUrlOrVideoId.includes("hls/")) { const match = hlsUrlOrVideoId.match(/hls\/([a-zA-Z0-9_-]+)/); if (match?.[1]) prefix = `hls/${match[1]}`; } else if (hlsUrlOrVideoId.startsWith("hls_")) prefix = `hls/${hlsUrlOrVideoId}`; if (!prefix) return { success: false, deletedCount: 0, prefix: "" }; await bucket.deleteFiles({ prefix: `${prefix}/`, force: true }); return { success: true, deletedCount: 1, prefix }; } catch (err) { console.error(`[HLS Cleanup] Failed:`, err); return { success: false, deletedCount: 0, prefix: "" }; } }
-
-export async function getOrGenerateDynamicHLS(videoUrl: string): Promise<{ masterM3u8: string; files: Map<string, Buffer> }> { const masterM3u8 = `#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,NAME="Direct Stream"\n${videoUrl}\n`; return { masterM3u8, files: new Map([["index.m3u8", Buffer.from(masterM3u8, "utf8")]]) }; }
