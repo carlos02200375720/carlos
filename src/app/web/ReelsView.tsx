@@ -411,7 +411,6 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     video.load();
 
     const hlsSource = reel.hlsUrl?.trim();
-    const mp4Source = (reel.videoUrl || (reel.thumbnailUrl?.endsWith(".mp4") ? reel.thumbnailUrl : "")).trim();
 
     if (hlsSource && Hls.isSupported()) {
       const hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 6, maxBufferLength: 20, capLevelToPlayerSize: true });
@@ -426,8 +425,6 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
       hls.attachMedia(video);
     } else if (hlsSource && video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = hlsSource;
-    } else if (mp4Source) {
-      video.src = mp4Source;
     }
 
     return () => {
@@ -437,7 +434,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
       video.removeAttribute("src");
       video.load();
     };
-  }, [reel.hlsUrl, reel.videoUrl, reel.thumbnailUrl]);
+  }, [reel.hlsUrl]);
 
   useEffect(() => {
     const video = videoRef.current;
