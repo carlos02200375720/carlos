@@ -16,35 +16,6 @@ export interface TranscodeHlsResult {
   latencyMs: number;
 }
 
-export interface H264OptimizationResult {
-  buffer: Buffer;
-  originalSize: number;
-  optimizedSize: number;
-  compressionRatioPercent: number;
-  durationMs: number;
-  codec: string;
-}
-
-export async function optimizeVideoToH264(videoBuffer: Buffer, videoId: string): Promise<H264OptimizationResult> {
-  const startTime = Date.now();
-  const tmpDir = path.join(os.tmpdir(), `h264_opt_${videoId}_${Date.now()}`);
-  const inputFilePath = path.join(tmpDir, "input_source.mp4");
-  const outputFilePath = path.join(tmpDir, "output_h264_faststart.mp4");
-  await fs.promises.mkdir(tmpDir, { recursive: true });
-  await fs.promises.writeFile(inputFilePath, videoBuffer);
-  const originalSize = videoBuffer.length;
-  try {
-    const cmd = ["ffmpeg -y -i", `"${inputFilePath}"`, "-map 0:v:0 -map 0:a? -threads 0", "-c:v libx264 -preset ultrafast -profile:v high -level:v 4.1 -pix_fmt yuv420p", "-crf 24 -maxrate 2500k -bufsize 5000k", `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"`, "-g 60 -keyint_min 30 -movflags +faststart -c:a aac -b:a 128k -ar 44100 -ac 2", `"${outputFilePath}"`].join(" ");
-    await execAsync(cmd, { timeout: 120000 });
-    const buffer = await fs.promises.readFile(outputFilePath);
-    const optimizedSize = buffer.length;
-    return { buffer, originalSize, optimizedSize, compressionRatioPercent: Math.max(0, Math.round(((originalSize - optimizedSize) / originalSize) * 100)), durationMs: Date.now() - startTime, codec: "H.264 / AVC (libx264, yuv420p, +faststart)" };
-  } catch (err: any) {
-    console.warn(`[H.264 Transcoder] Fallback: ${err?.message || err}`);
-    return { buffer: videoBuffer, originalSize, optimizedSize: originalSize, compressionRatioPercent: 0, durationMs: Date.now() - startTime, codec: "Original (Fallback)" };
-  } finally { await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined); }
-}
-
 export interface HlsJob { id: string; reelId?: string; publicacionId?: string; sourceName: string; status: "queued" | "transcoding" | "uploading_cdn" | "completed" | "failed"; progress: number; queuedAt: number; startedAt?: number; completedAt?: number; durationMs?: number; totalSegments?: number; masterM3u8Url?: string; error?: string; }
 
 type HlsTask = { job: HlsJob; videoBuffer: Buffer; bucket: Bucket; bucketName: string; onComplete?: (result: TranscodeHlsResult) => Promise<void> | void; onError?: (err: Error) => void; resolve?: (result: TranscodeHlsResult) => void; reject?: (err: Error) => void };
@@ -55,7 +26,6 @@ class HlsTranscoderQueue {
   private maxConcurrent = 1;
   private activeWorkers = 0;
 
-  // Latency & performance telemetry stats
   public telemetry = {
     totalJobs: 0,
     completedJobs: 0,
@@ -168,10 +138,9 @@ class HlsTranscoderQueue {
 export const hlsQueue = new HlsTranscoderQueue();
 
 /**
- * Ultra-fast Async Pre-transcoding Engine: Transcodes video to HLS (.m3u8 and .ts segments)
- * at upload time and uploads all fragments directly to Google Cloud Storage.
- *
- * Prevents on-the-fly dynamic CPU bottlenecks, eliminating timeouts and buffering.
+ * Pre-transcode video to HLS at upload time and upload only HLS playlists/segments.
+ * The source MP4 exists only in the temporary processing directory and is removed
+ * when transcoding finishes.
  */
 export async function transcodeVideoToHLS(
   videoBuffer: Buffer,
@@ -192,13 +161,12 @@ export async function transcodeVideoToHLS(
   if (onProgress) onProgress(20);
 
   try {
-    console.log(`🎬 [HLS Pre-Transcoder] Starting ultrafast HLS segmentation for video ${videoId}...`);
+    console.log(`🎬 [HLS Pre-Transcoder] Starting HLS segmentation for video ${videoId}...`);
 
-    const segmentDuration = 3; // 3-second segments for instant playback
+    const segmentDuration = 3;
     const playlistPath = path.join(outputDir, "index.m3u8");
     const segmentPattern = path.join(outputDir, "segment_%03d.ts");
 
-    // Highly optimized ffmpeg command for fast conversion with robust video & audio mapping
     const ffmpegCmd = [
       "ffmpeg -y -i",
       `"${inputFilePath}"`,
@@ -215,13 +183,11 @@ export async function transcodeVideoToHLS(
     await execAsync(ffmpegCmd, { timeout: 60000 });
     console.log(`✅ [HLS Pre-Transcoder] Local HLS segmentation finished for ${videoId}`);
 
-    // Create a master.m3u8 alias pointing to index.m3u8 for compatibility
     const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
     await fs.promises.writeFile(path.join(outputDir, "master.m3u8"), masterContent);
 
     if (onProgress) onProgress(75);
 
-    // Upload all generated HLS files (.m3u8 and .ts) to Google Cloud Storage
     const files = await fs.promises.readdir(outputDir);
     console.log(`📦 [HLS Pre-Transcoder] Uploading ${files.length} HLS files directly to GCS bucket "${bucketName}"...`);
 
@@ -286,9 +252,7 @@ export async function transcodeVideoToHLS(
       latencyMs: totalLatencyMs,
     };
   } finally {
-    try {
-      await fs.promises.rm(tmpDir, { recursive: true, force: true });
-    } catch {}
+    await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -317,8 +281,6 @@ export async function deleteHlsStreamBatch(
     }
 
     console.log(`🧹 [HLS Cleanup] Performing bulk deletion of all HLS files under GCS prefix "${prefix}/"...`);
-    
-    // GCS deleteFiles removes all files matching the prefix in one batch API call
     await bucket.deleteFiles({
       prefix: `${prefix}/`,
       force: true
@@ -336,20 +298,3 @@ export async function deleteHlsStreamBatch(
     return { success: false, deletedCount: 0, prefix: "" };
   }
 }
-
-/**
- * Backward-compatible helper for legacy references (no live ffmpeg execution)
- */
-export async function getOrGenerateDynamicHLS(videoUrl: string): Promise<{
-  masterM3u8: string;
-  files: Map<string, Buffer>;
-}> {
-  const masterM3u8 = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Direct Stream"\n${videoUrl}\n`;
-  const filesMap = new Map<string, Buffer>();
-  filesMap.set("index.m3u8", Buffer.from(masterM3u8, "utf8"));
-  return {
-    masterM3u8,
-    files: filesMap,
-  };
-}
-
