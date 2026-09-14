@@ -1,0 +1,103 @@
+name: Patch Reels Playback Performance
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'fix: reels playback performance'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Apply targeted playback fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8')
+              if old not in s:
+                  raise SystemExit(f'Missing expected text in {path}: {old[:120]!r}')
+              p.write_text(s.replace(old, new, count), encoding='utf-8')
+
+          # 1) ReelsView: do not duplicate reels to fill the feed. Duplicates caused
+          # repeated cards, repeated thumbnails and unnecessary React work.
+          replace(
+              'src/app/web/ReelsView.tsx',
+              '  const [displayCount, setDisplayCount] = useState<number>(() => (reels.length <= 2 ? Math.max(reels.length * 4, 4) : reels.length));\n',
+              ''
+          )
+          replace(
+              'src/app/web/ReelsView.tsx',
+              '''  useEffect(() => {\n    if (reels.length > 0) {\n      setDisplayCount((prev) => (reels.length <= 2 ? Math.max(reels.length * 4, 4) : Math.max(prev, reels.length)));\n    }\n  }, [reels.length]);\n\n  const displayedReels = React.useMemo(() => {\n    if (reels.length === 0) return [];\n    const list: Reel[] = [];\n    for (let i = 0; i < displayCount; i++) list.push(reels[i % reels.length]);\n    return list;\n  }, [reels, displayCount]);\n''',
+              '''  const displayedReels = reels;\n'''
+          )
+          replace(
+              'src/app/web/ReelsView.tsx',
+              '''    if (index >= displayedReels.length - 2 && reels.length > 0) {\n      setDisplayCount((prev) => prev + Math.min(reels.length, 10));\n    }\n''',
+              ''
+          )
+
+          # 2) ReelsView/ReelVideoItem: only send actual HLS manifests to Hls.js.
+          # MP4/progressive URLs must use the native video element directly.
+          old_effect = '''  useEffect(() => {\n    const video = videoRef.current;\n    if (!video) return;\n\n    hlsRef.current?.destroy();\n    hlsRef.current = null;\n    video.pause();\n    video.removeAttribute("src");\n    video.load();\n\n    const hlsSource = (reel.hlsUrl || reel.videoUrl)?.trim();\n\n    if (hlsSource && Hls.isSupported()) {\n      const hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 6, maxBufferLength: 20, capLevelToPlayerSize: true });\n      hlsRef.current = hls;\n      hls.on(Hls.Events.ERROR, (_event, data) => {\n        if (!data.fatal) return;\n        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();\n        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();\n        else { hls.destroy(); hlsRef.current = null; }\n      });\n      hls.loadSource(hlsSource);\n      hls.attachMedia(video);\n    } else if (hlsSource && video.canPlayType("application/vnd.apple.mpegurl")) {\n      video.src = hlsSource;\n    }\n\n    return () => {\n      video.pause();\n      hlsRef.current?.destroy();\n      hlsRef.current = null;\n      video.removeAttribute("src");\n      video.load();\n    };\n  }, [reel.hlsUrl]);\n'''
+          new_effect = '''  useEffect(() => {\n    const video = videoRef.current;\n    if (!video) return;\n\n    hlsRef.current?.destroy();\n    hlsRef.current = null;\n    video.pause();\n    video.removeAttribute("src");\n    video.load();\n\n    const hlsSource = (reel.hlsUrl || reel.videoUrl)?.trim();\n    const isHlsSource = !!hlsSource && /\\.m3u8(?:$|[?#])/i.test(hlsSource);\n\n    if (hlsSource && isHlsSource && Hls.isSupported()) {\n      const hls = new Hls({\n        enableWorker: true,\n        lowLatencyMode: false,\n        backBufferLength: 5,\n        maxBufferLength: 12,\n        maxMaxBufferLength: 24,\n        capLevelToPlayerSize: true,\n      });\n      hlsRef.current = hls;\n      hls.on(Hls.Events.ERROR, (_event, data) => {\n        if (!data.fatal) return;\n        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {\n          hls.startLoad();\n        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {\n          hls.recoverMediaError();\n        } else {\n          hls.destroy();\n          hlsRef.current = null;\n        }\n      });\n      hls.loadSource(hlsSource);\n      hls.attachMedia(video);\n    } else if (hlsSource && (!isHlsSource || video.canPlayType("application/vnd.apple.mpegurl"))) {\n      video.src = hlsSource;\n      video.load();\n    }\n\n    return () => {\n      video.pause();\n      hlsRef.current?.destroy();\n      hlsRef.current = null;\n      video.removeAttribute("src");\n      video.load();\n    };\n  }, [reel.hlsUrl, reel.videoUrl]);\n'''
+          replace('src/app/web/ReelsView.tsx', old_effect, new_effect)
+
+          # 3) NativeVideoPlayer: conservative feed buffering and no eager preload.
+          replace(
+              'src/app/web/components/VideoPlayer/NativeVideoPlayer.tsx',
+              '  preload = "auto",',
+              '  preload = "none",'
+          )
+          replace(
+              'src/app/web/components/VideoPlayer/NativeVideoPlayer.tsx',
+              '''          maxBufferLength: 30,\n          maxMaxBufferLength: 60,\n          enableWorker: true,\n          lowLatencyMode: false,\n''',
+              '''          maxBufferLength: 12,\n          maxMaxBufferLength: 24,\n          backBufferLength: 5,\n          capLevelToPlayerSize: true,\n          enableWorker: true,\n          lowLatencyMode: false,\n'''
+          )
+
+          # 4) HLS transcoder: shorter VOD segments reduce startup/stall impact.
+          replace(
+              'src/server/hlsTranscoder.ts',
+              '    const segmentDuration = 3;\n',
+              '    const segmentDuration = 2;\n'
+          )
+
+          # 5) Production publication endpoint: do not persist a Reel pointing to
+          # ephemeral local HLS when the durable GCS HLS pipeline fails.
+          replace(
+              'src/server/androidRouter.ts',
+              '''      if (!hlsUrl) {\n        hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);\n      }\n''',
+              '''      if (!hlsUrl) {\n        if (process.env.NODE_ENV !== "production") {\n          hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);\n        } else {\n          throw new Error("No fue posible generar y almacenar el stream HLS en almacenamiento persistente");\n        }\n      }\n'''
+          )
+
+          # Remove this one-shot workflow from the repository after applying the patch.
+          wf = Path('.github/workflows/fix-reels-performance.yml')
+          if wf.exists():
+              wf.unlink()
+
+      - name: Verify targeted changes
+        run: |
+          grep -n 'const displayedReels = reels' src/app/web/ReelsView.tsx
+          grep -n 'isHlsSource' src/app/web/ReelsView.tsx
+          grep -n 'preload = "none"' src/app/web/components/VideoPlayer/NativeVideoPlayer.tsx
+          grep -n 'segmentDuration = 2' src/server/hlsTranscoder.ts
+          grep -n 'almacenamiento persistente' src/server/androidRouter.ts
+
+      - name: Commit fixes directly to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/web/ReelsView.tsx src/app/web/components/VideoPlayer/NativeVideoPlayer.tsx src/server/hlsTranscoder.ts src/server/androidRouter.ts .github/workflows/fix-reels-performance.yml
+          git diff --cached --check
+          git commit -m "fix: reels playback performance"
+          git push origin HEAD:main
