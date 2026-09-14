@@ -4,8 +4,21 @@ import path from "path";
 import os from "os";
 import { promisify } from "util";
 import { Bucket } from "@google-cloud/storage";
+import { createRequire } from "module";
 
+const require = createRequire(import.meta.url);
 const execAsync = promisify(exec);
+
+function getFfmpegBinary(): string {
+  try {
+    const ffmpegPath = require("ffmpeg-static");
+    return ffmpegPath || "ffmpeg";
+  } catch {
+    return "ffmpeg";
+  }
+}
+
+const ffmpegBinary = getFfmpegBinary();
 
 export interface TranscodeHlsResult {
   masterM3u8Url: string;
@@ -47,7 +60,7 @@ export async function transcodeVideoToLocalHlsDirect(
     const segmentPattern = path.join(localHlsDir, "segment_%03d.ts");
 
     const cmd = [
-      "ffmpeg -y -i",
+      `"${ffmpegBinary}" -y -i`,
       `"${inputFilePath}"`,
       "-map 0:v:0 -map 0:a?",
       "-c:v libx264 -preset ultrafast -pix_fmt yuv420p -crf 26",
@@ -79,7 +92,7 @@ export async function optimizeVideoToH264(videoBuffer: Buffer, videoId: string):
   await fs.promises.writeFile(inputFilePath, videoBuffer);
   const originalSize = videoBuffer.length;
   try {
-    const cmd = ["ffmpeg -y -i", `"${inputFilePath}"`, "-map 0:v:0 -map 0:a? -threads 0", "-c:v libx264 -preset ultrafast -profile:v high -level:v 4.1 -pix_fmt yuv420p", "-crf 24 -maxrate 2500k -bufsize 5000k", `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"`, "-g 60 -keyint_min 30 -c:a aac -b:a 128k -ar 44100 -ac 2", `"${outputFilePath}"`].join(" ");
+    const cmd = [`"${ffmpegBinary}" -y -i`, `"${inputFilePath}"`, "-map 0:v:0 -map 0:a? -threads 0", "-c:v libx264 -preset ultrafast -profile:v high -level:v 4.1 -pix_fmt yuv420p", "-crf 24 -maxrate 2500k -bufsize 5000k", `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"`, "-g 60 -keyint_min 30 -c:a aac -b:a 128k -ar 44100 -ac 2", `"${outputFilePath}"`].join(" ");
     await execAsync(cmd, { timeout: 120000 });
     const buffer = await fs.promises.readFile(outputFilePath);
     const optimizedSize = buffer.length;
@@ -255,7 +268,7 @@ export async function transcodeVideoToHLS(
     const segmentPattern = path.join(outputDir, "segment_%03d.ts");
 
     const ffmpegCmd = [
-      "ffmpeg -y -i",
+      `"${ffmpegBinary}" -y -i`,
       `"${inputFilePath}"`,
       "-map 0:v:0 -map 0:a?",
       "-c:v libx264 -preset ultrafast -pix_fmt yuv420p -crf 26",
