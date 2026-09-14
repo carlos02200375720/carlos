@@ -670,17 +670,15 @@ export default function AndroidProfileView({
 
       {/* Standalone Publish Modal for Android */}
       {isPublishingOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950">
-          <AndroidPublishView
-            currentUser={currentUser}
-            onBack={() => setIsPublishingOpen(false)}
-            onSuccess={() => {
-              setIsPublishingOpen(false);
-              onPublishSuccess?.();
-            }}
-            userProducts={userProducts}
-          />
-        </div>
+        <AndroidPublishView
+          currentUser={currentUser}
+          onBack={() => setIsPublishingOpen(false)}
+          onSuccess={() => {
+            setIsPublishingOpen(false);
+            onPublishSuccess?.();
+          }}
+          userProducts={userProducts}
+        />
       )}
 
       {/* Edit Profile Sheet */}

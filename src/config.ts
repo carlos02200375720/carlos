@@ -28,18 +28,15 @@ export const isNativeMobileWrapper = (): boolean => {
   if (typeof window === "undefined" || !window.location) return false;
 
   const win = window as any;
-  // 1. Explicit Capacitor native platform
+  // 1. Explicit Capacitor native platform (isNativePlatform returns true ONLY when in native app, false in web)
   if (typeof win.Capacitor?.isNativePlatform === "function" && win.Capacitor.isNativePlatform()) {
     return true;
   }
   if (win.Capacitor?.getPlatform && (win.Capacitor.getPlatform() === "android" || win.Capacitor.getPlatform() === "ios")) {
     return true;
   }
-  if (win.Capacitor !== undefined && (win.Capacitor.isPluginAvailable || win.Capacitor.Plugins)) {
-    return true;
-  }
 
-  // 2. Protocols used exclusively by native mobile wrappers
+  // 2. Protocols used exclusively by native mobile wrappers (never used by regular web browsers)
   const proto = window.location.protocol;
   if (proto === "capacitor:" || proto === "file:" || proto === "ionic:" || proto === "app:") {
     return true;
@@ -48,14 +45,6 @@ export const isNativeMobileWrapper = (): boolean => {
   // 3. Cordova / PhoneGap
   if (win.cordova && !proto.startsWith("http")) {
     return true;
-  }
-
-  // 4. In native Android webview or standalone app wrapper (not a standard web browser on http/https)
-  if (typeof navigator !== "undefined" && !proto.startsWith("http")) {
-    const ua = navigator.userAgent || "";
-    if (/Android/i.test(ua)) {
-      return true;
-    }
   }
 
   return false;
@@ -70,13 +59,19 @@ export const isNativeMobileWrapper = (): boolean => {
 export const getApiUrl = (path: string): string => {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
 
+  // In any standard web browser over http/https (Dev server, AI Studio preview, Cloud Run container),
+  // always use relative paths so requests go directly to this container's Express server.
+  if (typeof window !== "undefined" && window.location && window.location.protocol.startsWith("http") && !isNativeMobileWrapper()) {
+    return cleanPath;
+  }
+
   // In native Android/iOS wrappers or purely static external hosts, connect to the Cloud Run backend
   if (isNativeMobileWrapper() || isExternalStaticHost()) {
     const trimmedBackend = (BACKEND_URL || CLOUD_RUN_BACKEND_URL).replace(/\/$/, "");
     return `${trimmedBackend}${cleanPath}`;
   }
 
-  // In all standard container dev/preview/production servers, use relative URLs
+  // Fallback to relative URL
   return cleanPath;
 };
 
@@ -177,6 +172,17 @@ export const apiFetch = async (
   try {
     const res = await fetch(targetUrl, fetchOptions);
     clearTimeout(timeoutId);
+
+    // If remote host returned 5xx server error, and we have a local dev/preview host available, try local
+    if (!res.ok && res.status >= 500 && targetUrl !== cleanPath) {
+      if (typeof window !== "undefined" && window.location && window.location.protocol.startsWith("http")) {
+        try {
+          const localRes = await fetch(cleanPath, fetchOptions);
+          if (localRes.ok) return localRes;
+        } catch {}
+      }
+    }
+
     return res;
   } catch (primaryErr: any) {
     clearTimeout(timeoutId);

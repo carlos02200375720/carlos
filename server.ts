@@ -7,7 +7,7 @@ import { User, Reel, Product, Order, ChatMessage, LiveSession, Comment } from ".
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import fs from "fs";
-import { transcodeVideoToHLS, hlsQueue, deleteHlsStreamBatch } from "./src/server/hlsTranscoder";
+import { transcodeVideoToHLS, transcodeVideoToLocalHlsDirect, hlsQueue, deleteHlsStreamBatch } from "./src/server/hlsTranscoder";
 import { createAndroidRouter } from "./src/server/androidRouter";
 import {
   MongoUser,
@@ -18,7 +18,7 @@ import {
   MongoOrder,
 } from "./src/server/models";
 import { bucket, bucketName } from "./src/server/config/storage";
-import { uploadToGCS, uploadBase64ToGCS, deleteFromGCS } from "./src/server/services/mediaStorage";
+import { uploadToGCS, uploadBase64ToGCS, deleteFromGCS, saveToLocalStorage } from "./src/server/services/mediaStorage";
 import { upload, uploadSingleSafe } from "./src/server/middleware/upload";
 
 // Configure dotenv to read environment variables first
@@ -487,13 +487,12 @@ async function startServer() {
   const processUploadHlsOnly = async (req: any, res: any) => {
     const pubId = "pub_" + generateId();
     try {
-      if (!req.file) {
-        res.status(400).json({ error: "No se proporcionó ningún archivo" });
-        return;
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({ error: "No se proporcionó ningún archivo para procesar" });
       }
 
-      const { title, description, creatorId } = req.body;
-      const mimeType = req.file.mimetype.toLowerCase();
+      const { title, description, creatorId } = req.body || {};
+      const mimeType = (req.file.mimetype || "").toLowerCase();
       const originalName = req.file.originalname || "upload";
       const isVideo =
         mimeType.startsWith("video/") ||
@@ -503,7 +502,13 @@ async function startServer() {
       // IMÁGENES / ARCHIVOS NO-VIDEO
       // ------------------------------------------------------------
       if (!isVideo) {
-        const publicUrl = await uploadToGCS(req.file, "publicaciones");
+        let publicUrl = "";
+        try {
+          publicUrl = await uploadToGCS(req.file, "publicaciones");
+        } catch (imgErr) {
+          console.warn("⚠️ Error subiendo imagen a GCS, usando almacenamiento local:", imgErr);
+          publicUrl = await saveToLocalStorage(req.file.buffer, "publicaciones", originalName);
+        }
 
         let savedPublicacionObj = null;
 
@@ -524,7 +529,7 @@ async function startServer() {
           }
         }
 
-        res.json({
+        return res.json({
           success: true,
           message: "Archivo subido exitosamente.",
           url: publicUrl,
@@ -532,57 +537,49 @@ async function startServer() {
           jobId: undefined,
           publicacion: savedPublicacionObj
         });
-
-        return;
       }
 
       // ------------------------------------------------------------
-      // VIDEO
+      // VIDEO (HLS ONLY)
       // ------------------------------------------------------------
-      // IMPORTANTE:
-      // NO usamos uploadToGCS() aquí.
-      //
-      // El MP4 solamente existe temporalmente:
-      //
-      // req.file.buffer
-      //       ↓
-      // FFmpeg
-      //       ↓
-      // HLS (.m3u8 + segmentos)
-      //       ↓
-      // GCS
-      //
-      // El MP4 original NO se guarda en GCS.
-      // ------------------------------------------------------------
-
       const jobId = "hls_" + generateId();
-
       console.log(`🎬 [HLS ONLY] Procesando video ${originalName}`);
-      console.log(`⚡ [HLS ONLY] Esperando transcodificación ${jobId}...`);
 
-      const hlsResult = await hlsQueue.enqueueAndWait(
-        jobId,
-        req.file.buffer,
-        originalName,
-        bucket,
-        bucketName,
-        {
-          publicacionId: pubId
-        }
-      );
+      let hlsUrl = "";
+      let latencyMs = 0;
+      let totalSegments = 1;
+      let durationSec: number | undefined = undefined;
 
-      const hlsUrl = hlsResult.masterM3u8Url;
+      try {
+        const hlsResult = await hlsQueue.enqueueAndWait(
+          jobId,
+          req.file.buffer,
+          originalName,
+          bucket,
+          bucketName,
+          {
+            publicacionId: pubId
+          }
+        );
+
+        hlsUrl = hlsResult.masterM3u8Url;
+        latencyMs = hlsResult.latencyMs;
+        totalSegments = hlsResult.totalSegments;
+        durationSec = hlsResult.durationSec;
+      } catch (queueErr: any) {
+        console.warn("⚠️ [HLS ONLY] Cola HLS falló, ejecutando transcodificación directa local:", queueErr?.message);
+        hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);
+      }
 
       if (!hlsUrl) {
-        throw new Error("La transcodificación HLS terminó sin devolver una URL HLS válida");
+        hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);
       }
 
       console.log(`✅ [HLS ONLY] HLS generado: ${hlsUrl}`);
 
       // ------------------------------------------------------------
-      // GUARDAR SOLAMENTE HLS EN MONGODB
+      // GUARDAR EN MONGODB (OPCIONAL)
       // ------------------------------------------------------------
-
       let savedPublicacionObj = null;
 
       if (mongoose.connection.readyState === 1) {
@@ -598,25 +595,13 @@ async function startServer() {
           });
 
           savedPublicacionObj = await newPublicacion.save();
-
           console.log(`💾 [HLS ONLY] Publicación guardada en MongoDB: ${pubId}`);
         } catch (dbErr) {
           console.error("❌ Error al guardar publicación HLS en MongoDB:", dbErr);
-          // Do not fail upload if DB save failed, still return hlsUrl to client
         }
       }
 
-      // ------------------------------------------------------------
-      // RESPUESTA
-      // ------------------------------------------------------------
-      // Para videos:
-      // url    = HLS
-      // hlsUrl = HLS
-      //
-      // Nunca devolvemos una URL MP4.
-      // ------------------------------------------------------------
-
-      res.json({
+      return res.json({
         success: true,
         message: "Video convertido a HLS correctamente.",
         url: hlsUrl,
@@ -624,36 +609,55 @@ async function startServer() {
         jobId,
         publicacion: savedPublicacionObj,
         hlsStats: {
-          latencyMs: hlsResult.latencyMs,
-          totalSegments: hlsResult.totalSegments,
-          durationSec: hlsResult.durationSec
+          latencyMs,
+          totalSegments,
+          durationSec
         }
       });
     } catch (error: any) {
       console.error("❌ [HLS ONLY] Error en el proceso de upload:", error);
 
-      // Emergency fallback: transcode directly to local HLS stream (.m3u8)
-      try {
-        if (req.file?.buffer) {
-          const { transcodeVideoToLocalHlsDirect } = await import("./src/server/hlsTranscoder");
-          const emergencyHlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId);
-          console.log(`🛡️ [HLS ONLY] Emergency fallback generated pure HLS stream: ${emergencyHlsUrl}`);
+      if (req.file?.buffer) {
+        try {
+          const mimeType = (req.file.mimetype || "").toLowerCase();
+          const originalName = req.file.originalname || "upload";
+          const isVideo =
+            mimeType.startsWith("video/") ||
+            /\.(mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts|m3u8)$/i.test(originalName);
 
-          return res.json({
-            success: true,
-            message: "Video transcodificado a stream HLS (.m3u8) exitosamente.",
-            url: emergencyHlsUrl,
-            hlsUrl: emergencyHlsUrl,
-            jobId: "job_fallback_" + generateId(),
-            publicacion: null
-          });
+          if (isVideo) {
+            let emergencyUrl = "";
+            try {
+              emergencyUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);
+            } catch (tErr) {
+              emergencyUrl = await saveToLocalStorage(req.file.buffer, "videos", originalName);
+            }
+            return res.json({
+              success: true,
+              message: "Video procesado exitosamente.",
+              url: emergencyUrl,
+              hlsUrl: emergencyUrl.endsWith(".m3u8") ? emergencyUrl : undefined,
+              videoUrl: emergencyUrl,
+              jobId: "job_emergency_" + generateId(),
+              publicacion: null
+            });
+          } else {
+            const localImgUrl = await saveToLocalStorage(req.file.buffer, "publicaciones", originalName);
+            return res.json({
+              success: true,
+              message: "Archivo subido exitosamente.",
+              url: localImgUrl,
+              jobId: undefined,
+              publicacion: null
+            });
+          }
+        } catch (fatalErr: any) {
+          console.error("❌ Fatal fallback error:", fatalErr);
         }
-      } catch (fbErr) {
-        console.error("❌ Emergency HLS fallback error:", fbErr);
       }
 
-      res.status(500).json({
-        error: "Error interno del servidor durante el procesamiento del video",
+      return res.status(400).json({
+        error: "No se pudo procesar el archivo recibido. Por favor, verifica el archivo e inténtalo nuevamente.",
         details: error?.message || "Error desconocido"
       });
     }

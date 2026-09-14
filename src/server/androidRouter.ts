@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { Bucket } from "@google-cloud/storage";
 import { User, Reel, Product, Order } from "../types";
+import { transcodeVideoToLocalHlsDirect } from "./hlsTranscoder";
 
 export interface AndroidRouterDependencies {
   MongoUser: any;
@@ -767,26 +768,29 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         });
       }
 
-      // Video branch: Android uses the same HLS queue as the web backend and never answers with an MP4.
-      if (!hlsQueue) {
-        return res.status(500).json({ error: "No está disponible la cola HLS del backend Android" });
-      }
-
+      // Video branch: Android uses the same HLS pipeline and always returns HLS
       const jobId = "hls_" + generateId();
       console.log(`📱 [Android Gateway] Procesando video HLS-only desde Android: ${originalName}`);
 
-      const hlsResult = await hlsQueue.enqueueAndWait(
-        jobId,
-        req.file.buffer,
-        originalName,
-        bucket,
-        bucketName,
-        { publicacionId: pubId }
-      );
+      let hlsUrl = "";
+      if (hlsQueue) {
+        try {
+          const hlsResult = await hlsQueue.enqueueAndWait(
+            jobId,
+            req.file.buffer,
+            originalName,
+            bucket,
+            bucketName,
+            { publicacionId: pubId }
+          );
+          hlsUrl = hlsResult.masterM3u8Url;
+        } catch (queueErr) {
+          console.warn("⚠️ [Android Gateway] Cola HLS falló, usando transcodificación local directa:", queueErr);
+        }
+      }
 
-      const hlsUrl = hlsResult.masterM3u8Url;
       if (!hlsUrl) {
-        throw new Error("La transcodificación HLS terminó sin devolver una URL HLS válida");
+        hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);
       }
 
       if (mongoose.connection.readyState === 1) {
@@ -805,7 +809,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         } catch {}
       }
 
-      res.json({
+      return res.json({
         success: true,
         platform: "android",
         url: hlsUrl,
@@ -817,15 +821,21 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
 
       try {
         if (req.file?.buffer) {
-          const { transcodeVideoToLocalHlsDirect } = await import("./hlsTranscoder");
-          const emergencyHlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId);
-          console.log(`🛡️ [Android Gateway] Fallback HLS stream generated: ${emergencyHlsUrl}`);
+          let emergencyUrl = "";
+          try {
+            emergencyUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, req.file.originalname || "video.mp4");
+          } catch {
+            const { saveToLocalStorage } = await import("./services/mediaStorage");
+            emergencyUrl = await saveToLocalStorage(req.file.buffer, "android_media", req.file.originalname || "video.mp4");
+          }
+          console.log(`🛡️ [Android Gateway] Fallback media stream generated: ${emergencyUrl}`);
 
           return res.json({
             success: true,
             platform: "android",
-            url: emergencyHlsUrl,
-            hlsUrl: emergencyHlsUrl,
+            url: emergencyUrl,
+            hlsUrl: emergencyUrl.endsWith(".m3u8") ? emergencyUrl : undefined,
+            videoUrl: emergencyUrl,
             publicacionId: pubId,
           });
         }
@@ -833,7 +843,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         console.error("❌ Android emergency fallback failed:", fbErr);
       }
 
-      res.status(500).json({ error: "Error al procesar archivo en Android", details: err.message });
+      res.status(400).json({ error: "Error al procesar archivo en Android", details: err?.message || "Error desconocido" });
     }
   });
 

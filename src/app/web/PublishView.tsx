@@ -215,34 +215,84 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts|m3u8)$/i.test(file.name);
     const fileToUpload = file;
 
-    const formData = new FormData();
-    formData.append("file", fileToUpload);
-    formData.append("title", fileToUpload.name);
-    formData.append("description", "Uploaded via publishing portal");
-    formData.append("creatorId", currentUser.originalId || currentUser.id);
-    formData.append("creatorOriginalId", currentUser.originalId || "");
-    formData.append("creatorUsername", currentUser.username);
+    const createFormData = () => {
+      const fd = new FormData();
+      fd.append("file", fileToUpload, fileToUpload.name);
+      fd.append("title", fileToUpload.name);
+      fd.append("description", "Uploaded via publishing portal");
+      fd.append("creatorId", currentUser.originalId || currentUser.id);
+      fd.append("creatorOriginalId", currentUser.originalId || "");
+      fd.append("creatorUsername", currentUser.username);
+      return fd;
+    };
 
     // Provide 5 minutes (300,000ms) for videos and 2 minutes for photos
     const timeoutMs = isVideo ? 300000 : 120000;
-    const response = await apiFetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    }, timeoutMs);
+    let response: Response;
+    try {
+      response = await apiFetch("/api/upload", {
+        method: "POST",
+        body: createFormData(),
+      }, timeoutMs);
+    } catch (primaryErr: any) {
+      // Direct relative fallback if primary fetch failed
+      try {
+        response = await fetch("/api/upload", {
+          method: "POST",
+          body: createFormData(),
+        });
+      } catch {
+        throw new Error(`No se pudo conectar con el servidor de subida: ${primaryErr?.message || "error de red"}`);
+      }
+    }
+
+    let rawText = await response.text();
+
+    // If the server returned 5xx or HTML, attempt direct local fallback
+    if (!response.ok || !rawText.trim().startsWith("{")) {
+      try {
+        const directRes = await fetch("/api/upload", {
+          method: "POST",
+          body: createFormData(),
+        });
+        const directText = await directRes.text();
+        if (directRes.ok && directText.trim().startsWith("{")) {
+          response = directRes;
+          rawText = directText;
+        }
+      } catch {}
+    }
+
+    // Second fallback to android upload endpoint if standard failed
+    if (!response.ok || !rawText.trim().startsWith("{")) {
+      try {
+        const androidRes = await fetch("/api/android/upload", {
+          method: "POST",
+          body: createFormData(),
+        });
+        const androidText = await androidRes.text();
+        if (androidRes.ok && androidText.trim().startsWith("{")) {
+          response = androidRes;
+          rawText = androidText;
+        }
+      } catch {}
+    }
 
     let data: any = null;
-    const rawText = await response.text();
     try {
       data = JSON.parse(rawText);
     } catch {
+      if (/^<!doctype html/i.test(rawText.trim()) || rawText.includes("<html")) {
+        throw new Error(`El servidor devolvió una página HTML en lugar de JSON (HTTP ${response.status}) al procesar ${fileToUpload.name}.`);
+      }
       if (!response.ok) {
         throw new Error(`Error en el servidor (${response.status}) al subir ${fileToUpload.name}.`);
       }
-      throw new Error(`Respuesta inválida del servidor al subir ${fileToUpload.name}`);
+      throw new Error(`Respuesta inválida del servidor (HTTP ${response.status}) al subir ${fileToUpload.name}`);
     }
 
     if (!response.ok || !data?.success || !data?.url) {
-      throw new Error(data?.error || data?.message || `Error subiendo archivo: ${fileToUpload.name}`);
+      throw new Error(data?.error || data?.message || data?.details || `Error subiendo archivo: ${fileToUpload.name}`);
     }
 
     return { url: data.url, hlsUrl: data.hlsUrl };

@@ -12,10 +12,10 @@ export { BACKEND_URL };
 export const isAndroidNative = (): boolean => {
   if (typeof window === "undefined") return false;
   const win = window as any;
-  if (win.Capacitor?.getPlatform && win.Capacitor.getPlatform() === "android") return true;
-  if (typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "")) return true;
+  if (typeof win.Capacitor?.isNativePlatform === "function" && win.Capacitor.isNativePlatform()) return true;
+  if (win.Capacitor?.getPlatform && (win.Capacitor.getPlatform() === "android" || win.Capacitor.getPlatform() === "ios")) return true;
   const proto = window.location?.protocol || "";
-  return proto === "capacitor:" || proto === "file:" || proto === "ionic:";
+  return proto === "capacitor:" || proto === "file:" || proto === "ionic:" || proto === "app:";
 };
 
 export const getAndroidApiUrl = (endpoint: string): string => {
@@ -29,9 +29,14 @@ export const getAndroidApiUrl = (endpoint: string): string => {
     clean = `/api/android${clean}`;
   }
 
+  // When running in a standard web browser (preview, local dev, or web hosting), use relative URL
+  if (typeof window !== "undefined" && window.location && window.location.protocol.startsWith("http") && !isAndroidNative()) {
+    return clean;
+  }
+
   const base = (BACKEND_URL || "").replace(/\/$/, "");
   if (!base) {
-    throw new Error("Backend Android no configurado. Define VITE_BACKEND_URL antes de compilar el APK.");
+    return clean;
   }
   return `${base}${clean}`;
 };
@@ -113,13 +118,35 @@ export const androidApiFetch = async (
   const signal = init?.signal || controller.signal;
 
   try {
-    return await fetch(url, { ...init, headers, signal });
+    const res = await fetch(url, { ...init, headers, signal });
+    // If the remote server returned a 5xx server error, and we are in a web browser, try local fallback
+    if (!res.ok && res.status >= 500 && typeof window !== "undefined" && window.location?.protocol?.startsWith("http")) {
+      const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+      const localClean = cleanEndpoint.startsWith("/api/android") ? cleanEndpoint : `/api/android${cleanEndpoint}`;
+      if (url !== localClean) {
+        try {
+          const localRes = await fetch(localClean, { ...init, headers, signal });
+          if (localRes.ok) return localRes;
+        } catch {}
+      }
+    }
+    return res;
   } catch (err: any) {
     if (signal.aborted) {
       if (controller.signal.aborted) {
         throw new Error(`La solicitud tardó más de ${Math.round(effectiveTimeout / 1000)} segundos.`);
       }
       throw err;
+    }
+    // Fallback to relative URL if remote backend failed to connect and in browser
+    if (typeof window !== "undefined" && window.location?.protocol?.startsWith("http")) {
+      const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+      const localClean = cleanEndpoint.startsWith("/api/android") ? cleanEndpoint : `/api/android${cleanEndpoint}`;
+      if (url !== localClean) {
+        try {
+          return await fetch(localClean, { ...init, headers, signal });
+        } catch {}
+      }
     }
     throw new Error(`No se pudo conectar con el backend Android: ${err?.message || "error de red"}`);
   } finally {

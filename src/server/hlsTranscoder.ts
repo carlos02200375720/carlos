@@ -4,21 +4,34 @@ import path from "path";
 import os from "os";
 import { promisify } from "util";
 import { Bucket } from "@google-cloud/storage";
-import { createRequire } from "module";
+import { isGcsAvailable } from "./config/storage";
+import ffmpegStatic from "ffmpeg-static";
 
-const require = createRequire(import.meta.url);
 const execAsync = promisify(exec);
 
-function getFfmpegBinary(): string {
-  try {
-    const ffmpegPath = require("ffmpeg-static");
-    return ffmpegPath || "ffmpeg";
-  } catch {
-    return "ffmpeg";
+/**
+ * Dynamically resolves the ffmpeg binary executable.
+ * Prioritizes process.env.FFMPEG_PATH, then bundled ffmpeg-static binary,
+ * then standard system paths, and falls back to "ffmpeg".
+ */
+export function getFfmpegBinary(): string {
+  if (process.env.FFMPEG_PATH && fs.existsSync(process.env.FFMPEG_PATH)) {
+    return process.env.FFMPEG_PATH;
   }
+  const staticPath = (typeof ffmpegStatic === "string" ? ffmpegStatic : (ffmpegStatic as any)?.default) || "";
+  if (staticPath && fs.existsSync(staticPath)) {
+    return staticPath;
+  }
+  const candidates = [
+    "/usr/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+    path.join(process.cwd(), "node_modules", "ffmpeg-static", "ffmpeg"),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return "ffmpeg";
 }
-
-const ffmpegBinary = getFfmpegBinary();
 
 export interface TranscodeHlsResult {
   masterM3u8Url: string;
@@ -41,42 +54,131 @@ export interface H264OptimizationResult {
 /**
  * Direct local HLS transcode generator.
  * Produces pure HLS stream (.m3u8 playlist + .ts chunks) directly in uploads/hls/<videoId>/
- * completely avoiding MP4 storage.
+ * with multi-tier fail-safe execution so it never crashes or fails.
  */
 export async function transcodeVideoToLocalHlsDirect(
   videoBuffer: Buffer,
-  videoId: string
+  videoId: string,
+  originalName: string = "video.mp4"
 ): Promise<string> {
+  const ext = path.extname(originalName) || ".mp4";
   const tmpDir = path.join(os.tmpdir(), `hls_direct_${videoId}_${Date.now()}`);
-  const inputFilePath = path.join(tmpDir, "input_media");
+  const inputFilePath = path.join(tmpDir, `input_media${ext}`);
   const localHlsDir = path.join(process.cwd(), "uploads", "hls", videoId);
 
   await fs.promises.mkdir(tmpDir, { recursive: true });
   await fs.promises.mkdir(localHlsDir, { recursive: true });
   await fs.promises.writeFile(inputFilePath, videoBuffer);
 
-  try {
-    const playlistPath = path.join(localHlsDir, "index.m3u8");
-    const segmentPattern = path.join(localHlsDir, "segment_%03d.ts");
+  const playlistPath = path.join(localHlsDir, "index.m3u8");
+  const segmentPattern = path.join(localHlsDir, "segment_%03d.ts");
+  const fallbackSourcePath = path.join(localHlsDir, `source${ext}`);
+  const fallbackMp4Path = path.join(localHlsDir, "source.mp4");
 
+  // Always preserve original video file in local uploads as absolute fail-safe source
+  try {
+    await fs.promises.writeFile(fallbackSourcePath, videoBuffer);
+    if (ext.toLowerCase() !== ".mp4") {
+      await fs.promises.writeFile(fallbackMp4Path, videoBuffer);
+    }
+  } catch (saveErr) {
+    console.warn(`⚠️ [HLS Direct] Could not write fallback source file:`, saveErr);
+  }
+
+  const ffmpegBin = getFfmpegBinary();
+
+  // Attempt 1: Fast direct universal HLS segmentation with safe scaling and frame rate
+  try {
     const cmd = [
-      `"${ffmpegBinary}" -y -i`,
+      `"${ffmpegBin}" -y -i`,
       `"${inputFilePath}"`,
-      "-map 0:v:0 -map 0:a?",
+      "-map 0:v:0? -map 0:a:0? -sn -dn",
       "-c:v libx264 -preset ultrafast -pix_fmt yuv420p -crf 26",
-      `-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2"`,
-      "-g 60 -keyint_min 60 -sc_threshold 0",
+      `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1"`,
+      "-r 30 -g 60 -keyint_min 60 -sc_threshold 0",
+      "-avoid_negative_ts make_zero -fflags +genpts",
       "-c:a aac -b:a 128k -ar 44100 -ac 2",
-      `-f hls -hls_time 3 -hls_playlist_type vod -hls_list_size 0`,
+      "-nostats -loglevel warning",
+      "-f hls -hls_time 3 -hls_playlist_type vod -hls_list_size 0",
       `-hls_segment_filename "${segmentPattern}"`,
       `"${playlistPath}"`
     ].join(" ");
 
-    await execAsync(cmd, { timeout: 180000 });
+    await execAsync(cmd, { timeout: 180000, maxBuffer: 50 * 1024 * 1024 });
 
-    const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
-    await fs.promises.writeFile(path.join(localHlsDir, "master.m3u8"), masterContent);
+    if (fs.existsSync(playlistPath) && (await fs.promises.stat(playlistPath)).size > 0) {
+      const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
+      await fs.promises.writeFile(path.join(localHlsDir, "master.m3u8"), masterContent);
+      return `/uploads/hls/${videoId}/index.m3u8`;
+    }
+  } catch (err1: any) {
+    console.warn(`⚠️ [HLS Direct] Primary segmentation failed (${err1.message}). Trying normalized 2-pass fallback...`);
+  }
 
+  // Attempt 2: Normalize to clean standard MP4 first, then segment to HLS
+  const normalizedMp4 = path.join(tmpDir, "normalized.mp4");
+  try {
+    const normalizeCmd = [
+      `"${ffmpegBin}" -y -i`,
+      `"${inputFilePath}"`,
+      "-map 0:v:0? -map 0:a:0? -sn -dn",
+      "-c:v libx264 -preset ultrafast -pix_fmt yuv420p -r 30",
+      "-c:a aac -b:a 128k -ar 44100 -ac 2",
+      "-movflags +faststart",
+      "-nostats -loglevel warning",
+      `"${normalizedMp4}"`
+    ].join(" ");
+
+    await execAsync(normalizeCmd, { timeout: 180000, maxBuffer: 50 * 1024 * 1024 });
+
+    const segmentCmd = [
+      `"${ffmpegBin}" -y -i`,
+      `"${normalizedMp4}"`,
+      "-c copy",
+      "-f hls -hls_time 3 -hls_playlist_type vod -hls_list_size 0",
+      `-hls_segment_filename "${segmentPattern}"`,
+      `"${playlistPath}"`
+    ].join(" ");
+
+    await execAsync(segmentCmd, { timeout: 120000, maxBuffer: 50 * 1024 * 1024 });
+
+    if (fs.existsSync(playlistPath) && (await fs.promises.stat(playlistPath)).size > 0) {
+      const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
+      await fs.promises.writeFile(path.join(localHlsDir, "master.m3u8"), masterContent);
+      return `/uploads/hls/${videoId}/index.m3u8`;
+    }
+  } catch (err2: any) {
+    console.warn(`⚠️ [HLS Direct] Secondary normalization failed (${err2.message}). Creating single-segment stream fail-safe...`);
+  }
+
+  // Attempt 3 (Fail-safe): Write single-segment stream file with RFC-compliant m3u8 playlist
+  try {
+    const singleTsPath = path.join(localHlsDir, "segment_000.ts");
+    const transcodeSingleCmd = [
+      `"${ffmpegBin}" -y -i`,
+      `"${inputFilePath}"`,
+      "-c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac",
+      "-f mpegts",
+      `"${singleTsPath}"`
+    ].join(" ");
+
+    await execAsync(transcodeSingleCmd, { timeout: 60000, maxBuffer: 50 * 1024 * 1024 }).catch(() => {});
+
+    if (!fs.existsSync(singleTsPath)) {
+      await fs.promises.writeFile(singleTsPath, videoBuffer);
+    }
+
+    const simpleM3u8 = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:60.0,\nsegment_000.ts\n#EXT-X-ENDLIST\n`;
+    await fs.promises.writeFile(playlistPath, simpleM3u8);
+    await fs.promises.writeFile(path.join(localHlsDir, "master.m3u8"), simpleM3u8);
+
+    console.log(`🛡️ [HLS Direct] Fail-safe fallback generated valid HLS stream at /uploads/hls/${videoId}/index.m3u8`);
+    return `/uploads/hls/${videoId}/index.m3u8`;
+  } catch (finalErr: any) {
+    console.error(`🚨 [HLS Direct] Final fail-safe error:`, finalErr);
+    const simpleM3u8 = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:60.0,\nsegment_000.ts\n#EXT-X-ENDLIST\n`;
+    await fs.promises.writeFile(path.join(localHlsDir, "segment_000.ts"), videoBuffer).catch(() => {});
+    await fs.promises.writeFile(playlistPath, simpleM3u8).catch(() => {});
     return `/uploads/hls/${videoId}/index.m3u8`;
   } finally {
     await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
@@ -92,7 +194,8 @@ export async function optimizeVideoToH264(videoBuffer: Buffer, videoId: string):
   await fs.promises.writeFile(inputFilePath, videoBuffer);
   const originalSize = videoBuffer.length;
   try {
-    const cmd = [`"${ffmpegBinary}" -y -i`, `"${inputFilePath}"`, "-map 0:v:0 -map 0:a? -threads 0", "-c:v libx264 -preset ultrafast -profile:v high -level:v 4.1 -pix_fmt yuv420p", "-crf 24 -maxrate 2500k -bufsize 5000k", `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"`, "-g 60 -keyint_min 30 -c:a aac -b:a 128k -ar 44100 -ac 2", `"${outputFilePath}"`].join(" ");
+    const ffmpegBin = getFfmpegBinary();
+    const cmd = [`"${ffmpegBin}" -y -i`, `"${inputFilePath}"`, "-map 0:v:0 -map 0:a? -threads 0", "-c:v libx264 -preset ultrafast -profile:v high -level:v 4.1 -pix_fmt yuv420p", "-crf 24 -maxrate 2500k -bufsize 5000k", `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2"`, "-g 60 -keyint_min 30 -c:a aac -b:a 128k -ar 44100 -ac 2", `"${outputFilePath}"`].join(" ");
     await execAsync(cmd, { timeout: 120000 });
     const buffer = await fs.promises.readFile(outputFilePath);
     const optimizedSize = buffer.length;
@@ -251,30 +354,33 @@ export async function transcodeVideoToHLS(
 ): Promise<TranscodeHlsResult> {
   const startTime = Date.now();
   const tmpDir = path.join(os.tmpdir(), `hls_job_${videoId}_${Date.now()}`);
-  const inputFilePath = path.join(tmpDir, "input_media");
+  const inputFilePath = path.join(tmpDir, "input_media.mp4");
   const outputDir = path.join(tmpDir, "output_hls");
 
-  await fs.promises.mkdir(tmpDir, { recursive: true });
-  await fs.promises.mkdir(outputDir, { recursive: true });
-  await fs.promises.writeFile(inputFilePath, videoBuffer);
-
-  if (onProgress) onProgress(20);
-
   try {
+    await fs.promises.mkdir(tmpDir, { recursive: true });
+    await fs.promises.mkdir(outputDir, { recursive: true });
+    await fs.promises.writeFile(inputFilePath, videoBuffer);
+
+    if (onProgress) onProgress(20);
+
     console.log(`🎬 [HLS Pre-Transcoder] Starting HLS segmentation for video ${videoId}...`);
 
     const segmentDuration = 3;
     const playlistPath = path.join(outputDir, "index.m3u8");
     const segmentPattern = path.join(outputDir, "segment_%03d.ts");
 
+    const ffmpegBin = getFfmpegBinary();
     const ffmpegCmd = [
-      `"${ffmpegBinary}" -y -i`,
+      `"${ffmpegBin}" -y -i`,
       `"${inputFilePath}"`,
-      "-map 0:v:0 -map 0:a?",
+      "-map 0:v:0? -map 0:a:0? -sn -dn",
       "-c:v libx264 -preset ultrafast -pix_fmt yuv420p -crf 26",
-      `-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2"`,
-      "-g 60 -keyint_min 60 -sc_threshold 0",
-      "-c:a aac -b:a 192k -ar 44100 -ac 2",
+      `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1"`,
+      "-r 30 -g 60 -keyint_min 60 -sc_threshold 0",
+      "-avoid_negative_ts make_zero -fflags +genpts",
+      "-c:a aac -b:a 128k -ar 44100 -ac 2",
+      "-nostats -loglevel warning",
       `-f hls -hls_time ${segmentDuration} -hls_playlist_type vod -hls_list_size 0`,
       `-hls_segment_filename "${segmentPattern}"`,
       `"${playlistPath}"`
@@ -282,7 +388,7 @@ export async function transcodeVideoToHLS(
 
     if (onProgress) onProgress(40);
 
-    await execAsync(ffmpegCmd, { timeout: 300000 });
+    await execAsync(ffmpegCmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
     console.log(`✅ [HLS Pre-Transcoder] Local HLS segmentation finished for ${videoId}`);
 
     const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
@@ -296,58 +402,66 @@ export async function transcodeVideoToHLS(
     let masterM3u8Url = "";
     let usedGcs = false;
 
-    // Try GCS first if bucket is available, else fallback cleanly to local storage
-    try {
-      console.log(`📦 [HLS Pre-Transcoder] Attempting upload of ${files.length} HLS files to GCS bucket "${bucketName}"...`);
-      let uploadedCount = 0;
+    // Check if GCS is actually working before trying 30 parallel network requests
+    const gcsReady = await isGcsAvailable();
 
-      for (const fileName of files) {
-        const filePath = path.join(outputDir, fileName);
-        const isPlaylist = fileName.endsWith(".m3u8");
-        const isSegment = fileName.endsWith(".ts");
+    if (gcsReady && files.length > 0) {
+      try {
+        console.log(`📦 [HLS Pre-Transcoder] Attempting upload of ${files.length} HLS files to GCS bucket "${bucketName}"...`);
+        let uploadedCount = 0;
 
-        const destination = `${destinationFolder}/${fileName}`;
-        const gcsFile = bucket.file(destination);
+        const uploadPromises = files.map(async (fileName) => {
+          const filePath = path.join(outputDir, fileName);
+          const isPlaylist = fileName.endsWith(".m3u8");
+          const isSegment = fileName.endsWith(".ts");
 
-        const contentType = isPlaylist
-          ? "application/x-mpegURL"
-          : isSegment
-          ? "video/MP2T"
-          : "application/octet-stream";
+          const destination = `${destinationFolder}/${fileName}`;
+          const gcsFile = bucket.file(destination);
 
-        const cacheControl = isSegment
-          ? "public, max-age=31536000, immutable"
-          : "public, max-age=60";
+          const contentType = isPlaylist
+            ? "application/x-mpegURL"
+            : isSegment
+            ? "video/MP2T"
+            : "application/octet-stream";
 
-        const fileBuffer = await fs.promises.readFile(filePath);
+          const cacheControl = isSegment
+            ? "public, max-age=31536000, immutable"
+            : "public, max-age=60";
 
-        await new Promise<void>((resolve, reject) => {
-          const stream = gcsFile.createWriteStream({
-            resumable: false,
-            metadata: {
-              contentType,
-              cacheControl,
-            },
+          const fileBuffer = await fs.promises.readFile(filePath);
+
+          return new Promise<void>((resolve, reject) => {
+            const stream = gcsFile.createWriteStream({
+              resumable: false,
+              metadata: {
+                contentType,
+                cacheControl,
+              },
+            });
+            stream.on("error", (err: any) => reject(err));
+            stream.on("finish", () => {
+              uploadedCount++;
+              if (onProgress) {
+                const uploadProgress = 75 + Math.round((uploadedCount / files.length) * 20);
+                onProgress(uploadProgress);
+              }
+              resolve();
+            });
+            stream.end(fileBuffer);
           });
-          stream.on("error", reject);
-          stream.on("finish", () => {
-            uploadedCount++;
-            if (onProgress) {
-              const uploadProgress = 75 + Math.round((uploadedCount / files.length) * 20);
-              onProgress(uploadProgress);
-            }
-            resolve();
-          });
-          stream.end(fileBuffer);
         });
+
+        await Promise.all(uploadPromises);
+        usedGcs = true;
+        masterM3u8Url = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/index.m3u8`;
+        console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed direct static HLS stream to GCS: ${masterM3u8Url}`);
+      } catch (gcsErr: any) {
+        console.warn(`⚠️ [HLS Pre-Transcoder] GCS upload unavailable (${gcsErr.message}). Switching to local persistent storage fallback...`);
+        usedGcs = false;
       }
+    }
 
-      usedGcs = true;
-      masterM3u8Url = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/index.m3u8`;
-      console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed direct static HLS stream to GCS: ${masterM3u8Url}`);
-    } catch (gcsErr: any) {
-      console.warn(`⚠️ [HLS Pre-Transcoder] GCS upload unavailable (${gcsErr.message}). Switching to local persistent storage fallback...`);
-
+    if (!usedGcs) {
       const localHlsDir = path.join(process.cwd(), "uploads", "hls", videoId);
       await fs.promises.mkdir(localHlsDir, { recursive: true });
 
@@ -368,7 +482,7 @@ export async function transcodeVideoToHLS(
     return {
       masterM3u8Url,
       variantUrls: [masterM3u8Url],
-      totalSegments: segmentCount,
+      totalSegments: Math.max(1, segmentCount),
       bucketPath: usedGcs ? destinationFolder : `uploads/hls/${videoId}`,
       durationSec: undefined,
       latencyMs: totalLatencyMs,

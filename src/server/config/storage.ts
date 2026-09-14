@@ -34,3 +34,60 @@ export function createStorageClient(): Storage {
 export const bucketName = getValidBucketName();
 export const storage = createStorageClient();
 export const bucket = storage.bucket(bucketName);
+
+let gcsWorkingState: boolean | null = null;
+let lastGcsCheck = 0;
+
+/**
+ * Checks if Google Cloud Storage is reachable and authenticated.
+ * Caches result for 5 minutes to prevent redundant network timeouts.
+ */
+export async function isGcsAvailable(): Promise<boolean> {
+  const now = Date.now();
+  if (gcsWorkingState !== null && (now - lastGcsCheck < 300000)) {
+    return gcsWorkingState;
+  }
+
+  try {
+    const testFile = bucket.file("_ping_check.txt");
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try {
+            stream.destroy();
+          } catch {}
+          reject(new Error("GCS connection timeout"));
+        }
+      }, 3000);
+
+      const stream = testFile.createWriteStream({ resumable: false });
+      stream.on("error", (err: any) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          reject(err);
+        }
+      });
+      stream.on("finish", () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+      stream.end("ping");
+    });
+    gcsWorkingState = true;
+    lastGcsCheck = now;
+    return true;
+  } catch (err: any) {
+    // If GCS authentication is invalid or bucket unreachable, seamlessly activate local persistent storage
+    gcsWorkingState = false;
+    lastGcsCheck = now;
+    console.log(`💾 [Storage] Almacenamiento local persistente activo (/uploads). GCS offline o no configurado.`);
+    return false;
+  }
+}
+

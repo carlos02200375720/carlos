@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { bucket, bucketName } from "../config/storage";
+import { bucket, bucketName, isGcsAvailable } from "../config/storage";
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
@@ -51,6 +51,12 @@ export const uploadToGCS = async (file: Express.Multer.File, folder: string = "p
       else if (mimeType.includes("jpeg") || mimeType.includes("jpg")) originalName += ".jpeg";
       else originalName += ".jpeg";
     }
+  }
+
+  // Fast-path: Check GCS availability before attempting network write stream
+  const gcsReady = await isGcsAvailable();
+  if (!gcsReady) {
+    return await saveToLocalStorage(file.buffer, folder, originalName);
   }
 
   return new Promise((resolve, reject) => {
@@ -114,6 +120,11 @@ export async function uploadBase64ToGCS(base64Str: string, folder: string = "pro
   else if (lowerMime.includes("jpeg") || lowerMime.includes("jpg")) extension = "jpeg";
 
   const filename = `${Date.now()}-${generateId()}.${extension}`;
+
+  const gcsReady = await isGcsAvailable();
+  if (!gcsReady) {
+    return await saveToLocalStorage(buffer, folder, filename);
+  }
 
   return new Promise<string>((resolve, reject) => {
     try {
