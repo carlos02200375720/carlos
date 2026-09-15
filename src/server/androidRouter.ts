@@ -483,6 +483,24 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
             { creatorUsername: { $in: matchUsernames } },
           ],
         }).sort({ _id: -1 });
+
+        // Deduplicate: If a publication in MongoPublicacion shares the same media URL or ID as a MongoReel,
+        // it is the exact same publication; filter it out so it never duplicates in client views.
+        const existingReelUrls = new Set<string>();
+        const existingReelIds = new Set<string>();
+
+        userReels.forEach((r: any) => {
+          if (r.id) existingReelIds.add(String(r.id));
+          if (r.videoUrl) existingReelUrls.add(String(r.videoUrl).split("?")[0].trim().toLowerCase());
+          if (r.hlsUrl) existingReelUrls.add(String(r.hlsUrl).split("?")[0].trim().toLowerCase());
+        });
+
+        userPubs = userPubs.filter((p: any) => {
+          if (!p.id || existingReelIds.has(String(p.id))) return false;
+          const pubUrl = String(p.url || p.hlsUrl || "").split("?")[0].trim().toLowerCase();
+          if (pubUrl && existingReelUrls.has(pubUrl)) return false;
+          return true;
+        });
       }
 
       res.json({
@@ -593,24 +611,16 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       if (mongoose.connection.readyState === 1) {
         const mongoReel = new MongoReel(newReel);
         await mongoReel.save();
-
-        // Also record in publicacions collection for user portfolio
-        try {
-          const newPub = new MongoPublicacion({
-            id: "pub_" + generateId(),
-            url: videoUrl,
-            title: description || "Video Reel",
-            description: description || "",
-            creatorId: resolvedCreatorId || "creator",
-            creatorUsername: resolvedCreatorUsername || "creador",
-            createdAt: new Date(),
-          });
-          await newPub.save();
-        } catch {}
       }
 
       const updatedReels = [newReel, ...getReels()];
       setReels(updatedReels);
+
+      broadcastToAll({
+        type: "reel_created",
+        reel: newReel,
+        platform: "android",
+      });
 
       broadcastToAll({
         type: "new_reel",
@@ -686,7 +696,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
     }
   });
 
-  // Android Delete Publication / Reel
+  // Android Delete Publication / Reel (Wipe completely from MongoDB, GCS, and local disk)
   router.delete(["/reels/:id", "/publicaciones/:id"], async (req: Request, res: Response) => {
     try {
       const targetId = req.params.id;
@@ -695,15 +705,67 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         return;
       }
 
-      console.log(`🗑️ [Android Gateway] Eliminando publicación / reel ${targetId}...`);
+      console.log(`🗑️ [Android Gateway] Eliminando publicación / reel completa ${targetId}...`);
 
       const isObjectId = mongoose.Types.ObjectId.isValid(targetId) && String(targetId).length === 24;
       const mongoQuery = isObjectId ? { $or: [{ id: targetId }, { _id: targetId }] } : { id: targetId };
 
+      let existingReel = getReels().find((r) => r.id === targetId);
+      let existingPub: any = null;
+
       if (mongoose.connection.readyState === 1) {
         try {
-          await MongoReel.deleteMany(mongoQuery);
-          await MongoPublicacion.deleteMany(mongoQuery);
+          if (!existingReel) existingReel = await MongoReel.findOne(mongoQuery);
+          existingPub = await MongoPublicacion.findOne(mongoQuery);
+
+          // Cross-match if one exists but not the other
+          if (existingReel && !existingPub && (existingReel.hlsUrl || existingReel.videoUrl)) {
+            const matchUrl = existingReel.hlsUrl || existingReel.videoUrl;
+            existingPub = await MongoPublicacion.findOne({
+              $or: [{ hlsUrl: matchUrl }, { url: matchUrl }]
+            });
+          }
+          if (existingPub && !existingReel && (existingPub.hlsUrl || existingPub.url)) {
+            const matchUrl = existingPub.hlsUrl || existingPub.url;
+            existingReel = await MongoReel.findOne({
+              $or: [{ hlsUrl: matchUrl }, { videoUrl: matchUrl }]
+            });
+          }
+        } catch {}
+      }
+
+      const mediaToDelete = [
+        existingReel?.videoUrl,
+        existingReel?.hlsUrl,
+        existingReel?.thumbnailUrl,
+        existingPub?.url,
+        existingPub?.hlsUrl,
+        existingPub?.thumbnailUrl,
+        ...(Array.isArray(existingReel?.images) ? existingReel.images : []),
+        ...(Array.isArray(existingPub?.images) ? existingPub.images : []),
+      ];
+
+      const { deleteFullPublicationMedia } = await import("./services/mediaStorage");
+      const cleanupStats = await deleteFullPublicationMedia(mediaToDelete);
+
+      const deleteIds = Array.from(new Set([targetId, existingReel?.id, existingPub?.id].filter(Boolean)));
+
+      const validMediaUrls = mediaToDelete.filter((u): u is string => typeof u === "string" && u.trim().length > 0);
+      const mediaQuery = validMediaUrls.length > 0 ? [
+        { videoUrl: { $in: validMediaUrls } },
+        { url: { $in: validMediaUrls } },
+        { hlsUrl: { $in: validMediaUrls } }
+      ] : [];
+
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoReel.deleteMany({
+            $or: [mongoQuery, { id: { $in: deleteIds } }, ...mediaQuery]
+          });
+          await MongoPublicacion.deleteMany({
+            $or: [mongoQuery, { id: { $in: deleteIds } }, ...mediaQuery]
+          });
+          console.log(`💾 [Android Gateway] Eliminado de MongoDB: ${deleteIds.join(", ")}`);
         } catch (dbErr) {
           console.error("Error al eliminar de MongoDB:", dbErr);
         }
@@ -711,21 +773,23 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
 
       // Update in-memory reels
       const current = getReels();
-      setReels(current.filter((r) => r.id !== targetId));
+      setReels(current.filter((r) => !deleteIds.includes(r.id) && !validMediaUrls.includes(r.videoUrl || "")));
 
-      broadcastToAll({
-        type: "reel_deleted",
-        reelId: targetId,
+      deleteIds.forEach((delId) => {
+        broadcastToAll({
+          type: "reel_deleted",
+          reelId: delId,
+        });
       });
 
-      res.json({ success: true, deletedId: targetId });
+      res.json({ success: true, deletedId: targetId, deleteIds, cleanupStats });
     } catch (err: any) {
       console.error("❌ [Android Gateway] Error deleting reel:", err);
       res.status(500).json({ error: "Error al eliminar publicación", details: err.message });
     }
   });
 
-  // Android Upload
+  // Android Upload: Pure media file uploader (does not create publication until user submits publish form)
   router.post("/upload", uploadSingleSafe("file"), async (req: any, res: Response) => {
     const pubId = "pub_" + generateId();
     try {
@@ -738,27 +802,9 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       const mimeType = (req.file.mimetype || "").toLowerCase();
       const isVideo = mimeType.startsWith("video/") || /\.(mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts|m3u8)$/i.test(originalName);
 
-      const creatorId = req.body?.creatorId || req.headers["x-user-id"] || "creator";
-      const creatorUsername = req.body?.creatorUsername || req.headers["x-user-username"] || "creador";
-
       if (!isVideo) {
         console.log(`📱 [Android Gateway] Subiendo archivo no-video desde Android: ${originalName}`);
         const publicUrl = await uploadToGCS(req.file, "android_media");
-
-        if (mongoose.connection.readyState === 1) {
-          try {
-            const newPub = new MongoPublicacion({
-              id: pubId,
-              url: publicUrl,
-              title: req.body?.title || originalName,
-              description: req.body?.description || "Publicado desde Android",
-              creatorId,
-              creatorUsername,
-              createdAt: new Date(),
-            });
-            await newPub.save();
-          } catch {}
-        }
 
         return res.json({
           success: true,
@@ -791,22 +837,6 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
 
       if (!hlsUrl) {
         hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);
-      }
-
-      if (mongoose.connection.readyState === 1) {
-        try {
-          const newPub = new MongoPublicacion({
-            id: pubId,
-            url: hlsUrl,
-            hlsUrl,
-            title: req.body?.title || originalName,
-            description: req.body?.description || "Publicado desde Android",
-            creatorId,
-            creatorUsername,
-            createdAt: new Date(),
-          });
-          await newPub.save();
-        } catch {}
       }
 
       return res.json({

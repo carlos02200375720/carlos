@@ -42,6 +42,8 @@ export default function AndroidUserPublicationsFeed({
   const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
   const [activeVideoEl, setActiveVideoEl] = useState<HTMLVideoElement | null>(null);
   const [activeReels, setActiveReels] = useState<Reel[]>(reels);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const currentReel = activeReels[activeIndex] || activeReels[0];
 
@@ -102,6 +104,13 @@ export default function AndroidUserPublicationsFeed({
 
   const isLiked = currentReel.likedBy?.includes(currentUser.originalId || currentUser.id) || false;
   const isSaved = savedReelIds.includes(currentReel.id);
+  const canDeleteCurrent = Boolean(onDeleteReel) && (
+    currentUser.id === currentReel.creatorId ||
+    (currentUser as any)?.role === "admin" ||
+    (currentUser as any)?.isAdmin === true ||
+    currentReel.creatorId === "current_user" ||
+    (Boolean(currentUser.username) && Boolean(currentReel.creatorUsername) && currentUser.username.toLowerCase() === currentReel.creatorUsername.toLowerCase())
+  );
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col text-white select-none" id="android-publications-feed">
@@ -144,7 +153,24 @@ export default function AndroidUserPublicationsFeed({
             <button onClick={() => setShowComments(true)} className="group flex flex-col items-center cursor-pointer active:scale-95 transition-all duration-300" aria-label="Comentarios"><span className="flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-transparent text-white shadow-[0_8px_22px_rgba(0,0,0,0.4)] transition-all duration-300 hover:bg-white/10"><MessageCircle className="w-6 h-6" /></span><span className="mt-1 text-[11px] font-semibold text-white drop-shadow-[0_2px_3px_rgba(0,0,0,0.95)]">{currentReel.comments?.length || 0}</span></button>
           </div>
           {onToggleSaveReel && <div className="flex flex-col items-center"><button onClick={() => onToggleSaveReel(currentReel.id)} className="group flex flex-col items-center cursor-pointer active:scale-95 transition-all duration-300" aria-label="Guardar reel"><span className={`flex h-12 w-12 items-center justify-center rounded-full border border-white/20 shadow-[0_8px_22px_rgba(0,0,0,0.4)] transition-all duration-300 ${isSaved ? "bg-amber-400 text-slate-950 ring-2 ring-amber-200/80" : "bg-transparent text-white hover:bg-white/10"}`}><Bookmark className={`w-6 h-6 transition-all duration-300 ${isSaved ? "fill-slate-950 scale-110" : ""}`} /></span><span className="mt-1 text-[11px] font-semibold text-white drop-shadow-[0_2px_3px_rgba(0,0,0,0.95)]">Guardar</span></button></div>}
-          {currentUser.id === currentReel.creatorId && onDeleteReel && <button onClick={() => { if (window.confirm("¿Eliminar publicación de Android?")) { onDeleteReel(currentReel.id); onClose(); } }} className="flex h-12 w-12 items-center justify-center rounded-full border border-rose-200/30 bg-rose-600 text-white shadow-[0_8px_22px_rgba(0,0,0,0.4)] transition-all duration-300 active:scale-90 hover:bg-rose-500" aria-label="Eliminar publicación"><Trash2 className="w-5 h-5" /></button>}
+          {canDeleteCurrent && (
+            <div className="flex flex-col items-center">
+              <button
+                type="button"
+                id={`btn-feed-delete-${currentReel.id}`}
+                onClick={() => setShowDeleteModal(true)}
+                className="group flex flex-col items-center cursor-pointer active:scale-90 transition-all duration-300"
+                aria-label="Eliminar publicación"
+              >
+                <span className="flex h-12 w-12 items-center justify-center rounded-full border border-rose-400/40 bg-rose-600/90 text-white shadow-[0_8px_22px_rgba(0,0,0,0.5)] transition-all duration-300 hover:bg-rose-600">
+                  <Trash2 className="w-5 h-5" />
+                </span>
+                <span className="mt-1 text-[11px] font-semibold text-white drop-shadow-[0_2px_3px_rgba(0,0,0,0.95)]">
+                  Eliminar
+                </span>
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="absolute bottom-4 left-4 right-16 z-30 pointer-events-none"><p className="text-sm font-semibold drop-shadow-md">{currentReel.creatorName || currentReel.creatorUsername}</p><p className="text-xs text-slate-200 mt-1 line-clamp-2 drop-shadow-md">{currentReel.description}</p></div>
@@ -159,6 +185,76 @@ export default function AndroidUserPublicationsFeed({
             </div>
             <div className="pt-2 border-t border-slate-800 flex items-center space-x-2" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}><input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Añadir comentario..." className="flex-1 px-3 py-2 bg-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500" onKeyDown={(e) => { if (e.key === "Enter") handleAddComment(currentReel.id); }} /><button onClick={() => handleAddComment(currentReel.id)} className="p-2 bg-amber-500 text-slate-950 rounded-xl font-bold active:scale-95"><Send className="w-4 h-4" /></button></div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de confirmación in-app en feed */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <div
+            id="modal-feed-confirm-delete"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 text-slate-900"
+            onClick={() => !isDeleting && setShowDeleteModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0, y: 10 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 flex flex-col items-center text-center"
+            >
+              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mb-3">
+                <Trash2 className="w-6 h-6 stroke-[2.5]" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900">
+                ¿Eliminar publicación?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Esta publicación se eliminará permanentemente de MongoDB Atlas, Google Cloud Storage y de todos los servidores.
+              </p>
+
+              <div className="grid grid-cols-2 gap-2.5 w-full mt-5">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setShowDeleteModal(false)}
+                  className="py-2.5 px-4 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  id="btn-feed-execute-delete"
+                  disabled={isDeleting}
+                  onClick={async () => {
+                    setIsDeleting(true);
+                    try {
+                      if (onDeleteReel) {
+                        await onDeleteReel(currentReel.id);
+                      }
+                      onClose();
+                    } catch (err) {
+                      console.error("Error al eliminar reel:", err);
+                    } finally {
+                      setIsDeleting(false);
+                      setShowDeleteModal(false);
+                    }
+                  }}
+                  className="py-2.5 px-4 rounded-xl bg-rose-600 text-white text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Eliminando...</span>
+                    </>
+                  ) : (
+                    <span>Eliminar</span>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

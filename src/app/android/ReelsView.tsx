@@ -142,6 +142,14 @@ export default function AndroidReelsView({
     }
   };
 
+  const handleMuteChange = useCallback((m: boolean) => {
+    setLocalMuted(m);
+  }, []);
+
+  const handleVideoReady = useCallback((video: HTMLVideoElement | null) => {
+    setProgressVideo((prev) => (prev === video ? prev : video));
+  }, []);
+
   const playerRef = useRef<AndroidVideoPlayerHandle>(null);
   const touchStartY = useRef<number>(0);
   const isMouseDownRef = useRef<boolean>(false);
@@ -379,7 +387,7 @@ export default function AndroidReelsView({
           key={currentReel.id}
           ref={playerRef}
           src={currentReel.videoUrl}
-          hlsUrl={currentReel.hlsUrl}
+          hlsUrl={currentReel.hlsUrl || (currentReel.videoUrl?.includes(".m3u8") ? currentReel.videoUrl : undefined)}
           poster={currentReel.thumbnailUrl}
           autoPlay={true}
           loop={true}
@@ -387,8 +395,8 @@ export default function AndroidReelsView({
           isCurrent={isFeedActive}
           aspectRatio={currentReel.aspectRatio}
           onDoubleTap={handleDoubleTap}
-          onMuteChange={(m) => setLocalMuted(m)}
-          onVideoReady={(video) => setProgressVideo(video)}
+          onMuteChange={handleMuteChange}
+          onVideoReady={handleVideoReady}
           className="w-full h-full"
         />
       ) : (

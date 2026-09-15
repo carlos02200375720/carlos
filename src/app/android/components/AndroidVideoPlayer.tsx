@@ -64,23 +64,68 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
     const [detectedAspect, setDetectedAspect] = useState<'vertical' | 'horizontal' | 'square'>(aspectRatio || 'vertical');
     const lastTapTimeRef = useRef<number>(0);
     const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const playInProgressRef = useRef(false);
+
+    // Keep callback refs stable to prevent unneeded re-renders or effect re-runs
+    const onMuteChangeRef = useRef(onMuteChange);
+    onMuteChangeRef.current = onMuteChange;
+
+    const onVideoReadyRef = useRef(onVideoReady);
+    onVideoReadyRef.current = onVideoReady;
+
+    const onAspectRatioDetectedRef = useRef(onAspectRatioDetected);
+    onAspectRatioDetectedRef.current = onAspectRatioDetected;
+
+    const onPlayRef = useRef(onPlay);
+    onPlayRef.current = onPlay;
+
+    const onPauseRef = useRef(onPause);
+    onPauseRef.current = onPause;
+
+    const onEndedRef = useRef(onEnded);
+    onEndedRef.current = onEnded;
+
+    const onClickRef = useRef(onClick);
+    onClickRef.current = onClick;
+
+    const onDoubleTapRef = useRef(onDoubleTap);
+    onDoubleTapRef.current = onDoubleTap;
+
+    const isCurrentRef = useRef(isCurrent);
+    isCurrentRef.current = isCurrent;
+
+    const autoPlayRef = useRef(autoPlay);
+    autoPlayRef.current = autoPlay;
 
     const safePlay = useCallback(async () => {
       const video = videoRef.current;
-      if (!video || !isCurrent) return;
+      if (!video || !isCurrentRef.current) return;
+      if (!video.paused) {
+        setIsPlaying(true);
+        return;
+      }
+      if (playInProgressRef.current) return;
+      playInProgressRef.current = true;
+
       try {
         await video.play();
         setIsPlaying(true);
-      } catch {
-        video.muted = true;
-        setIsMuted(true);
-        onMuteChange?.(true);
-        try {
-          await video.play();
-          setIsPlaying(true);
-        } catch {}
+      } catch (err: any) {
+        // If autoplay with sound was blocked by browser, mute and retry silently
+        if (err?.name === "NotAllowedError" || !video.muted) {
+          video.muted = true;
+          video.defaultMuted = true;
+          setIsMuted(true);
+          onMuteChangeRef.current?.(true);
+          try {
+            await video.play();
+            setIsPlaying(true);
+          } catch {}
+        }
+      } finally {
+        playInProgressRef.current = false;
       }
-    }, [isCurrent, onMuteChange]);
+    }, []);
 
     const checkVideoDimensions = useCallback(() => {
       const video = videoRef.current;
@@ -88,8 +133,8 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       const ratio = video.videoWidth / video.videoHeight;
       const detected: 'vertical' | 'horizontal' | 'square' = ratio < 0.85 ? 'vertical' : ratio > 1.18 ? 'horizontal' : 'square';
       setDetectedAspect(p => (p === detected ? p : detected));
-      onAspectRatioDetected?.(detected, ratio);
-    }, [onAspectRatioDetected]);
+      onAspectRatioDetectedRef.current?.(detected, ratio);
+    }, []);
 
     useImperativeHandle(
       ref,
@@ -115,7 +160,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           const next = !v.muted;
           v.muted = next;
           setIsMuted(next);
-          onMuteChange?.(next);
+          onMuteChangeRef.current?.(next);
           if (!next) safePlay();
         },
         unmute: () => {
@@ -124,11 +169,11 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           v.muted = false;
           v.volume = 1;
           setIsMuted(false);
-          onMuteChange?.(false);
+          onMuteChangeRef.current?.(false);
           safePlay();
         },
       }),
-      [safePlay, onMuteChange]
+      [safePlay]
     );
 
     useEffect(() => {
@@ -155,15 +200,14 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       setDetectedAspect(aspectRatio || 'vertical');
     }, [targetSource, aspectRatio]);
 
-    const handleVideoRef = useCallback(
-      (el: HTMLVideoElement | null) => {
+    const handleVideoRef = useCallback((el: HTMLVideoElement | null) => {
+      if (videoRef.current !== el) {
         videoRef.current = el;
-        onVideoReady?.(el);
-      },
-      [onVideoReady]
-    );
+        onVideoReadyRef.current?.(el);
+      }
+    }, []);
 
-    // Load media source (HLS or standard video) safely
+    // Load media source (HLS or standard video) safely - ONLY re-executes when targetSource changes
     useEffect(() => {
       const video = videoRef.current;
       if (!video) return;
@@ -189,26 +233,39 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           const hls = new Hls({
             enableWorker: true,
             lowLatencyMode: false,
-            backBufferLength: 6,
-            maxBufferLength: 20,
-            capLevelToPlayerSize: true,
-            startLevel: 0,
-            abrEwmaDefaultEstimate: 650000,
-            abrBandWidthFactor: 0.8,
-            abrBandWidthUpFactor: 0.7,
-            fragLoadingMaxRetry: 3,
+            backBufferLength: 30,
+            maxBufferLength: 30,
+            maxMaxBufferLength: 60,
+            maxBufferSize: 60 * 1000 * 1000,
+            nudgeMaxRetry: 10,
+            nudgeOffset: 0.1,
+            startFragPrefetch: true,
+            fragLoadingMaxRetry: 6,
             fragLoadingRetryDelay: 500,
           });
           hlsRef.current = hls;
-          hls.loadSource(targetSource);
-          hls.attachMedia(video);
 
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            if (isCurrent && autoPlay) safePlay();
+            if (isCurrentRef.current && autoPlayRef.current) {
+              safePlay();
+            }
           });
 
           hls.on(Hls.Events.ERROR, (_event, data) => {
+            // Non-fatal stall recovery: nudge playhead so focus video never freezes
+            if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+              const v = videoRef.current;
+              if (v && isCurrentRef.current && !v.paused) {
+                if (v.currentTime > 0) {
+                  v.currentTime += 0.05;
+                }
+                v.play().catch(() => {});
+              }
+              return;
+            }
+
             if (!data.fatal) return;
+
             if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
               hls.startLoad();
             } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
@@ -216,28 +273,35 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             } else {
               hls.destroy();
               hlsRef.current = null;
-              const fallbackSrc = typeof src === "string" && src.trim() && !src.includes(".m3u8") ? src.trim() : null;
-              if (fallbackSrc) {
-                video.src = fallbackSrc;
+              if (video) {
+                video.src = targetSource;
                 video.load();
-                if (isCurrent && autoPlay) safePlay();
+                if (isCurrentRef.current && autoPlayRef.current) {
+                  safePlay();
+                }
               }
             }
           });
+
+          hls.loadSource(targetSource);
+          hls.attachMedia(video);
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = targetSource;
-          if (isCurrent && autoPlay) safePlay();
+          if (isCurrentRef.current && autoPlayRef.current) {
+            safePlay();
+          }
         } else {
-          const fallbackSrc = typeof src === "string" && src.trim() ? src.trim() : targetSource;
-          video.src = fallbackSrc;
-          if (isCurrent && autoPlay) safePlay();
+          video.src = targetSource;
+          if (isCurrentRef.current && autoPlayRef.current) {
+            safePlay();
+          }
         }
       } else {
         if (!video.src || !video.src.includes(targetSource)) {
           video.src = targetSource;
           video.load();
         }
-        if (isCurrent && autoPlay) {
+        if (isCurrentRef.current && autoPlayRef.current) {
           safePlay();
         }
       }
@@ -248,16 +312,20 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           hlsRef.current = null;
         }
       };
-    }, [targetSource, isCurrent, autoPlay, safePlay, src]);
+    }, [targetSource, safePlay]);
 
+    // Handle isCurrent focus and autoplay sync separately without tearing down HLS
     useEffect(() => {
       const video = videoRef.current;
       if (!video) return;
+
       if (isCurrent) {
         video.muted = isMuted;
         video.defaultMuted = isMuted;
         video.volume = isMuted ? 0 : 1;
-        if (autoPlay) safePlay();
+        if (autoPlay) {
+          safePlay();
+        }
       } else {
         video.pause();
         setIsPlaying(false);
@@ -271,11 +339,23 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       videoRef.current?.pause();
     }, []);
 
+    const handleEnded = () => {
+      if (loop) {
+        const video = videoRef.current;
+        if (video) {
+          video.currentTime = 0;
+          video.play().catch(() => {});
+          setIsPlaying(true);
+        }
+      }
+      onEndedRef.current?.();
+    };
+
     const handleTap = () => {
       const now = Date.now();
       if (now - lastTapTimeRef.current < 300) {
         lastTapTimeRef.current = 0;
-        onDoubleTap?.();
+        onDoubleTapRef.current?.();
         return;
       }
       lastTapTimeRef.current = now;
@@ -284,7 +364,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
         const video = videoRef.current;
         if (!video) return;
         if (video.paused) safePlay();
-        else if (onClick) onClick();
+        else if (onClickRef.current) onClickRef.current();
         else {
           video.pause();
           setIsPlaying(false);
@@ -318,7 +398,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             playsInline
             disablePictureInPicture
             webkit-playsinline="true"
-            preload="none"
+            preload="auto"
             className={
               effectiveAspect === 'vertical'
                 ? 'w-full h-full object-cover'
@@ -330,18 +410,18 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             onLoadedData={checkVideoDimensions}
             onCanPlay={() => {
               checkVideoDimensions();
-              if (isCurrent && videoRef.current?.paused && autoPlay) safePlay();
+              if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current) safePlay();
             }}
-            onWaiting={() => setIsPlaying(false)}
+            onWaiting={() => {}}
             onPlaying={() => setIsPlaying(true)}
-            onEnded={onEnded}
+            onEnded={handleEnded}
             onPlay={() => {
               setIsPlaying(true);
-              onPlay?.();
+              onPlayRef.current?.();
             }}
             onPause={() => {
               setIsPlaying(false);
-              onPause?.();
+              onPauseRef.current?.();
             }}
           />
         </div>

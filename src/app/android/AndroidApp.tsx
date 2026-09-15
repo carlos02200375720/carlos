@@ -144,6 +144,20 @@ export default function AndroidApp({
     };
   }, [activeTab]);
 
+  const handleDeleteReel = async (reelId: string) => {
+    try {
+      const res = await fetch(`/api/android/reels/${reelId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        await fetch(`/api/reels/${reelId}`, { method: 'DELETE' });
+      }
+    } catch (err) {
+      console.error("Error deleting reel:", err);
+    } finally {
+      refreshReels();
+      refreshAllData();
+    }
+  };
+
   return (
     <div
       className="w-full flex-1 flex flex-col relative no-scrollbar"
@@ -293,6 +307,7 @@ export default function AndroidApp({
                     }}
                     onRefreshUsers={refreshAllData}
                     onPublishSuccess={refreshAllData}
+                    onDeleteReel={handleDeleteReel}
                     onLogout={handleLogout}
                     socket={socket}
                   />

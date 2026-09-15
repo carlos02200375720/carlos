@@ -191,3 +191,41 @@ export async function deleteFromGCS(fileUrl?: string): Promise<void> {
     console.error("⚠️ Error al eliminar archivo de GCS:", err);
   }
 }
+
+// Helper: Complete multi-target publication cleanup across GCS and local storage
+export async function deleteFullPublicationMedia(
+  mediaList: (string | undefined | null)[]
+): Promise<{ gcsCleaned: number; localCleaned: number }> {
+  let gcsCleaned = 0;
+  let localCleaned = 0;
+  const uniqueUrls = Array.from(
+    new Set(
+      mediaList.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+    )
+  );
+
+  for (const rawUrl of uniqueUrls) {
+    const url = rawUrl.trim();
+    try {
+      if (url.includes("hls/") || url.endsWith(".m3u8") || url.includes("/uploads/hls/")) {
+        const { deleteHlsStreamBatch } = await import("../hlsTranscoder");
+        const res = await deleteHlsStreamBatch(bucket, url);
+        if (res.success) {
+          gcsCleaned += res.deletedCount;
+          localCleaned++;
+        }
+      } else {
+        await deleteFromGCS(url);
+        if (url.startsWith("/uploads/")) {
+          localCleaned++;
+        } else if (url.includes("storage.googleapis.com")) {
+          gcsCleaned++;
+        }
+      }
+    } catch (err) {
+      console.warn(`⚠️ [Delete Media] Warning deleting media ${url}:`, err);
+    }
+  }
+
+  return { gcsCleaned, localCleaned };
+}

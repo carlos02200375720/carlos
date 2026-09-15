@@ -399,6 +399,7 @@ interface ReelVideoItemProps {
 const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPlaying, isMuted, mediaAspectRatio, onVideoClick, onDoubleTap, onAspectRatioDetected, onRegisterRef }: ReelVideoItemProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const hlsSource = (reel.hlsUrl || reel.videoUrl)?.trim();
 
   useEffect(() => {
     const video = videoRef.current;
@@ -410,20 +411,46 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     video.removeAttribute("src");
     video.load();
 
-    const hlsSource = (reel.hlsUrl || reel.videoUrl)?.trim();
-
-    if (hlsSource && Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 6, maxBufferLength: 20, capLevelToPlayerSize: true });
+    if (hlsSource && Hls.isSupported() && hlsSource.includes(".m3u8")) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        backBufferLength: 30,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        maxBufferSize: 60 * 1000 * 1000,
+        nudgeMaxRetry: 10,
+        nudgeOffset: 0.1,
+        startFragPrefetch: true,
+      });
       hlsRef.current = hls;
       hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+          const v = videoRef.current;
+          if (v && isCurrent && !v.paused) {
+            if (v.currentTime > 0) v.currentTime += 0.05;
+            v.play().catch(() => {});
+          }
+          return;
+        }
         if (!data.fatal) return;
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
         else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-        else { hls.destroy(); hlsRef.current = null; }
+        else {
+          hls.destroy();
+          hlsRef.current = null;
+          if (video && hlsSource) {
+            video.src = hlsSource;
+            video.load();
+            if (isCurrent && isPlaying) video.play().catch(() => {});
+          }
+        }
       });
       hls.loadSource(hlsSource);
       hls.attachMedia(video);
     } else if (hlsSource && video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = hlsSource;
+    } else if (hlsSource) {
       video.src = hlsSource;
     }
 
@@ -434,7 +461,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
       video.removeAttribute("src");
       video.load();
     };
-  }, [reel.hlsUrl]);
+  }, [hlsSource]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -479,5 +506,13 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     onAspectRatioDetected(reel.id, detected);
   };
 
-  return <video ref={handleRef} poster={posterUrl} autoPlay={isCurrent} playsInline loop muted={isMuted} preload="none" className={`w-full h-full block relative z-10 select-none cursor-pointer object-center ${(mediaAspectRatio === 'vertical' || !mediaAspectRatio) ? "object-cover md:object-contain" : "object-contain"}`} style={{ touchAction: "pan-y" }} onClick={(e) => onVideoClick(e, index)} onDoubleClick={(e) => { e.stopPropagation(); onDoubleTap(reel.id); }} onLoadedMetadata={handleLoadedMetadata} />;
+  const handleEnded = () => {
+    const v = videoRef.current;
+    if (v) {
+      v.currentTime = 0;
+      v.play().catch(() => {});
+    }
+  };
+
+  return <video ref={handleRef} poster={posterUrl} autoPlay={isCurrent} playsInline loop muted={isMuted} preload="auto" className={`w-full h-full block relative z-10 select-none cursor-pointer object-center ${(mediaAspectRatio === 'vertical' || !mediaAspectRatio) ? "object-cover md:object-contain" : "object-contain"}`} style={{ touchAction: "pan-y" }} onClick={(e) => onVideoClick(e, index)} onDoubleClick={(e) => { e.stopPropagation(); onDoubleTap(reel.id); }} onLoadedMetadata={handleLoadedMetadata} onEnded={handleEnded} />;
 });

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { User, Reel, Product, Order } from "../../types";
-import { Play, ShoppingBag, Bookmark, Settings, LogOut, Edit3, Grid, Camera, Check, Sparkles, UserPlus, UserCheck, X, ExternalLink, Package, Plus } from "lucide-react";
+import { Play, ShoppingBag, Bookmark, Settings, LogOut, Edit3, Grid, Camera, Check, Sparkles, UserPlus, UserCheck, X, ExternalLink, Package, Plus, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
 import AndroidUserPublicationsFeed from "./components/AndroidUserPublicationsFeed";
@@ -83,7 +83,52 @@ export default function AndroidProfileView({
   const [isSaving, setIsSaving] = useState(false);
 
   const isMe = activeUser.id === currentUser.id || activeUser.username === currentUser.username;
+  const isAdmin = (currentUser as any)?.role === "admin" || (currentUser as any)?.isAdmin === true;
+  const canDelete = isMe || isAdmin || !selectedCreatorId;
   const isGuest = activeUser.isGuest || activeUser.username === "invitado" || activeUser.id === "guest" || (isMe && (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || currentUser.id === "guest"));
+
+  const [publicationToDelete, setPublicationToDelete] = useState<Reel | null>(null);
+  const [isDeletingPublication, setIsDeletingPublication] = useState(false);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
+
+  const executeDeletePublication = async (target: Reel | string) => {
+    const reelId = typeof target === "string" ? target : target.id;
+    setIsDeletingPublication(true);
+    setDeleteErrorMessage(null);
+    try {
+      console.log("🗑️ Solicitando eliminación de:", reelId);
+      let res = await androidApiFetch(`/reels/${reelId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        res = await fetch(`/api/android/reels/${reelId}`, { method: "DELETE" });
+      }
+      if (!res.ok) {
+        res = await fetch(`/api/reels/${reelId}`, { method: "DELETE" });
+      }
+
+      // Inmediatamente remover del estado local
+      setExtraPublications((prev) => prev.filter((r) => r.id !== reelId));
+      if (onDeleteReel) onDeleteReel(reelId);
+      if (onPublishSuccess) onPublishSuccess();
+      if (onRefreshUsers) onRefreshUsers();
+
+      setPublicationToDelete(null);
+      if (selectedFeedReelId === reelId) {
+        setSelectedFeedReelId(null);
+      }
+    } catch (err: any) {
+      console.error("Error al eliminar publicación:", err);
+      setDeleteErrorMessage(err.message || "Error al eliminar");
+    } finally {
+      setIsDeletingPublication(false);
+    }
+  };
+
+  const handleDeletePublication = (reelId: string) => {
+    const target = userReels.find((r) => r.id === reelId) || { id: reelId, description: "Publicación" } as Reel;
+    setPublicationToDelete(target);
+  };
 
   if (isMe && isGuest) {
     return (
@@ -113,15 +158,29 @@ export default function AndroidProfileView({
       .then((data) => {
         if (data) {
           const apiReels: Reel[] = [];
+          const seenIds = new Set<string>();
+          const seenUrls = new Set<string>();
+
+          const addEntry = (r: Reel) => {
+            if (!r || !r.id || seenIds.has(r.id)) return;
+            const norm = (r.videoUrl || r.hlsUrl || "").split("?")[0].trim().toLowerCase();
+            if (norm && seenUrls.has(norm)) return;
+
+            seenIds.add(r.id);
+            if (norm) seenUrls.add(norm);
+            apiReels.push(r);
+          };
+
           if (Array.isArray(data.reels)) {
-            apiReels.push(...data.reels);
+            data.reels.forEach((r: any) => addEntry(r));
           }
           if (Array.isArray(data.publicaciones)) {
             data.publicaciones.forEach((pub: any) => {
               if (pub.url) {
-                apiReels.push({
+                addEntry({
                   id: pub.id,
                   videoUrl: pub.url,
+                  hlsUrl: pub.hlsUrl || pub.url,
                   thumbnailUrl: pub.thumbnailUrl || pub.url,
                   description: pub.title || pub.description || "Publicación",
                   creatorId: pub.creatorId || activeUser.id,
@@ -143,7 +202,7 @@ export default function AndroidProfileView({
         }
       })
       .catch(() => {});
-  }, [activeUser.id, activeUser.originalId, activeUser.username]);
+  }, [activeUser.id, activeUser.originalId, activeUser.username, activeUser.name, activeUser.avatar]);
 
   const userReels = React.useMemo(() => {
     const activeIds = [activeUser.id, activeUser.originalId].filter(Boolean);
@@ -154,12 +213,23 @@ export default function AndroidProfileView({
       return false;
     });
 
-    const map = new Map<string, Reel>();
-    primary.forEach((r) => map.set(r.id, r));
-    extraPublications.forEach((r) => {
-      if (!map.has(r.id)) map.set(r.id, r);
-    });
-    return Array.from(map.values());
+    const result: Reel[] = [];
+    const seenIds = new Set<string>();
+    const seenUrls = new Set<string>();
+
+    const addUnique = (r: Reel) => {
+      if (!r || !r.id || seenIds.has(r.id)) return;
+      const url = (r.videoUrl || r.hlsUrl || "").split("?")[0].trim().toLowerCase();
+      if (url && seenUrls.has(url)) return;
+
+      seenIds.add(r.id);
+      if (url) seenUrls.add(url);
+      result.push(r);
+    };
+
+    primary.forEach(addUnique);
+    extraPublications.forEach(addUnique);
+    return result;
   }, [reels, extraPublications, activeUser.id, activeUser.originalId, activeUser.username, isMe, currentUser.username]);
 
   const userProducts = React.useMemo(() => {
@@ -174,13 +244,20 @@ export default function AndroidProfileView({
 
   const savedReels = React.useMemo(() => {
     const allCandidates = [...reels, ...extraPublications];
-    const map = new Map<string, Reel>();
+    const result: Reel[] = [];
+    const seenIds = new Set<string>();
+    const seenUrls = new Set<string>();
+
     allCandidates.forEach((r) => {
-      if (savedReelIds.includes(r.id) && !map.has(r.id)) {
-        map.set(r.id, r);
-      }
+      if (!r || !r.id || !savedReelIds.includes(r.id) || seenIds.has(r.id)) return;
+      const url = (r.videoUrl || r.hlsUrl || "").split("?")[0].trim().toLowerCase();
+      if (url && seenUrls.has(url)) return;
+
+      seenIds.add(r.id);
+      if (url) seenUrls.add(url);
+      result.push(r);
     });
-    return Array.from(map.values());
+    return result;
   }, [reels, extraPublications, savedReelIds]);
 
   const savedProducts = React.useMemo(() => {
@@ -401,20 +478,23 @@ export default function AndroidProfileView({
                   }}
                   className="relative aspect-[9/16] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 cursor-pointer group active:scale-95 transition-transform"
                 >
-                  {isMe && onDeleteReel && (
+                  {canDelete && (
                     <button
                       type="button"
+                      id={`btn-delete-publication-${reel.id}`}
                       aria-label="Eliminar publicación"
-                      title="Eliminar publicación"
+                      title="Eliminar publicación de MongoDB y GCS"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (window.confirm("¿Eliminar esta publicación?")) {
-                          onDeleteReel(reel.id);
-                        }
+                        e.preventDefault();
+                        handleDeletePublication(reel.id);
                       }}
-                      className="absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-transparent text-white transition-all hover:bg-white/10 active:bg-white/20"
+                      onTouchEnd={(e) => {
+                        e.stopPropagation();
+                      }}
+                      className="absolute right-0 top-0 z-30 flex h-10 w-10 items-center justify-center bg-transparent border-0 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] transition-transform hover:scale-110 active:scale-90 focus:outline-none cursor-pointer"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-5 h-5 stroke-[2.5]" />
                     </button>
                   )}
                   <img
@@ -656,13 +736,13 @@ export default function AndroidProfileView({
       {selectedFeedReelId && (
         <AndroidUserPublicationsFeed
           user={activeUser}
-          reels={reels}
+          reels={userReels}
           products={products}
           initialReelId={selectedFeedReelId}
           currentUser={currentUser}
           onClose={() => setSelectedFeedReelId(null)}
           onSelectProduct={onSelectProduct}
-          onDeleteReel={onDeleteReel}
+          onDeleteReel={handleDeletePublication}
           savedReelIds={savedReelIds}
           onToggleSaveReel={onToggleSaveReel}
         />
@@ -726,6 +806,69 @@ export default function AndroidProfileView({
                   {isSaving ? "Guardando..." : "Actualizar Perfil"}
                 </button>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de confirmación de eliminación in-app (evita bloqueos de window.confirm) */}
+      <AnimatePresence>
+        {publicationToDelete && (
+          <div
+            id="modal-confirm-delete-publication"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4"
+            onClick={() => !isDeletingPublication && setPublicationToDelete(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0, y: 10 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl text-slate-900 border border-slate-200 flex flex-col items-center text-center"
+            >
+              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mb-3">
+                <Trash2 className="w-6 h-6 stroke-[2.5]" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900">
+                ¿Eliminar publicación?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Esta publicación se eliminará permanentemente de MongoDB Atlas, Google Cloud Storage y de todos los servidores.
+              </p>
+
+              {deleteErrorMessage && (
+                <div className="mt-2 text-xs text-rose-600 font-semibold">
+                  {deleteErrorMessage}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2.5 w-full mt-5">
+                <button
+                  type="button"
+                  disabled={isDeletingPublication}
+                  onClick={() => setPublicationToDelete(null)}
+                  className="py-2.5 px-4 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  id="btn-confirm-delete-publication"
+                  disabled={isDeletingPublication}
+                  onClick={() => executeDeletePublication(publicationToDelete)}
+                  className="py-2.5 px-4 rounded-xl bg-rose-600 text-white text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                >
+                  {isDeletingPublication ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Eliminando...</span>
+                    </>
+                  ) : (
+                    <span>Eliminar</span>
+                  )}
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

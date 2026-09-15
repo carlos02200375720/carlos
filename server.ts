@@ -18,7 +18,7 @@ import {
   MongoOrder,
 } from "./src/server/models";
 import { bucket, bucketName } from "./src/server/config/storage";
-import { uploadToGCS, uploadBase64ToGCS, deleteFromGCS, saveToLocalStorage } from "./src/server/services/mediaStorage";
+import { uploadToGCS, uploadBase64ToGCS, deleteFromGCS, saveToLocalStorage, deleteFullPublicationMedia } from "./src/server/services/mediaStorage";
 import { upload, uploadSingleSafe } from "./src/server/middleware/upload";
 
 // Configure dotenv to read environment variables first
@@ -441,7 +441,9 @@ async function startServer() {
         res.setHeader("Accept-Ranges", "bytes");
       }
     }
-  }));
+  }), (req, res) => {
+    res.status(404).json({ error: "Media file not found in uploads" });
+  });
 
   // --- API ENDPOINTS ---
 
@@ -510,32 +512,13 @@ async function startServer() {
           publicUrl = await saveToLocalStorage(req.file.buffer, "publicaciones", originalName);
         }
 
-        let savedPublicacionObj = null;
-
-        if (mongoose.connection.readyState === 1) {
-          try {
-            const newPublicacion = new MongoPublicacion({
-              id: pubId,
-              url: publicUrl,
-              title: title || originalName,
-              description: description || "",
-              creatorId: creatorId || "current_user",
-              createdAt: new Date()
-            });
-
-            savedPublicacionObj = await newPublicacion.save();
-          } catch (dbErr) {
-            console.error("❌ Error al guardar publicación en MongoDB:", dbErr);
-          }
-        }
-
         return res.json({
           success: true,
           message: "Archivo subido exitosamente.",
           url: publicUrl,
           hlsUrl: undefined,
           jobId: undefined,
-          publicacion: savedPublicacionObj
+          publicacion: { id: pubId, url: publicUrl }
         });
       }
 
@@ -577,37 +560,13 @@ async function startServer() {
 
       console.log(`✅ [HLS ONLY] HLS generado: ${hlsUrl}`);
 
-      // ------------------------------------------------------------
-      // GUARDAR EN MONGODB (OPCIONAL)
-      // ------------------------------------------------------------
-      let savedPublicacionObj = null;
-
-      if (mongoose.connection.readyState === 1) {
-        try {
-          const newPublicacion = new MongoPublicacion({
-            id: pubId,
-            url: hlsUrl,
-            hlsUrl,
-            title: title || originalName,
-            description: description || "",
-            creatorId: creatorId || "current_user",
-            createdAt: new Date()
-          });
-
-          savedPublicacionObj = await newPublicacion.save();
-          console.log(`💾 [HLS ONLY] Publicación guardada en MongoDB: ${pubId}`);
-        } catch (dbErr) {
-          console.error("❌ Error al guardar publicación HLS en MongoDB:", dbErr);
-        }
-      }
-
       return res.json({
         success: true,
         message: "Video convertido a HLS correctamente.",
         url: hlsUrl,
         hlsUrl,
         jobId,
-        publicacion: savedPublicacionObj,
+        publicacion: { id: pubId, url: hlsUrl, hlsUrl },
         hlsStats: {
           latencyMs,
           totalSegments,
@@ -707,79 +666,83 @@ async function startServer() {
       const isObjectId = mongoose.Types.ObjectId.isValid(targetId) && String(targetId).length === 24;
       const mongoQuery = isObjectId ? { $or: [{ id: targetId }, { _id: targetId }] } : { id: targetId };
 
-      // Find reel in memory or database
+      // Find reel or publication in memory or database
       let existingReel = reels.find(r => r.id === targetId);
-      if (!existingReel && mongoose.connection.readyState === 1) {
-        try {
-          existingReel = await MongoReel.findOne(mongoQuery);
-        } catch {}
-      }
-
-      const videoUrl = existingReel?.videoUrl || "";
-      const hlsUrl = existingReel?.hlsUrl || "";
-      const thumbnailUrl = existingReel?.thumbnailUrl || "";
-
-      let gcsCleanedFiles = 0;
-
-      // 1. Batch delete all GCS HLS segments & playlists
-      if (hlsUrl && hlsUrl.includes("storage.googleapis.com")) {
-        try {
-          const cleanupResult = await deleteHlsStreamBatch(bucket, hlsUrl);
-          gcsCleanedFiles += cleanupResult.deletedCount;
-        } catch (hlsErr) {
-          console.warn("Could not delete HLS stream batch:", hlsErr);
-        }
-      }
-
-      // 2. Delete source MP4 video file from GCS if applicable
-      if (videoUrl) {
-        try {
-          await deleteFromGCS(videoUrl);
-          gcsCleanedFiles++;
-        } catch (srcDelErr) {
-          console.warn("Could not delete source video file from GCS:", srcDelErr);
-        }
-      }
-
-      // Delete thumbnail and extra carousel images from GCS if applicable
-      if (thumbnailUrl) {
-        try {
-          await deleteFromGCS(thumbnailUrl);
-        } catch {}
-      }
-      if (Array.isArray(existingReel?.images)) {
-        for (const imgUrl of existingReel.images) {
-          try {
-            await deleteFromGCS(imgUrl);
-          } catch {}
-        }
-      }
-
-      // 3. Remove from MongoDB
+      let existingPub: any = null;
       if (mongoose.connection.readyState === 1) {
         try {
-          await MongoReel.deleteMany(mongoQuery);
-          await MongoPublicacion.deleteMany(mongoQuery);
-          console.log(`💾 Deleted ${targetId} from MongoDB`);
+          if (!existingReel) existingReel = await MongoReel.findOne(mongoQuery);
+          existingPub = await MongoPublicacion.findOne(mongoQuery);
+
+          // Cross-match if one exists but not the other
+          if (existingReel && !existingPub && (existingReel.hlsUrl || existingReel.videoUrl)) {
+            const matchUrl = existingReel.hlsUrl || existingReel.videoUrl;
+            existingPub = await MongoPublicacion.findOne({
+              $or: [{ hlsUrl: matchUrl }, { url: matchUrl }]
+            });
+          }
+          if (existingPub && !existingReel && (existingPub.hlsUrl || existingPub.url)) {
+            const matchUrl = existingPub.hlsUrl || existingPub.url;
+            existingReel = await MongoReel.findOne({
+              $or: [{ hlsUrl: matchUrl }, { videoUrl: matchUrl }]
+            });
+          }
+        } catch {}
+      }
+
+      const mediaToDelete = [
+        existingReel?.videoUrl,
+        existingReel?.hlsUrl,
+        existingReel?.thumbnailUrl,
+        existingPub?.url,
+        existingPub?.hlsUrl,
+        existingPub?.thumbnailUrl,
+        ...(Array.isArray(existingReel?.images) ? existingReel.images : []),
+        ...(Array.isArray(existingPub?.images) ? existingPub.images : []),
+      ];
+
+      // 1. Batch delete all GCS and local media files (HLS directories, videos, thumbnails)
+      const cleanupStats = await deleteFullPublicationMedia(mediaToDelete);
+
+      const deleteIds = Array.from(new Set([targetId, existingReel?.id, existingPub?.id].filter(Boolean)));
+      const validMediaUrls = mediaToDelete.filter((u): u is string => typeof u === "string" && u.trim().length > 0);
+      const mediaQuery = validMediaUrls.length > 0 ? [
+        { videoUrl: { $in: validMediaUrls } },
+        { url: { $in: validMediaUrls } },
+        { hlsUrl: { $in: validMediaUrls } }
+      ] : [];
+
+      // 2. Remove from MongoDB
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoReel.deleteMany({
+            $or: [mongoQuery, { id: { $in: deleteIds } }, ...mediaQuery]
+          });
+          await MongoPublicacion.deleteMany({
+            $or: [mongoQuery, { id: { $in: deleteIds } }, ...mediaQuery]
+          });
+          console.log(`💾 Deleted ${deleteIds.join(", ")} from MongoDB`);
         } catch (dbErr) {
           console.error("Error deleting from MongoDB:", dbErr);
         }
       }
 
-      // 4. Remove from in-memory reels array
-      reels = reels.filter(r => r.id !== targetId);
+      // 3. Remove from in-memory reels array
+      reels = reels.filter(r => !deleteIds.includes(r.id) && !validMediaUrls.includes(r.videoUrl || ""));
 
-      // 5. Broadcast deletion to all clients
-      broadcastToAll({
-        type: "reel_deleted",
-        reelId: targetId
+      // 4. Broadcast deletion to all clients
+      deleteIds.forEach((delId) => {
+        broadcastToAll({
+          type: "reel_deleted",
+          reelId: delId
+        });
       });
 
       res.json({
         success: true,
-        message: `Publicación eliminada correctamente con limpieza en GCS.`,
+        message: `Publicación eliminada correctamente del proyecto completo (MongoDB, GCS y almacenamiento local).`,
         deletedId: targetId,
-        gcsCleanedFiles,
+        cleanupStats,
       });
     } catch (err: any) {
       console.error("❌ Error deleting publication with batch cleanup:", err);

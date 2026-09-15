@@ -72,18 +72,6 @@ export async function transcodeVideoToLocalHlsDirect(
 
   const playlistPath = path.join(localHlsDir, "index.m3u8");
   const segmentPattern = path.join(localHlsDir, "segment_%03d.ts");
-  const fallbackSourcePath = path.join(localHlsDir, `source${ext}`);
-  const fallbackMp4Path = path.join(localHlsDir, "source.mp4");
-
-  // Always preserve original video file in local uploads as absolute fail-safe source
-  try {
-    await fs.promises.writeFile(fallbackSourcePath, videoBuffer);
-    if (ext.toLowerCase() !== ".mp4") {
-      await fs.promises.writeFile(fallbackMp4Path, videoBuffer);
-    }
-  } catch (saveErr) {
-    console.warn(`⚠️ [HLS Direct] Could not write fallback source file:`, saveErr);
-  }
 
   const ffmpegBin = getFfmpegBinary();
 
