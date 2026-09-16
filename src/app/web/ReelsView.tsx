@@ -42,7 +42,6 @@ export default function ReelsView({
   onGuestInteraction,
 }: ReelsViewProps) {
   const [activeReelIndex, setActiveReelIndex] = useState(0);
-  const [displayCount, setDisplayCount] = useState<number>(() => (reels.length <= 2 ? Math.max(reels.length * 4, 4) : reels.length));
   const [isMuted, setIsMuted] = useState(false);
   const [activeVideoElement, setActiveVideoElement] = useState<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -84,18 +83,10 @@ export default function ReelsView({
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [isPlaying]);
 
-  useEffect(() => {
-    if (reels.length > 0) {
-      setDisplayCount((prev) => (reels.length <= 2 ? Math.max(reels.length * 4, 4) : Math.max(prev, reels.length)));
-    }
-  }, [reels.length]);
-
-  const displayedReels = React.useMemo(() => {
-    if (reels.length === 0) return [];
-    const list: Reel[] = [];
-    for (let i = 0; i < displayCount; i++) list.push(reels[i % reels.length]);
-    return list;
-  }, [reels, displayCount]);
+  // Render each real Reel exactly once. The previous implementation duplicated
+  // Reel objects to simulate an infinite feed, which increased DOM/layout work
+  // and could repeatedly mount expensive media content.
+  const displayedReels = reels;
 
   const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>([]);
 
@@ -143,9 +134,6 @@ export default function ReelsView({
       setActiveReelIndex(index);
       setActiveVideoElement(null);
       setIsPlaying(true);
-    }
-    if (index >= displayedReels.length - 2 && reels.length > 0) {
-      setDisplayCount((prev) => prev + Math.min(reels.length, 10));
     }
   };
 
@@ -338,7 +326,7 @@ export default function ReelsView({
                     <div className="flex flex-col items-center"><button onClick={() => { if (isGuestUser) onGuestInteraction("dar me gusta"); else onLikeReel(reel.id); }} className={`w-12 h-12 rounded-full flex items-center justify-center bg-slate-900/80 hover:bg-slate-800/90 active:scale-90 border border-white/15 backdrop-blur-md shadow-lg transition-all cursor-pointer ${isLiked ? "text-rose-500" : "text-white hover:text-rose-400"}`} id={`like-btn-${reel.id}`} title="Me gusta"><Heart strokeWidth={2.2} className={`w-6 h-6 ${isLiked ? "fill-rose-500 text-rose-500" : "fill-white text-white"}`} /></button><span className="text-white/90 text-xs font-bold mt-1 drop-shadow-sm">{reel.likes}</span></div>
                     <div className="flex flex-col items-center"><button onClick={() => { if (isGuestUser) onGuestInteraction("comentar"); else setShowComments(reel.id); }} className="w-12 h-12 rounded-full flex items-center justify-center bg-slate-900/80 hover:bg-slate-800/90 active:scale-90 border border-white/15 backdrop-blur-md shadow-lg text-white hover:text-amber-400 transition-all cursor-pointer" id={`comment-btn-${reel.id}`} title="Comentarios"><MessageCircle strokeWidth={2.2} className="w-6 h-6 fill-white text-white" /></button><span className="text-white/90 text-xs font-bold mt-1 drop-shadow-sm">{reel.comments.length}</span></div>
                     <div className="flex flex-col items-center"><button onClick={() => { if (isGuestUser) onGuestInteraction("guardar publicaciones"); else onToggleSaveReel(reel.id); }} className={`w-12 h-12 rounded-full flex items-center justify-center bg-slate-900/80 hover:bg-slate-800/90 active:scale-90 border border-white/15 backdrop-blur-md shadow-lg transition-all cursor-pointer ${savedReelIds.includes(reel.id) ? "text-amber-400" : "text-white hover:text-amber-300"}`} id={`save-btn-${reel.id}`} title="Guardar"><Bookmark strokeWidth={2.2} className={`w-6 h-6 ${savedReelIds.includes(reel.id) ? "fill-amber-400 text-amber-400" : "fill-white text-white"}`} /></button><span className="text-white/90 text-xs font-bold mt-1 drop-shadow-sm">{reel.saves ?? 0}</span></div>
-                    <div className="flex flex-col items-center"><button onClick={() => { if (isGuestUser) onGuestInteraction("compartir"); else handleShare(reel.id); }} className="w-12 h-12 rounded-full flex items-center justify-center bg-slate-900/80 hover:bg-slate-800/90 active:scale-90 border border-white/15 backdrop-blur-md shadow-lg text-white hover:text-cyan-400 transition-all cursor-pointer" id={`share-btn-${reel.id}`} title="Compartir"><Share2 strokeWidth={2.2} className="w-6 h-6 fill-white text-white" /></button><span className="text-white/90 text-xs font-bold mt-1 drop-shadow-sm">{reel.shares}</span></div>
+                    <div className="flex flex-col items-center"><button onClick={() => { if (isGuestUser) onGuestInteraction("compartir"); else handleShare(reel.id); }} className="w-12 h-12 rounded-full flex items-center justify-center bg-slate-900/80 hover:bg-slate-800/90 active:scale-90 border border-white/15 backdrop-blur-md shadow-lg text-white hover:text-cyan-400 transition-all cursor-pointer" id={`share-btn-${reel.id}`} title="Compartir"><Share2 className="w-6 h-6 fill-white text-white" /></button><span className="text-white/90 text-xs font-bold mt-1 drop-shadow-sm">{reel.shares}</span></div>
                   </div>
                 </div>
               </div>
@@ -411,24 +399,25 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     video.removeAttribute("src");
     video.load();
 
+    if (!isCurrent) return;
+
     if (hlsSource && Hls.isSupported() && hlsSource.includes(".m3u8")) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        backBufferLength: 30,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        maxBufferSize: 60 * 1000 * 1000,
-        nudgeMaxRetry: 10,
-        nudgeOffset: 0.1,
-        startFragPrefetch: true,
+        backBufferLength: 4,
+        maxBufferLength: 12,
+        maxMaxBufferLength: 24,
+        capLevelToPlayerSize: true,
+        manifestLoadingMaxRetry: 2,
+        levelLoadingMaxRetry: 2,
+        fragLoadingMaxRetry: 3,
       });
       hlsRef.current = hls;
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
           const v = videoRef.current;
           if (v && isCurrent && !v.paused) {
-            if (v.currentTime > 0) v.currentTime += 0.05;
             v.play().catch(() => {});
           }
           return;
@@ -454,6 +443,10 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
       video.src = hlsSource;
     }
 
+    video.muted = isMuted;
+    video.defaultMuted = isMuted;
+    video.volume = isMuted ? 0 : 1;
+
     return () => {
       video.pause();
       hlsRef.current?.destroy();
@@ -461,7 +454,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
       video.removeAttribute("src");
       video.load();
     };
-  }, [hlsSource]);
+  }, [hlsSource, isCurrent]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -514,5 +507,5 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     }
   };
 
-  return <video ref={handleRef} poster={posterUrl} autoPlay={isCurrent} playsInline loop muted={isMuted} preload="auto" className={`w-full h-full block relative z-10 select-none cursor-pointer object-center ${(mediaAspectRatio === 'vertical' || !mediaAspectRatio) ? "object-cover md:object-contain" : "object-contain"}`} style={{ touchAction: "pan-y" }} onClick={(e) => onVideoClick(e, index)} onDoubleClick={(e) => { e.stopPropagation(); onDoubleTap(reel.id); }} onLoadedMetadata={handleLoadedMetadata} onEnded={handleEnded} />;
+  return <video ref={handleRef} poster={posterUrl} autoPlay={isCurrent} playsInline loop muted={isMuted} preload="metadata" className={`w-full h-full block relative z-10 select-none cursor-pointer object-center ${(mediaAspectRatio === 'vertical' || !mediaAspectRatio) ? "object-cover md:object-contain" : "object-contain"}`} style={{ touchAction: "pan-y" }} onClick={(e) => onVideoClick(e, index)} onDoubleClick={(e) => { e.stopPropagation(); onDoubleTap(reel.id); }} onLoadedMetadata={handleLoadedMetadata} onEnded={handleEnded} />;
 });
