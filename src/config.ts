@@ -107,7 +107,20 @@ export const apiFetch = async (
   customTimeoutMs?: number
 ): Promise<Response> => {
   const cleanPath = input.startsWith("/") ? input : `/${input}`;
-  const targetUrl = getApiUrl(input);
+  const reqMethod = (init?.method || "GET").toUpperCase();
+
+  // Web and Android must publish through the same canonical persistence routes.
+  // The Android gateway already performs transactional writes to MongoReel and
+  // creates product companion reels, while the legacy web mutation routes can
+  // return success even when their Mongo write fails.
+  const canonicalMutationPath =
+    reqMethod === "POST" && cleanPath === "/api/reels"
+      ? "/api/android/reels"
+      : reqMethod === "POST" && cleanPath === "/api/products"
+        ? "/api/android/products"
+        : cleanPath;
+
+  const targetUrl = getApiUrl(canonicalMutationPath);
   const headers = new Headers(init?.headers);
 
   // Set generous timeout: 5 minutes (300,000ms) for upload endpoints or FormData bodies, 60s for general API calls
@@ -194,7 +207,6 @@ export const apiFetch = async (
 
     // Fallback: if primary URL failed, attempt alternative backend URL or dedicated Android route
     // ONLY for idempotent, safe methods (GET, HEAD). NEVER retry POST, PUT, DELETE or mutations!
-    const reqMethod = (init?.method || "GET").toUpperCase();
     const isIdempotentSafe = reqMethod === "GET" || reqMethod === "HEAD";
 
     if (!signal.aborted && isIdempotentSafe) {
@@ -227,5 +239,3 @@ export const apiFetch = async (
     throw primaryErr;
   }
 };
-
-
