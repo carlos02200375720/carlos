@@ -54,7 +54,6 @@ export async function syncLegacyPublicacionesToMongoReel(userMap?: Map<string, a
       const pubUrl = pub.url || "";
       const pubHlsUrl = pub.hlsUrl || "";
 
-      // Check if this publication is already present in MongoReel
       const existing = await MongoReel.findOne({
         $or: [
           { id: canonicalId },
@@ -68,7 +67,6 @@ export async function syncLegacyPublicacionesToMongoReel(userMap?: Map<string, a
         continue;
       }
 
-      // Infer if video or image
       const isVideo = Boolean(
         pubHlsUrl ||
         /\.(m3u8|mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts)$/i.test(pubUrl) ||
@@ -126,11 +124,13 @@ export async function getCanonicalReelsFromMongo(userMap?: Map<string, any>): Pr
     return [];
   }
 
-  // Ensure one-time migration on load if not yet run
+  // Ensure legacy publications are available in the canonical collection.
+  // This is intentionally re-entrant so publications created after server startup
+  // are also migrated when either client refreshes the feed.
   if (!migrationRan) {
     migrationRan = true;
-    await syncLegacyPublicacionesToMongoReel(userMap);
   }
+  await syncLegacyPublicacionesToMongoReel(userMap);
 
   const resolvedUserMap = userMap || (await buildUserMap());
   const dbReels = await MongoReel.find().sort({ _id: -1 });
@@ -147,20 +147,22 @@ export async function getCanonicalReelsFromMongo(userMap?: Map<string, any>): Pr
 
 /**
  * Saves a publication or reel transactionally to MongoReel.
- * Throws an error if MongoReel.save / upsert fails, preventing ghost or half-published items.
+ * Throws if MongoDB is unavailable or the write fails, preventing ghost publications.
  */
 export async function saveCanonicalReelToMongo(reelData: any, userMap?: Map<string, any>): Promise<Reel> {
-  const formattedReel = formatReelDTO(reelData, userMap);
-
-  if (mongoose.connection.readyState === 1) {
-    await MongoReel.findOneAndUpdate(
-      { id: formattedReel.id },
-      { $set: formattedReel },
-      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
-    );
-    console.log(`💾 [reelService] Transaccionalmente guardado Reel ${formattedReel.id} en MongoReel`);
+  if (mongoose.connection.readyState !== 1) {
+    throw new Error("MongoDB no está conectado; la publicación no fue guardada.");
   }
 
+  const formattedReel = formatReelDTO(reelData, userMap);
+
+  await MongoReel.findOneAndUpdate(
+    { id: formattedReel.id },
+    { $set: formattedReel },
+    { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+  );
+
+  console.log(`💾 [reelService] Transaccionalmente guardado Reel ${formattedReel.id} en MongoReel`);
   return formattedReel;
 }
 
