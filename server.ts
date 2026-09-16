@@ -21,6 +21,12 @@ import { bucket, bucketName } from "./src/server/config/storage";
 import { uploadToGCS, uploadBase64ToGCS, deleteFromGCS, saveToLocalStorage, deleteFullPublicationMedia } from "./src/server/services/mediaStorage";
 import { upload, uploadSingleSafe } from "./src/server/middleware/upload";
 import { formatReelDTO, createCompanionReelForProduct } from "./src/server/utils/reelUtils";
+import {
+  getCanonicalReelsFromMongo,
+  saveCanonicalReelToMongo,
+  syncLegacyPublicacionesToMongoReel,
+  getUserCanonicalReelsFromMongo,
+} from "./src/server/services/reelService";
 
 // Configure dotenv to read environment variables first
 dotenv.config();
@@ -230,35 +236,28 @@ async function connectToMongoDB() {
       console.log(`📦 Loaded ${products.length} unique products successfully from MongoDB Atlas!`);
     }
  
-    // Seed or Load Reels from MongoDB Atlas
-    const reelCount = await MongoReel.countDocuments();
-    if (reelCount === 0) {
-      console.log("🌱 Seeding default reels to MongoDB...");
-      await MongoReel.insertMany(reels as any);
-      console.log("🌱 Seeding reels completed!");
-    } else {
-      console.log("📦 Loading reels from MongoDB...");
-      // Clean up any old rainbow placeholder thumbnails from MongoDB
-      await MongoReel.updateMany(
-        { thumbnailUrl: { $regex: "1618005182384" } },
-        { $set: { thumbnailUrl: "" } }
-      ).catch(() => {});
+    // 1. Sync and migrate any legacy MongoPublicacion documents into MongoReel
+    console.log("📦 Checking and migrating any legacy MongoPublicacion documents into MongoReel...");
+    await syncLegacyPublicacionesToMongoReel();
 
-      const dbReels = await MongoReel.find();
-      const userMap = new Map<string, any>();
-      dbUsers.forEach((u: any) => {
-        if (u.id) userMap.set(u.id, u);
-        if (u.username) userMap.set(u.username.toLowerCase(), u);
-        if (u._id) userMap.set(u._id.toString(), u);
-      });
-      const seenReelIds = new Set<string>();
-      const uniqueDbReels = dbReels.filter((r) => {
-        if (!r.id || seenReelIds.has(r.id)) return false;
-        seenReelIds.add(r.id);
-        return true;
-      });
-      reels = uniqueDbReels.map(r => formatReelDTO(r, userMap));
-      console.log(`📦 Loaded ${reels.length} unique reels successfully from MongoDB Atlas!`);
+    // Clean up any old rainbow placeholder thumbnails from MongoDB
+    await MongoReel.updateMany(
+      { thumbnailUrl: { $regex: "1618005182384" } },
+      { $set: { thumbnailUrl: "" } }
+    ).catch(() => {});
+
+    // 2. Load canonical reels directly from MongoReel in Atlas
+    const canonicalDbReels = await getCanonicalReelsFromMongo();
+    if (canonicalDbReels.length > 0) {
+      reels = canonicalDbReels;
+      console.log(`📦 Loaded ${reels.length} canonical reels successfully from MongoReel in Atlas!`);
+    } else {
+      console.log("🌱 Seeding default reels to MongoReel in Atlas...");
+      for (const r of reels) {
+        await saveCanonicalReelToMongo(r);
+      }
+      reels = await getCanonicalReelsFromMongo();
+      console.log("🌱 Seeding canonical reels completed!");
     }
 
     // Load or Seed Orders from MongoDB Atlas
@@ -1668,37 +1667,26 @@ async function startServer() {
     }
   });
 
-  // Get all video reels
+  // Get all canonical reels (single source of truth directly from MongoReel)
   app.get("/api/reels", async (req, res) => {
-    if (mongoose.connection.readyState === 1) {
-      try {
-        const dbUsers = await MongoUser.find();
-        const userMap = new Map<string, any>();
-        dbUsers.forEach((u: any) => {
-          if (u.id) userMap.set(u.id, u);
-          if (u.username) userMap.set(u.username.toLowerCase(), u);
-          if (u._id) userMap.set(u._id.toString(), u);
-        });
-
-        const dbReels = await MongoReel.find().sort({ _id: -1 });
-        const seenReelIds = new Set<string>();
-        const uniqueDbReels = dbReels.filter((r: any) => {
-          if (!r.id || seenReelIds.has(r.id)) return false;
-          seenReelIds.add(r.id);
-          return true;
-        });
-        reels = uniqueDbReels.map((r: any) => formatReelDTO(r, userMap));
-      } catch (err) {
-        console.error("❌ Failed to load live reels from MongoDB Atlas during GET:", err);
+    try {
+      if (mongoose.connection.readyState === 1) {
+        const canonicalReels = await getCanonicalReelsFromMongo();
+        if (canonicalReels.length > 0) {
+          reels = canonicalReels;
+        }
       }
+      const seen = new Set<string>();
+      const uniqueReels = reels.map((r) => formatReelDTO(r)).filter((r) => {
+        if (!r.id || seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      });
+      res.json(uniqueReels);
+    } catch (err: any) {
+      console.error("❌ Error in GET /api/reels:", err);
+      res.status(500).json({ error: "Error al obtener reels", details: err.message });
     }
-    const seen = new Set<string>();
-    const uniqueReels = reels.map(r => formatReelDTO(r)).filter((r) => {
-      if (!r.id || seen.has(r.id)) return false;
-      seen.add(r.id);
-      return true;
-    });
-    res.json(uniqueReels);
   });
 
   // Like a reel (1 like per user - toggle behavior with user isolation)

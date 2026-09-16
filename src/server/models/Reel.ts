@@ -27,6 +27,9 @@ const ReelSchema = new mongoose.Schema({
   }],
   hlsUrl: { type: String },
   aspectRatio: { type: String, default: "vertical" }
+}, {
+  timestamps: true,
+  strict: false
 });
 
 export const MongoReel = (mongoose.models.Reel || mongoose.model("Reel", ReelSchema)) as any;

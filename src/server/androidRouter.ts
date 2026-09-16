@@ -6,6 +6,11 @@ import { Bucket } from "@google-cloud/storage";
 import { User, Reel, Product, Order } from "../types";
 import { transcodeVideoToLocalHlsDirect } from "./hlsTranscoder";
 import { formatReelDTO, createCompanionReelForProduct } from "./utils/reelUtils";
+import {
+  getCanonicalReelsFromMongo,
+  saveCanonicalReelToMongo,
+  getUserCanonicalReelsFromMongo,
+} from "./services/reelService";
 
 export interface AndroidRouterDependencies {
   MongoUser: any;
@@ -483,9 +488,12 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
   // Android: Get all publications and reels created by a specific user
   router.get("/users/:id/publications", async (req: Request, res: Response) => {
     try {
-      const targetId = req.params.id;
-      let userPubs: any[] = [];
-      let userReels: any[] = [];
+      const targetId = (req.params.id || "").trim();
+      const userIdentifiers = new Set<string>();
+      if (targetId) {
+        userIdentifiers.add(targetId);
+        userIdentifiers.add(targetId.toLowerCase());
+      }
 
       if (mongoose.connection.readyState === 1) {
         const userDoc = await MongoUser.findOne({
@@ -496,77 +504,57 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
           ],
         });
 
-        const matchIds = [targetId];
-        const matchUsernames: string[] = [];
         if (userDoc) {
-          matchIds.push(userDoc.id);
-          if (userDoc._id) matchIds.push(userDoc._id.toString());
-          if (userDoc.username) matchUsernames.push(userDoc.username);
+          if (userDoc.id) userIdentifiers.add(userDoc.id);
+          if (userDoc.originalId) userIdentifiers.add(userDoc.originalId);
+          if (userDoc._id) userIdentifiers.add(userDoc._id.toString());
+          if (userDoc.username) {
+            userIdentifiers.add(userDoc.username);
+            userIdentifiers.add(userDoc.username.toLowerCase());
+          }
         }
+      }
 
-        userPubs = await MongoPublicacion.find({
-          $or: [
-            { creatorId: { $in: matchIds } },
-            { creatorUsername: { $in: matchUsernames } },
-          ],
-        }).sort({ _id: -1 });
+      let userReels: Reel[] = [];
+      if (mongoose.connection.readyState === 1) {
+        userReels = await getUserCanonicalReelsFromMongo(userIdentifiers);
+      }
 
-        userReels = await MongoReel.find({
-          $or: [
-            { creatorId: { $in: matchIds } },
-            { creatorUsername: { $in: matchUsernames } },
-          ],
-        }).sort({ _id: -1 });
-
-        // Deduplicate: If a publication in MongoPublicacion shares the same media URL or ID as a MongoReel,
-        // it is the exact same publication; filter it out so it never duplicates in client views.
-        const existingReelUrls = new Set<string>();
-        const existingReelIds = new Set<string>();
-
-        userReels.forEach((r: any) => {
-          if (r.id) existingReelIds.add(String(r.id));
-          if (r.videoUrl) existingReelUrls.add(String(r.videoUrl).split("?")[0].trim().toLowerCase());
-          if (r.hlsUrl) existingReelUrls.add(String(r.hlsUrl).split("?")[0].trim().toLowerCase());
-        });
-
-        userPubs = userPubs.filter((p: any) => {
-          if (!p.id || existingReelIds.has(String(p.id))) return false;
-          const pubUrl = String(p.url || p.hlsUrl || "").split("?")[0].trim().toLowerCase();
-          if (pubUrl && existingReelUrls.has(pubUrl)) return false;
-          return true;
-        });
+      if (userReels.length === 0) {
+        userReels = getReels()
+          .filter(
+            (r) =>
+              userIdentifiers.has(r.creatorId) ||
+              (r.creatorUsername && userIdentifiers.has(r.creatorUsername.toLowerCase()))
+          )
+          .map((r) => formatReelDTO(r));
       }
 
       res.json({
         success: true,
         reels: userReels,
-        publicaciones: userPubs,
+        publicaciones: userReels,
       });
     } catch (err: any) {
       res.status(500).json({ error: "Error al obtener publicaciones del usuario", details: err.message });
     }
   });
 
-  // Android Feed / Reels endpoint: Returns real reels from MongoDB Atlas directly
+  // Android Feed / Reels endpoint: Canonical single source of truth from MongoReel
   router.get("/reels", async (req: Request, res: Response) => {
     try {
-      let currentReels = getReels().map(r => formatReelDTO(r));
+      let currentReels: Reel[] = [];
       if (mongoose.connection.readyState === 1) {
-        const dbUsers = await MongoUser.find();
-        const userMap = new Map<string, any>();
-        dbUsers.forEach((u: any) => {
-          userMap.set(u.id, u);
-          if (u.username) userMap.set(u.username.toLowerCase(), u);
-          if (u._id) userMap.set(u._id.toString(), u);
-        });
-
-        const dbReels = await MongoReel.find().sort({ _id: -1 }).limit(100);
-        if (dbReels.length > 0) {
-          currentReels = dbReels.map((r: any) => formatReelDTO(r, userMap));
+        currentReels = await getCanonicalReelsFromMongo();
+        if (currentReels.length > 0) {
+          setReels(currentReels);
         }
       }
 
-      // Return clean array with unified Reel schema for direct client consumption
+      if (currentReels.length === 0) {
+        currentReels = getReels().map((r) => formatReelDTO(r));
+      }
+
       res.json(currentReels);
     } catch (err: any) {
       console.error("❌ [Android Gateway] Error loading reels:", err);
@@ -574,7 +562,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
     }
   });
 
-  // Android Publish / Create Reel (Video, Imagen, Carrusel o Producto)
+  // Android Publish / Create Reel: Transactional save to MongoReel
   router.post("/reels", async (req: Request, res: Response) => {
     try {
       const {
@@ -595,8 +583,8 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         aspectRatio,
       } = req.body;
 
-      if (!videoUrl && (!images || images.length === 0) && (!media || media.length === 0)) {
-        res.status(400).json({ error: "Debe proporcionar video o imagen para la publicación" });
+      if (!videoUrl && (!images || images.length === 0) && (!media || media.length === 0) && !thumbnailUrl) {
+        res.status(400).json({ error: "Debe proporcionar video, imagen o contenido multimedia para la publicación" });
         return;
       }
 
@@ -620,11 +608,11 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       const effectiveProductId = productId || taggedProductId || undefined;
       const effectiveType = type || (effectiveProductId ? "product" : (videoUrl ? "video" : (images && images.length > 1 ? "carousel" : "image")));
 
-      const newReel = formatReelDTO({
+      const rawReelData = {
         id: "reel_" + generateId(),
         title: (title || "").trim(),
         videoUrl: videoUrl || "",
-        thumbnailUrl: thumbnailUrl || "",
+        thumbnailUrl: (thumbnailUrl && !thumbnailUrl.includes("1618005182384")) ? thumbnailUrl : "",
         description: description || "",
         creatorId: resolvedCreatorId || "creator",
         creatorName: resolvedCreatorName || "Creador",
@@ -636,14 +624,12 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         media: media || undefined,
         hlsUrl: hlsUrl || undefined,
         aspectRatio: aspectRatio || "vertical",
-      });
+      };
 
-      if (mongoose.connection.readyState === 1) {
-        const mongoReel = new MongoReel(newReel);
-        await mongoReel.save();
-      }
+      // Transactional save to MongoReel: will throw if DB write fails
+      const newReel = await saveCanonicalReelToMongo(rawReelData);
 
-      const updatedReels = [newReel, ...getReels()];
+      const updatedReels = [newReel, ...getReels().filter((r) => r.id !== newReel.id)];
       setReels(updatedReels);
 
       broadcastToAll({
@@ -658,11 +644,11 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         platform: "android",
       });
 
-      console.log(`📱 [Android Gateway] Reel publicado exitosamente en Atlas: ${newReel.id} por @${resolvedCreatorUsername}`);
-      res.json({ success: true, reel: newReel });
+      console.log(`📱 [Android Gateway] Reel publicado exitosamente en MongoReel: ${newReel.id} por @${resolvedCreatorUsername}`);
+      res.status(201).json({ success: true, reel: newReel });
     } catch (err: any) {
-      console.error("❌ [Android Gateway] Error al publicar reel:", err);
-      res.status(500).json({ error: "Error al publicar reel", details: err.message });
+      console.error("❌ [Android Gateway] Error al publicar reel en MongoReel:", err);
+      res.status(500).json({ error: "Error al registrar la publicación en la base de datos", details: err.message });
     }
   });
 
@@ -716,14 +702,10 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       }
 
       // Automatically generate unified companion Reel for Android & Web
-      const newReel = createCompanionReelForProduct(newProduct, seller);
+      const companionReel = createCompanionReelForProduct(newProduct, seller);
+      const newReel = await saveCanonicalReelToMongo(companionReel);
 
-      if (mongoose.connection.readyState === 1) {
-        const mongoReel = new MongoReel(newReel);
-        await mongoReel.save();
-      }
-
-      setReels([newReel, ...getReels()]);
+      setReels([newReel, ...getReels().filter((r) => r.id !== newReel.id)]);
 
       broadcastToAll({
         type: "product_created",
