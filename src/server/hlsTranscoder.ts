@@ -72,10 +72,8 @@ export async function transcodeVideoToLocalHlsDirect(
 
   const playlistPath = path.join(localHlsDir, "index.m3u8");
   const segmentPattern = path.join(localHlsDir, "segment_%03d.ts");
-
   const ffmpegBin = getFfmpegBinary();
 
-  // Attempt 1: Fast direct universal HLS segmentation with safe scaling and frame rate
   try {
     const cmd = [
       `"${ffmpegBin}" -y -i`,
@@ -84,10 +82,11 @@ export async function transcodeVideoToLocalHlsDirect(
       "-c:v libx264 -preset ultrafast -pix_fmt yuv420p -crf 26",
       `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1"`,
       "-r 30 -g 60 -keyint_min 60 -sc_threshold 0",
+      "-force_key_frames " + "\"expr:gte(t,n_forced*2)\"",
       "-avoid_negative_ts make_zero -fflags +genpts",
       "-c:a aac -b:a 128k -ar 44100 -ac 2",
       "-nostats -loglevel warning",
-      "-f hls -hls_time 3 -hls_playlist_type vod -hls_list_size 0",
+      "-f hls -hls_time 2 -hls_playlist_type vod -hls_list_size 0 -hls_flags independent_segments",
       `-hls_segment_filename "${segmentPattern}"`,
       `"${playlistPath}"`
     ].join(" ");
@@ -103,7 +102,6 @@ export async function transcodeVideoToLocalHlsDirect(
     console.warn(`⚠️ [HLS Direct] Primary segmentation failed (${err1.message}). Trying normalized 2-pass fallback...`);
   }
 
-  // Attempt 2: Normalize to clean standard MP4 first, then segment to HLS
   const normalizedMp4 = path.join(tmpDir, "normalized.mp4");
   try {
     const normalizeCmd = [
@@ -123,7 +121,7 @@ export async function transcodeVideoToLocalHlsDirect(
       `"${ffmpegBin}" -y -i`,
       `"${normalizedMp4}"`,
       "-c copy",
-      "-f hls -hls_time 3 -hls_playlist_type vod -hls_list_size 0",
+      "-f hls -hls_time 2 -hls_playlist_type vod -hls_list_size 0 -hls_flags independent_segments",
       `-hls_segment_filename "${segmentPattern}"`,
       `"${playlistPath}"`
     ].join(" ");
@@ -139,7 +137,6 @@ export async function transcodeVideoToLocalHlsDirect(
     console.warn(`⚠️ [HLS Direct] Secondary normalization failed (${err2.message}). Creating single-segment stream fail-safe...`);
   }
 
-  // Attempt 3 (Fail-safe): Write single-segment stream file with RFC-compliant m3u8 playlist
   try {
     const singleTsPath = path.join(localHlsDir, "segment_000.ts");
     const transcodeSingleCmd = [
@@ -150,10 +147,15 @@ export async function transcodeVideoToLocalHlsDirect(
       `"${singleTsPath}"`
     ].join(" ");
 
-    await execAsync(transcodeSingleCmd, { timeout: 60000, maxBuffer: 50 * 1024 * 1024 }).catch(() => {});
+    await execAsync(transcodeSingleCmd, { timeout: 60000, maxBuffer: 50 * 1024 * 1024 });
 
     if (!fs.existsSync(singleTsPath)) {
-      await fs.promises.writeFile(singleTsPath, videoBuffer);
+      throw new Error("FFmpeg no pudo generar el segmento MPEG-TS");
+    }
+
+    const stat = await fs.promises.stat(singleTsPath);
+    if (stat.size <= 0) {
+      throw new Error("FFmpeg generó un segmento MPEG-TS vacío");
     }
 
     const simpleM3u8 = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:60.0,\nsegment_000.ts\n#EXT-X-ENDLIST\n`;
@@ -164,10 +166,7 @@ export async function transcodeVideoToLocalHlsDirect(
     return `/uploads/hls/${videoId}/index.m3u8`;
   } catch (finalErr: any) {
     console.error(`🚨 [HLS Direct] Final fail-safe error:`, finalErr);
-    const simpleM3u8 = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:60.0,\nsegment_000.ts\n#EXT-X-ENDLIST\n`;
-    await fs.promises.writeFile(path.join(localHlsDir, "segment_000.ts"), videoBuffer).catch(() => {});
-    await fs.promises.writeFile(playlistPath, simpleM3u8).catch(() => {});
-    return `/uploads/hls/${videoId}/index.m3u8`;
+    throw finalErr instanceof Error ? finalErr : new Error(String(finalErr));
   } finally {
     await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -354,7 +353,7 @@ export async function transcodeVideoToHLS(
 
     console.log(`🎬 [HLS Pre-Transcoder] Starting HLS segmentation for video ${videoId}...`);
 
-    const segmentDuration = 3;
+    const segmentDuration = 2;
     const playlistPath = path.join(outputDir, "index.m3u8");
     const segmentPattern = path.join(outputDir, "segment_%03d.ts");
 
@@ -366,10 +365,11 @@ export async function transcodeVideoToHLS(
       "-c:v libx264 -preset ultrafast -pix_fmt yuv420p -crf 26",
       `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1"`,
       "-r 30 -g 60 -keyint_min 60 -sc_threshold 0",
+      "-force_key_frames " + "\"expr:gte(t,n_forced*2)\"",
       "-avoid_negative_ts make_zero -fflags +genpts",
       "-c:a aac -b:a 128k -ar 44100 -ac 2",
       "-nostats -loglevel warning",
-      `-f hls -hls_time ${segmentDuration} -hls_playlist_type vod -hls_list_size 0`,
+      `-f hls -hls_time ${segmentDuration} -hls_playlist_type vod -hls_list_size 0 -hls_flags independent_segments`,
       `-hls_segment_filename "${segmentPattern}"`,
       `"${playlistPath}"`
     ].join(" ");
@@ -390,7 +390,6 @@ export async function transcodeVideoToHLS(
     let masterM3u8Url = "";
     let usedGcs = false;
 
-    // Check if GCS is actually working before trying 30 parallel network requests
     const gcsReady = await isGcsAvailable();
 
     if (gcsReady && files.length > 0) {
@@ -517,7 +516,6 @@ export async function deleteHlsStreamBatch(
       return { success: false, deletedCount: 0, prefix: "" };
     }
 
-    // Check and clean local uploads directory if present
     const localDir = path.join(process.cwd(), "uploads", prefix);
     if (fs.existsSync(localDir)) {
       await fs.promises.rm(localDir, { recursive: true, force: true }).catch(() => {});
