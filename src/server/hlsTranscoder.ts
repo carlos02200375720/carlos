@@ -354,33 +354,78 @@ export async function transcodeVideoToHLS(
     console.log(`🎬 [HLS Pre-Transcoder] Starting HLS segmentation for video ${videoId}...`);
 
     const segmentDuration = 2;
-    const playlistPath = path.join(outputDir, "index.m3u8");
-    const segmentPattern = path.join(outputDir, "segment_%03d.ts");
-
     const ffmpegBin = getFfmpegBinary();
-    const ffmpegCmd = [
+
+    // Generate multi-bitrate variant 1: 720p
+    const playlist720 = path.join(outputDir, "720p.m3u8");
+    const segmentPattern720 = path.join(outputDir, "720p_%03d.ts");
+    const cmd720 = [
       `"${ffmpegBin}" -y -i`,
       `"${inputFilePath}"`,
       "-map 0:v:0? -map 0:a:0? -sn -dn",
-      "-c:v libx264 -preset ultrafast -pix_fmt yuv420p -crf 26",
-      `-vf "scale=w='min(1080,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1"`,
+      "-c:v libx264 -preset ultrafast -pix_fmt yuv420p -b:v 1800k -maxrate 2200k -bufsize 3600k",
+      `-vf "scale=w='min(720,iw)':h='min(1280,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1"`,
       "-r 30 -g 60 -keyint_min 60 -sc_threshold 0",
       "-force_key_frames " + "\"expr:gte(t,n_forced*2)\"",
       "-avoid_negative_ts make_zero -fflags +genpts",
       "-c:a aac -b:a 128k -ar 44100 -ac 2",
       "-nostats -loglevel warning",
       `-f hls -hls_time ${segmentDuration} -hls_playlist_type vod -hls_list_size 0 -hls_flags independent_segments`,
-      `-hls_segment_filename "${segmentPattern}"`,
-      `"${playlistPath}"`
+      `-hls_segment_filename "${segmentPattern720}"`,
+      `"${playlist720}"`
     ].join(" ");
 
-    if (onProgress) onProgress(40);
+    // Generate multi-bitrate variant 2: 480p
+    const playlist480 = path.join(outputDir, "480p.m3u8");
+    const segmentPattern480 = path.join(outputDir, "480p_%03d.ts");
+    const cmd480 = [
+      `"${ffmpegBin}" -y -i`,
+      `"${inputFilePath}"`,
+      "-map 0:v:0? -map 0:a:0? -sn -dn",
+      "-c:v libx264 -preset ultrafast -pix_fmt yuv420p -b:v 800k -maxrate 1000k -bufsize 1600k",
+      `-vf "scale=w='min(480,iw)':h='min(854,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1"`,
+      "-r 30 -g 60 -keyint_min 60 -sc_threshold 0",
+      "-force_key_frames " + "\"expr:gte(t,n_forced*2)\"",
+      "-avoid_negative_ts make_zero -fflags +genpts",
+      "-c:a aac -b:a 96k -ar 44100 -ac 2",
+      "-nostats -loglevel warning",
+      `-f hls -hls_time ${segmentDuration} -hls_playlist_type vod -hls_list_size 0 -hls_flags independent_segments`,
+      `-hls_segment_filename "${segmentPattern480}"`,
+      `"${playlist480}"`
+    ].join(" ");
 
-    await execAsync(ffmpegCmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
-    console.log(`✅ [HLS Pre-Transcoder] Local HLS segmentation finished for ${videoId}`);
+    if (onProgress) onProgress(35);
 
-    const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
+    try {
+      await execAsync(cmd720, { timeout: 180000, maxBuffer: 50 * 1024 * 1024 });
+      if (onProgress) onProgress(55);
+      await execAsync(cmd480, { timeout: 180000, maxBuffer: 50 * 1024 * 1024 });
+    } catch (variantErr: any) {
+      console.warn(`⚠️ [HLS Transcoder] Dual-variant error (${variantErr.message}). Ensuring at least 720p exists...`);
+      if (!fs.existsSync(playlist720)) {
+        throw variantErr;
+      }
+    }
+
+    console.log(`✅ [HLS Pre-Transcoder] Local multi-bitrate HLS segmentation finished for ${videoId}`);
+
+    const has480 = fs.existsSync(playlist480);
+    const masterLines = [
+      "#EXTM3U",
+      "#EXT-X-VERSION:4",
+      '#EXT-X-STREAM-INF:BANDWIDTH=1800000,RESOLUTION=720x1280,NAME="720p"',
+      "720p.m3u8",
+    ];
+    if (has480) {
+      masterLines.push(
+        '#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=480x854,NAME="480p"',
+        "480p.m3u8"
+      );
+    }
+    const masterContent = masterLines.join("\n") + "\n";
     await fs.promises.writeFile(path.join(outputDir, "master.m3u8"), masterContent);
+    // Write index.m3u8 as backward-compatible alias to master
+    await fs.promises.writeFile(path.join(outputDir, "index.m3u8"), masterContent);
 
     if (onProgress) onProgress(75);
 
@@ -394,7 +439,7 @@ export async function transcodeVideoToHLS(
 
     if (gcsReady && files.length > 0) {
       try {
-        console.log(`📦 [HLS Pre-Transcoder] Attempting upload of ${files.length} HLS files to GCS bucket "${bucketName}"...`);
+        console.log(`📦 [HLS Pre-Transcoder] Uploading ${files.length} multi-bitrate HLS files to GCS bucket "${bucketName}"...`);
         let uploadedCount = 0;
 
         const uploadPromises = files.map(async (fileName) => {
@@ -440,8 +485,8 @@ export async function transcodeVideoToHLS(
 
         await Promise.all(uploadPromises);
         usedGcs = true;
-        masterM3u8Url = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/index.m3u8`;
-        console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed direct static HLS stream to GCS: ${masterM3u8Url}`);
+        masterM3u8Url = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/master.m3u8`;
+        console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed adaptive HLS stream to GCS: ${masterM3u8Url}`);
       } catch (gcsErr: any) {
         console.warn(`⚠️ [HLS Pre-Transcoder] GCS upload unavailable (${gcsErr.message}). Switching to local persistent storage fallback...`);
         usedGcs = false;
@@ -459,8 +504,8 @@ export async function transcodeVideoToHLS(
         );
       }
 
-      masterM3u8Url = `/uploads/hls/${videoId}/index.m3u8`;
-      console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed local persistent HLS stream: ${masterM3u8Url}`);
+      masterM3u8Url = `/uploads/hls/${videoId}/master.m3u8`;
+      console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed local adaptive HLS stream: ${masterM3u8Url}`);
     }
 
     const segmentCount = files.filter((f) => f.endsWith(".ts")).length;

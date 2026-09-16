@@ -193,7 +193,11 @@ export const apiFetch = async (
     }
 
     // Fallback: if primary URL failed, attempt alternative backend URL or dedicated Android route
-    if (!signal.aborted) {
+    // ONLY for idempotent, safe methods (GET, HEAD). NEVER retry POST, PUT, DELETE or mutations!
+    const reqMethod = (init?.method || "GET").toUpperCase();
+    const isIdempotentSafe = reqMethod === "GET" || reqMethod === "HEAD";
+
+    if (!signal.aborted && isIdempotentSafe) {
       const backendBase = (BACKEND_URL || CLOUD_RUN_BACKEND_URL).replace(/\/$/, "");
       
       // If we are querying reels or products or users, attempt dedicated android endpoint

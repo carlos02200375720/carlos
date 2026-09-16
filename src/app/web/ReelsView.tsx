@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from "react";
-import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, VolumeX, Send, X, Play, Bookmark, Trash2, Check, ArrowLeft, Plus, Minus } from "lucide-react";
-import { Reel, Product, Comment, User, CartItem } from "../../types";
+import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, VolumeX, Send, X, Play, Bookmark, Trash2, Check, ArrowLeft, Plus, Minus, ChevronLeft, ChevronRight } from "lucide-react";
+import { Reel, ReelMedia, Product, Comment, User, CartItem } from "../../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../../config";
 import { ReelProgressBar } from "./components/ReelProgressBar";
@@ -271,7 +271,17 @@ export default function ReelsView({
           {totalCartCount > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-mono text-[10px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center border border-slate-950 shadow-md animate-pulse">{totalCartCount}</span>}
         </button>
         <div className="flex items-center space-x-2 pointer-events-auto">
-          {currentReel && !currentReel.videoUrl && currentReel.type !== "video" && ((currentReel.type === "carousel" && (currentReel.images?.length || 0) > 1) || (currentReel.images && currentReel.images.length > 1)) && <div className="inline-flex items-center space-x-1 px-1.5 py-1 bg-transparent text-xs font-extrabold text-white drop-shadow-md" id={`carousel-counter-${currentReel.id}`}><span className="text-amber-400 font-mono font-black">{(carouselIndices[`${currentReel.id}_${activeReelIndex}`] ?? carouselIndices[currentReel.id] ?? 0) + 1}</span><span className="text-white/70 font-mono">/</span><span className="text-white font-mono font-bold">{currentReel.images?.length || 1}</span></div>}
+          {currentReel && ((currentReel.media?.length || currentReel.images?.length || 0) > 1) && (
+            <div className="inline-flex items-center space-x-1 px-1.5 py-1 bg-transparent text-xs font-extrabold text-white drop-shadow-md" id={`carousel-counter-${currentReel.id}`}>
+              <span className="text-amber-400 font-mono font-black">
+                {(carouselIndices[`${currentReel.id}_${activeReelIndex}`] ?? 0) + 1}
+              </span>
+              <span className="text-white/70 font-mono">/</span>
+              <span className="text-white font-mono font-bold">
+                {currentReel.media?.length || currentReel.images?.length || 1}
+              </span>
+            </div>
+          )}
           <button onClick={handleToggleMute} className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto" id="reels-header-mute-btn" title={isMuted ? "Activar sonido" : "Silenciar video"}>{isMuted ? <VolumeX className="w-5 h-5 drop-shadow-md" /> : <Volume2 className="w-5 h-5 drop-shadow-md" />}</button>
         </div>
       </header>
@@ -283,6 +293,19 @@ export default function ReelsView({
           const isCurrent = index === activeReelIndex;
           const reelProduct = reel.productId ? taggedProductsMap[reel.productId] : null;
           const isLiked = Boolean(currentUser && ((currentUser.originalId && (reel.likedBy || []).includes(currentUser.originalId)) || (currentUser.id && currentUser.id !== "current_user" && (reel.likedBy || []).includes(currentUser.id)) || (currentUser.username && currentUser.username !== "invitado" && (reel.likedBy || []).includes(currentUser.username))));
+
+          const reelMediaItems: ReelMedia[] = (reel.media && reel.media.length > 0)
+            ? reel.media
+            : (reel.videoUrl && reel.videoUrl.trim() !== "")
+            ? [{ type: "video", url: reel.videoUrl, hlsUrl: reel.hlsUrl }]
+            : (reel.images && reel.images.length > 0)
+            ? reel.images.map((img, i) => ({ type: "image", url: img, order: i }))
+            : [{ type: "image", url: reel.thumbnailUrl || "" }];
+
+          const currentMediaIdx = carouselIndices[`${reel.id}_${index}`] ?? 0;
+          const currentMedia = reelMediaItems[currentMediaIdx] || reelMediaItems[0];
+          const isMediaVideo = currentMedia?.type === "video" && !!currentMedia.url;
+
           return (
             <div key={`${reel.id}_${index}`} className="w-full shrink-0 snap-start snap-always relative flex items-center justify-center bg-slate-950 overflow-hidden py-0 md:py-1 lg:py-1.5 px-0 md:px-3 lg:px-4" style={{ height: containerHeight > 0 ? `${containerHeight}px` : "100%", minHeight: containerHeight > 0 ? `${containerHeight}px` : "100%", maxHeight: containerHeight > 0 ? `${containerHeight}px` : "100%", scrollSnapAlign: "start", scrollSnapStop: "always" }}>
               <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
@@ -290,28 +313,132 @@ export default function ReelsView({
                   <div className="relative w-full h-full md:w-auto md:aspect-[9/16] md:h-full md:max-w-[520px] lg:max-w-[580px] xl:max-w-[640px] 2xl:max-w-[700px] md:rounded-2xl md:border md:border-white/15 md:shadow-[0_16px_50px_rgba(0,0,0,0.9)] overflow-hidden flex items-center justify-center bg-black select-none shrink-0" id={`reel-card-${reel.id}`}>
                     <div className="hidden md:flex absolute top-3.5 right-3.5 z-30 items-center space-x-2"><button type="button" onClick={handleToggleMute} className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md hover:bg-black/70 active:scale-95 text-white flex items-center justify-center transition-all border border-white/20 cursor-pointer shadow-lg" title={isMuted ? "Activar sonido" : "Silenciar video"} id={`desktop-frame-mute-btn-${reel.id}`}>{isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}</button></div>
                     <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none z-10" />
-                    {(!reel.hlsUrl && (!reel.videoUrl || reel.videoUrl.trim() === "")) ? (
-                      ((reel.images && reel.images.length > 1) || reel.type === "carousel") ? (
-                        <div className="w-full h-full flex items-center justify-center bg-black"><ReelCarousel images={(reel.images && reel.images.length > 0 ? reel.images : [reel.thumbnailUrl]).filter((img): img is string => !!img && !img.includes("1618005182384"))} onDoubleClick={() => handleDoubleTap(reel.id)} onIndexChange={(idx) => setCarouselIndices((prev) => ({ ...prev, [`${reel.id}_${index}`]: idx }))} /></div>
-                      ) : (() => {
-                        const singleImg = (reel.images?.[0] && !reel.images[0].includes("1618005182384")) ? reel.images[0] : (reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") ? reel.thumbnailUrl : null);
-                        return <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black">{singleImg ? <img src={singleImg} alt={reel.description || ""} draggable={false} onClick={() => setIsPlaying(!isPlaying)} onDoubleClick={() => handleDoubleTap(reel.id)} onLoad={(e) => { const img = e.currentTarget; const ratio = img.naturalWidth / img.naturalHeight; let detected: 'vertical' | 'square' | 'horizontal' = 'vertical'; if (ratio > 1.15) detected = 'horizontal'; else if (ratio >= 0.85 && ratio <= 1.15) detected = 'square'; setMediaAspectRatios((prev) => ({ ...prev, [reel.id]: detected })); }} className={`w-full h-full cursor-pointer select-none block touch-auto object-center ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`} style={{ touchAction: "pan-y" }} referrerPolicy="no-referrer" /> : <div className="w-full h-full flex items-center justify-center bg-black text-slate-600 text-xs"><span>Publicación de imagen</span></div>}</div>;
-                      })()
-                    ) : (
+
+                    {/* Media sequence indicators for multi-media publications */}
+                    {reelMediaItems.length > 1 && (
+                      <div className="absolute top-2.5 inset-x-3.5 z-30 flex items-center space-x-1 pointer-events-none">
+                        {reelMediaItems.map((_, mIdx) => (
+                          <div
+                            key={mIdx}
+                            className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                              mIdx === currentMediaIdx ? "bg-amber-400 shadow-sm" : "bg-white/30"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Left/Right navigation for multi-media publication sequence */}
+                    {reelMediaItems.length > 1 && (
+                      <>
+                        {currentMediaIdx > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCarouselIndices((prev) => ({ ...prev, [`${reel.id}_${index}`]: currentMediaIdx - 1 }));
+                            }}
+                            className="absolute left-2.5 top-1/2 -translate-y-1/2 z-30 w-8 h-8 rounded-full bg-black/50 backdrop-blur-xs text-white flex items-center justify-center hover:bg-black/75 active:scale-90 transition-all cursor-pointer border border-white/20 shadow-lg"
+                            title="Elemento anterior"
+                          >
+                            <ChevronLeft className="w-5 h-5" />
+                          </button>
+                        )}
+                        {currentMediaIdx < reelMediaItems.length - 1 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCarouselIndices((prev) => ({ ...prev, [`${reel.id}_${index}`]: currentMediaIdx + 1 }));
+                            }}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 z-30 w-8 h-8 rounded-full bg-black/50 backdrop-blur-xs text-white flex items-center justify-center hover:bg-black/75 active:scale-90 transition-all cursor-pointer border border-white/20 shadow-lg"
+                            title="Elemento siguiente"
+                          >
+                            <ChevronRight className="w-5 h-5" />
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    {/* Media element: Video or Image */}
+                    {isMediaVideo ? (
                       <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
-                        {isCurrent ? <ReelVideoItem key={`${reel.id}_${index}`} reel={reel} index={index} isCurrent={true} isPlaying={isPlaying} isMuted={isMuted} mediaAspectRatio={mediaAspectRatios[reel.id]} onVideoClick={handleVideoClick} onDoubleTap={handleDoubleTap} onAspectRatioDetected={handleAspectRatioDetected} onRegisterRef={handleRegisterRef} /> : <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">{reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") && !reel.thumbnailUrl.includes("1618005182384") ? <img src={reel.thumbnailUrl} alt={reel.description || ""} draggable={false} className={`w-full h-full block relative z-10 select-none object-center ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`} referrerPolicy="no-referrer" loading="lazy" /> : <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-500"><Play className="w-12 h-12 text-white/20 mb-2 fill-white/10" /><span className="text-xs text-white/30 font-medium">Video</span></div>}</div>}
+                        {isCurrent ? (
+                          <ReelVideoItem
+                            key={`${reel.id}_${index}_media_${currentMediaIdx}`}
+                            reel={{
+                              ...reel,
+                              videoUrl: currentMedia.url,
+                              hlsUrl: currentMedia.hlsUrl || (currentMedia.url.includes(".m3u8") ? currentMedia.url : reel.hlsUrl),
+                            }}
+                            index={index}
+                            isCurrent={true}
+                            isPlaying={isPlaying}
+                            isMuted={isMuted}
+                            mediaAspectRatio={mediaAspectRatios[reel.id]}
+                            onVideoClick={handleVideoClick}
+                            onDoubleTap={handleDoubleTap}
+                            onAspectRatioDetected={handleAspectRatioDetected}
+                            onRegisterRef={handleRegisterRef}
+                          />
+                        ) : (
+                          <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
+                            {reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") && !reel.thumbnailUrl.includes("1618005182384") ? (
+                              <img
+                                src={reel.thumbnailUrl}
+                                alt={reel.description || ""}
+                                draggable={false}
+                                className={`w-full h-full block relative z-10 select-none object-center ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`}
+                                referrerPolicy="no-referrer"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-500">
+                                <Play className="w-12 h-12 text-white/20 mb-2 fill-white/10" />
+                                <span className="text-xs text-white/30 font-medium">Video</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black">
+                        {currentMedia?.url ? (
+                          <img
+                            src={currentMedia.url}
+                            alt={reel.description || ""}
+                            draggable={false}
+                            onClick={() => setIsPlaying(!isPlaying)}
+                            onDoubleClick={() => handleDoubleTap(reel.id)}
+                            onLoad={(e) => {
+                              const img = e.currentTarget;
+                              const ratio = img.naturalWidth / img.naturalHeight;
+                              let detected: 'vertical' | 'square' | 'horizontal' = 'vertical';
+                              if (ratio > 1.15) detected = 'horizontal';
+                              else if (ratio >= 0.85 && ratio <= 1.15) detected = 'square';
+                              setMediaAspectRatios((prev) => ({ ...prev, [reel.id]: detected }));
+                            }}
+                            className={`w-full h-full cursor-pointer select-none block touch-auto object-center ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`}
+                            style={{ touchAction: "pan-y" }}
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-black text-slate-600 text-xs">
+                            <span>Publicación</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
                     <AnimatePresence>{likedAnim === reel.id && <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: [1, 1.3, 1], opacity: [0, 1, 0] }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }} className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-30"><Heart className="w-24 h-24 text-rose-500 fill-rose-500 drop-shadow-lg" /></motion.div>}</AnimatePresence>
-                    {!isPlaying && isCurrent && <div className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-10 bg-black/20 rounded-full w-16 h-16 bg-opacity-40"><Play className="w-8 h-8 text-white fill-white translate-x-0.5" /></div>}
+                    {!isPlaying && isCurrent && isMediaVideo && <div className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-10 bg-black/20 rounded-full w-16 h-16 bg-opacity-40"><Play className="w-8 h-8 text-white fill-white translate-x-0.5" /></div>}
 
                     <div className="absolute left-4 sm:left-6 bottom-4 sm:bottom-6 right-20 sm:right-24 md:right-6 lg:right-8 z-20 flex flex-col space-y-3 max-w-xl">
                       <div className="text-white bg-transparent p-3 rounded-xl drop-shadow-md" style={{ marginLeft: "-15px", marginBottom: "-10px" }}><h3 className="font-display font-bold text-base sm:text-lg tracking-wide flex items-center space-x-2.5"><span className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm" onClick={() => { const target = (reel.creatorUsername && reel.creatorUsername !== "invitado") ? reel.creatorUsername : (reel.creatorId && reel.creatorId !== "current_user" ? reel.creatorId : (reel.creatorName || "current_user")); onCreatorClick(target); }}>@{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}</span>{(() => { const isSelf = currentUser.id === reel.creatorId || reel.creatorId === "current_user" || (currentUser.originalId && currentUser.originalId === reel.creatorId) || (currentUser.username && reel.creatorUsername && currentUser.username.toLowerCase() === reel.creatorUsername.toLowerCase()); if (isSelf) return null; const targetId = reel.creatorId || reel.creatorUsername; const isFollowing = Boolean(currentUser.followingUserIds?.some((id) => id === reel.creatorId || id === reel.creatorUsername || (reel.creatorUsername && id.toLowerCase() === reel.creatorUsername.toLowerCase()) || (reel.creatorId && id.toLowerCase() === reel.creatorId.toLowerCase()))); return <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (currentUser.username === "invitado" || currentUser.isGuest) onGuestInteraction("seguir a creadores"); else if (onToggleFollowUser) onToggleFollowUser(targetId); }} id={`follow-creator-btn-${reel.id}`} className={`text-xs font-bold px-3 py-1 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-sm ${isFollowing ? "text-white/80 border-white/60 hover:text-rose-300 hover:border-rose-400 hover:bg-rose-500/10" : "text-white border-white hover:bg-white/15 active:scale-95 font-extrabold"}`}>{isFollowing ? "Siguiendo" : "+ Seguir"}</button>; })()}</h3><p className="text-sm sm:text-base text-white/95 font-medium mt-1.5 line-clamp-3 leading-relaxed drop-shadow-sm">{reel.description || ""}</p></div>
                       {reelProduct && <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} onClick={() => onProductClick(reelProduct)} className="bg-black/10 backdrop-blur-md border border-white/15 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/20 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg overflow-hidden" id={`tagged-product-${reel.id}`} style={{ marginLeft: "-4px", width: "285.606px", height: "68.3438px" }}><div className="w-20 shrink-0 h-full relative overflow-hidden bg-black/10 border-r border-white/10">{reelProduct.imageUrl ? <img src={reelProduct.imageUrl} alt={reelProduct.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-800 text-amber-400"><ShoppingBag className="w-5 h-5" /></div>}</div><div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-black/10"><span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center"><ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado</span><h4 className="text-xs font-bold truncate text-slate-100">{reelProduct.name}</h4><div className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-400 font-mono">${reelProduct.price.toFixed(2)}</span><span className="text-[9px] text-amber-400 font-semibold">Ver detalles →</span></div></div></motion.div>}
                     </div>
 
-                    {isCurrent && reel.type !== "image" && reel.type !== "carousel" && <ReelProgressBar video={activeVideoElement || videoRefs.current[index]} isActive={isCurrent} />}
+                    {isCurrent && isMediaVideo && <ReelProgressBar video={activeVideoElement || videoRefs.current[index]} isActive={isCurrent} />}
 
                     <div className="md:hidden absolute right-2.5 sm:right-3.5 bottom-6 sm:bottom-8 z-20 flex flex-col items-center space-y-3.5 select-none p-0 ml-0" id={`mobile-interaction-bar-${reel.id}`}>
                       <div className="flex flex-col items-center"><button onClick={() => { const target = (reel.creatorUsername && reel.creatorUsername !== "invitado") ? reel.creatorUsername : (reel.creatorId && reel.creatorId !== "current_user" ? reel.creatorId : (reel.creatorName || "current_user")); onCreatorClick(target); }} className="relative rounded-full transform hover:scale-110 transition-transform cursor-pointer drop-shadow-sm" id={`mobile-creator-avatar-btn-${reel.id}`}><img src={reel.creatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"} alt={reel.creatorName} referrerPolicy="no-referrer" className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover" /></button></div>

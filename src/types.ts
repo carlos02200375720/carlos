@@ -26,8 +26,21 @@ export interface Comment {
   createdAt: string;
 }
 
+export type ReelMedia =
+  | {
+      type: "video";
+      url: string;
+      hlsUrl?: string;
+      thumbnailUrl?: string;
+    }
+  | {
+      type: "image";
+      url: string;
+    };
+
 export interface Reel {
   id: string;
+  title?: string;
   videoUrl: string;
   hlsUrl?: string; // Adaptive HLS Master Playlist (.m3u8) URL for smooth streaming
   thumbnailUrl: string;
@@ -44,8 +57,9 @@ export interface Reel {
   saves?: number;
   views: number;
   productId?: string; // Tagged product
-  type?: 'video' | 'image' | 'carousel';
+  type?: 'video' | 'image' | 'carousel' | 'product';
   images?: string[]; // For carrousels or single images
+  media?: ReelMedia[]; // Ordered sequence of media items (video and/or images)
   aspectRatio?: 'vertical' | 'horizontal' | 'square';
 }
 

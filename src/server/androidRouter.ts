@@ -5,6 +5,7 @@ import path from "path";
 import { Bucket } from "@google-cloud/storage";
 import { User, Reel, Product, Order } from "../types";
 import { transcodeVideoToLocalHlsDirect } from "./hlsTranscoder";
+import { formatReelDTO, createCompanionReelForProduct } from "./utils/reelUtils";
 
 export interface AndroidRouterDependencies {
   MongoUser: any;
@@ -16,6 +17,7 @@ export interface AndroidRouterDependencies {
   getReels: () => Reel[];
   setReels: (reels: Reel[]) => void;
   getProducts: () => Product[];
+  setProducts?: (products: Product[]) => void;
   getOrders: () => Order[];
   setOrders: (orders: Order[]) => void;
   uploadToGCS: (file: Express.Multer.File, folder?: string) => Promise<string>;
@@ -54,6 +56,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
     getReels,
     setReels,
     getProducts,
+    setProducts,
     getOrders,
     setOrders,
     uploadToGCS,
@@ -317,19 +320,42 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
   });
 
   // Android Auth: Register
+  const pendingAndroidRegistrations = new Set<string>();
+
   router.post("/auth/register", async (req: Request, res: Response) => {
+    const { username, name, email, password, avatar } = req.body;
+    if (!username || !name) {
+      res.status(400).json({ error: "Nombre de usuario y nombre son obligatorios" });
+      return;
+    }
+
+    const cleanUsername = String(username).trim().toLowerCase().replace("@", "");
+    const cleanEmail = String(email || "").trim().toLowerCase();
+
+    const lockKey = `${cleanUsername}:${cleanEmail}`;
+    if (pendingAndroidRegistrations.has(lockKey) || (cleanEmail && pendingAndroidRegistrations.has(cleanEmail)) || pendingAndroidRegistrations.has(cleanUsername)) {
+      res.status(409).json({ error: "Ya hay un registro en proceso con estos datos. Por favor espera un momento." });
+      return;
+    }
+    pendingAndroidRegistrations.add(lockKey);
+    if (cleanEmail) pendingAndroidRegistrations.add(cleanEmail);
+    pendingAndroidRegistrations.add(cleanUsername);
+
     try {
-      const { username, name, email, password, avatar } = req.body;
-      if (!username || !name) {
-        res.status(400).json({ error: "Nombre de usuario y nombre son obligatorios" });
-        return;
-      }
-
-      const cleanUsername = String(username).trim().toLowerCase().replace("@", "");
-
       if (mongoose.connection.readyState === 1) {
+        await MongoUser.deleteMany({
+          $or: [
+            { id: "current_user" },
+            { id: "usuario_actual" },
+            { id: "user_guest" }
+          ]
+        });
+
         const existing = await MongoUser.findOne({
-          $or: [{ username: cleanUsername }, { email: email?.toLowerCase() }],
+          $or: [
+            { username: cleanUsername },
+            ...(cleanEmail ? [{ email: cleanEmail }] : [])
+          ],
         });
         if (existing) {
           res.status(409).json({ error: "El nombre de usuario o correo ya está registrado" });
@@ -352,7 +378,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         savedReelIds: [],
         isGuest: false,
         isOnline: true,
-        email: email || "",
+        email: cleanEmail || "",
       };
 
       if (mongoose.connection.readyState === 1) {
@@ -366,8 +392,16 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       console.log(`📱 [Android Gateway] Nuevo usuario registrado en Atlas: @${newUser.username}`);
       res.json({ success: true, user: newUser, token: `android_token_${generateId()}` });
     } catch (err: any) {
+      if (err.code === 11000) {
+        res.status(409).json({ error: "El nombre de usuario o correo ya está registrado en la base de datos." });
+        return;
+      }
       console.error("❌ [Android Gateway] Error en registro:", err);
       res.status(500).json({ error: "Error al registrar usuario en Android", details: err.message });
+    } finally {
+      pendingAndroidRegistrations.delete(lockKey);
+      if (cleanEmail) pendingAndroidRegistrations.delete(cleanEmail);
+      pendingAndroidRegistrations.delete(cleanUsername);
     }
   });
 
@@ -516,7 +550,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
   // Android Feed / Reels endpoint: Returns real reels from MongoDB Atlas directly
   router.get("/reels", async (req: Request, res: Response) => {
     try {
-      let currentReels = getReels();
+      let currentReels = getReels().map(r => formatReelDTO(r));
       if (mongoose.connection.readyState === 1) {
         const dbUsers = await MongoUser.find();
         const userMap = new Map<string, any>();
@@ -528,34 +562,11 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
 
         const dbReels = await MongoReel.find().sort({ _id: -1 }).limit(100);
         if (dbReels.length > 0) {
-          currentReels = dbReels.map((r: any) => {
-            const creator =
-              userMap.get(r.creatorId) ||
-              (r.creatorUsername ? userMap.get(r.creatorUsername.toLowerCase()) : null);
-
-            return {
-              id: r.id,
-              videoUrl: r.videoUrl || "",
-              thumbnailUrl: r.thumbnailUrl || "",
-              description: r.description || "",
-              creatorId: creator ? creator.id : (r.creatorId || "creator"),
-              creatorName: creator ? creator.name : (r.creatorName || "Creador"),
-              creatorUsername: creator ? creator.username : (r.creatorUsername || "creador"),
-              creatorAvatar: creator ? creator.avatar : (r.creatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"),
-              likes: r.likes || 0,
-              likedBy: r.likedBy || [],
-              comments: r.comments || [],
-              saves: r.saves || 0,
-              views: r.views || 0,
-              hlsUrl: r.hlsUrl || undefined,
-              taggedProductId: r.taggedProductId || r.productId || undefined,
-              aspectRatio: r.aspectRatio || "vertical",
-            };
-          });
+          currentReels = dbReels.map((r: any) => formatReelDTO(r, userMap));
         }
       }
 
-      // Return clean array for direct client consumption
+      // Return clean array with unified Reel schema for direct client consumption
       res.json(currentReels);
     } catch (err: any) {
       console.error("❌ [Android Gateway] Error loading reels:", err);
@@ -563,12 +574,29 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
     }
   });
 
-  // Android Publish / Create Reel
+  // Android Publish / Create Reel (Video, Imagen, Carrusel o Producto)
   router.post("/reels", async (req: Request, res: Response) => {
     try {
-      const { videoUrl, thumbnailUrl, description, creatorId, creatorName, creatorUsername, creatorAvatar, taggedProductId, aspectRatio } = req.body;
-      if (!videoUrl) {
-        res.status(400).json({ error: "URL del video es obligatoria" });
+      const {
+        title,
+        videoUrl,
+        thumbnailUrl,
+        description,
+        creatorId,
+        creatorName,
+        creatorUsername,
+        creatorAvatar,
+        taggedProductId,
+        productId,
+        type,
+        images,
+        media,
+        hlsUrl,
+        aspectRatio,
+      } = req.body;
+
+      if (!videoUrl && (!images || images.length === 0) && (!media || media.length === 0)) {
+        res.status(400).json({ error: "Debe proporcionar video o imagen para la publicación" });
         return;
       }
 
@@ -589,24 +617,26 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         }
       }
 
-      const newReel: Reel = {
+      const effectiveProductId = productId || taggedProductId || undefined;
+      const effectiveType = type || (effectiveProductId ? "product" : (videoUrl ? "video" : (images && images.length > 1 ? "carousel" : "image")));
+
+      const newReel = formatReelDTO({
         id: "reel_" + generateId(),
-        videoUrl,
+        title: (title || "").trim(),
+        videoUrl: videoUrl || "",
         thumbnailUrl: thumbnailUrl || "",
         description: description || "",
         creatorId: resolvedCreatorId || "creator",
         creatorName: resolvedCreatorName || "Creador",
         creatorUsername: resolvedCreatorUsername || "creador",
         creatorAvatar: resolvedCreatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-        likes: 0,
-        likedBy: [],
-        comments: [],
-        shares: 0,
-        saves: 0,
-        views: 0,
-        productId: taggedProductId,
+        productId: effectiveProductId,
+        type: effectiveType,
+        images: images || [],
+        media: media || undefined,
+        hlsUrl: hlsUrl || undefined,
         aspectRatio: aspectRatio || "vertical",
-      };
+      });
 
       if (mongoose.connection.readyState === 1) {
         const mongoReel = new MongoReel(newReel);
@@ -633,6 +663,84 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
     } catch (err: any) {
       console.error("❌ [Android Gateway] Error al publicar reel:", err);
       res.status(500).json({ error: "Error al publicar reel", details: err.message });
+    }
+  });
+
+  // Android Publish / Create Product with auto Companion Reel
+  router.post("/products", async (req: Request, res: Response) => {
+    try {
+      const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, category } = req.body;
+      let resolvedSellerId = sellerId || req.headers["x-user-id"];
+      let seller: any = null;
+
+      if (mongoose.connection.readyState === 1 && resolvedSellerId) {
+        seller = await MongoUser.findOne({
+          $or: [{ id: resolvedSellerId }, { username: req.headers["x-user-username"] }],
+        });
+      }
+
+      if (!seller) {
+        seller = {
+          id: resolvedSellerId || "seller_" + generateId(),
+          name: (req.headers["x-user-name"] as string) || "Vendedor",
+          username: (req.headers["x-user-username"] as string) || "vendedor",
+          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+        };
+      }
+
+      const newProduct: Product = {
+        id: "prod_" + generateId(),
+        name: name || "Producto sin nombre",
+        description: description || "",
+        price: Number(price) || 0,
+        imageUrl: imageUrl || (images && images[0]) || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=300&q=80",
+        stock: Number(stock) || 0,
+        sellerId: seller.id,
+        rating: 5,
+        shippingCost: Number(shippingCost) || 0,
+        images: images || [],
+        videos: videos || [],
+        variants: [],
+        variantList: [],
+        category: category || "",
+        views: 0,
+      };
+
+      if (mongoose.connection.readyState === 1) {
+        const mongoProd = new MongoProduct(newProduct);
+        await mongoProd.save();
+      }
+
+      if (setProducts) {
+        setProducts([newProduct, ...getProducts()]);
+      }
+
+      // Automatically generate unified companion Reel for Android & Web
+      const newReel = createCompanionReelForProduct(newProduct, seller);
+
+      if (mongoose.connection.readyState === 1) {
+        const mongoReel = new MongoReel(newReel);
+        await mongoReel.save();
+      }
+
+      setReels([newReel, ...getReels()]);
+
+      broadcastToAll({
+        type: "product_created",
+        product: newProduct,
+        platform: "android",
+      });
+
+      broadcastToAll({
+        type: "reel_created",
+        reel: newReel,
+        platform: "android",
+      });
+
+      res.status(201).json({ success: true, product: newProduct, reel: newReel });
+    } catch (err: any) {
+      console.error("❌ [Android Gateway] Error al crear producto:", err);
+      res.status(500).json({ error: "Error al crear producto", details: err.message });
     }
   });
 

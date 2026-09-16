@@ -275,6 +275,7 @@ export default function ProfileView({
   const [regCoverPhoto, setRegCoverPhoto] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
+  const profileRegisteringRef = useRef(false);
   const [registerError, setRegisterError] = useState("");
   const [registerSuccess, setRegisterSuccess] = useState(false);
 
@@ -324,22 +325,25 @@ export default function ProfileView({
 
   const handleRegisterUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isRegistering) return;
+    if (isRegistering || profileRegisteringRef.current) return;
+    profileRegisteringRef.current = true;
     setIsRegistering(true);
     setRegisterError("");
     setRegisterSuccess(false);
 
     try {
+      const cleanUsername = String(regUsername).trim().toLowerCase().replace(/\s+/g, "").replace("@", "");
       const response = await apiFetch("/api/users/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: regName,
-          username: regUsername,
-          bio: regBio,
+          name: regName.trim(),
+          username: cleanUsername,
+          email: `${cleanUsername}@mallsocial.app`,
+          bio: regBio.trim() || "Creador en la plataforma",
           avatar: regAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
           coverPhoto: regCoverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-          password: regPassword,
+          password: regPassword.trim(),
         }),
       });
       const data = await response.json();
@@ -371,6 +375,7 @@ export default function ProfileView({
       setRegisterError("Error de conexión con el servidor.");
     } finally {
       setIsRegistering(false);
+      profileRegisteringRef.current = false;
     }
   };
 

@@ -20,6 +20,7 @@ import {
 import { bucket, bucketName } from "./src/server/config/storage";
 import { uploadToGCS, uploadBase64ToGCS, deleteFromGCS, saveToLocalStorage, deleteFullPublicationMedia } from "./src/server/services/mediaStorage";
 import { upload, uploadSingleSafe } from "./src/server/middleware/upload";
+import { formatReelDTO, createCompanionReelForProduct } from "./src/server/utils/reelUtils";
 
 // Configure dotenv to read environment variables first
 dotenv.config();
@@ -81,6 +82,9 @@ const activeClients = new Map<string, WebSocket>();
 // Store the original ID of the active current_user (defaults to guest user's ID)
 let activeOriginalUserId = "user_guest";
 
+// Concurrency mutex lock to strictly prevent duplicate simultaneous user registrations
+export const pendingRegistrations = new Set<string>();
+
 // Connect to MongoDB Atlas and load/seed users
 async function connectToMongoDB() {
   let mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
@@ -137,16 +141,56 @@ async function connectToMongoDB() {
     await mongoose.connect(mongoUri);
     console.log("✅ Successfully connected to MongoDB Atlas!");
 
-    // Delete any guest users ("user_guest", "current_user", "invitado") from the database to ensure zero trace of them
-    console.log("🧹 Purging any leftover guest/anonymous profiles from database...");
+    // Delete any guest/ghost users ("user_guest", "current_user", "usuario_actual", "usuario_invitado", "invitado") from the database to ensure zero trace of them
+    console.log("🧹 Purging any leftover guest/ghost/anonymous profiles from database...");
     await MongoUser.deleteMany({
       $or: [
         { id: "user_guest" },
         { id: "current_user" },
-        { username: "invitado" }
+        { id: "usuario_actual" },
+        { id: "usuario_invitado" },
+        { username: "invitado" },
+        { username: "current_user" },
+        { username: "usuario_actual" },
+        { isGuest: true }
       ]
     });
     console.log("🧹 Guest/anonymous profiles purged successfully!");
+
+    // Deduplicate any duplicate users by email or username in Atlas
+    const allUsersInDb = await MongoUser.find();
+    const seenEmails = new Set<string>();
+    const seenUsernames = new Set<string>();
+    for (const u of allUsersInDb) {
+      const email = (u.email || "").trim().toLowerCase();
+      const username = (u.username || "").trim().toLowerCase();
+      let isDuplicate = false;
+      if (email && email.includes("@")) {
+        if (seenEmails.has(email)) {
+          isDuplicate = true;
+        } else {
+          seenEmails.add(email);
+        }
+      }
+      if (username) {
+        if (seenUsernames.has(username)) {
+          isDuplicate = true;
+        } else {
+          seenUsernames.add(username);
+        }
+      }
+      if (isDuplicate) {
+        console.log(`🧹 Removing duplicate user from Atlas: id=${u.id}, username=@${u.username}, email=${u.email}`);
+        await MongoUser.deleteOne({ _id: u._id });
+      }
+    }
+
+    try {
+      await MongoUser.collection.createIndex({ username: 1 }, { unique: true });
+      await MongoUser.collection.createIndex({ email: 1 }, { unique: true, sparse: true });
+    } catch (idxErr) {
+      console.warn("Notice: MongoDB index setup message:", idxErr);
+    }
 
     console.log("📦 Loading existing users from MongoDB...");
     const dbUsers = await MongoUser.find();
@@ -213,31 +257,7 @@ async function connectToMongoDB() {
         seenReelIds.add(r.id);
         return true;
       });
-      reels = uniqueDbReels.map(r => {
-        const creatorUser =
-          userMap.get(r.creatorId) ||
-          (r.creatorUsername ? userMap.get(r.creatorUsername.toLowerCase()) : null);
-        return {
-          id: r.id,
-          videoUrl: r.videoUrl || "",
-          thumbnailUrl: (r.thumbnailUrl && !r.thumbnailUrl.includes("1618005182384")) ? r.thumbnailUrl : "",
-          description: r.description || "",
-          creatorId: creatorUser ? creatorUser.id : (r.creatorId || "creator"),
-          creatorName: creatorUser ? creatorUser.name : (r.creatorName || "Creador"),
-          creatorUsername: creatorUser ? creatorUser.username : (r.creatorUsername || undefined),
-          creatorAvatar: creatorUser ? creatorUser.avatar : (r.creatorAvatar || ""),
-          likes: r.likes || 0,
-          likedBy: r.likedBy || [],
-          comments: r.comments || [],
-          shares: r.shares || 0,
-          saves: r.saves || 0,
-          views: r.views || 0,
-          productId: r.productId || undefined,
-          type: r.type || "video",
-          images: (r.images || []).filter((img: string) => !img || !img.includes("1618005182384")),
-          aspectRatio: r.aspectRatio || "vertical"
-        };
-      });
+      reels = uniqueDbReels.map(r => formatReelDTO(r, userMap));
       console.log(`📦 Loaded ${reels.length} unique reels successfully from MongoDB Atlas!`);
     }
 
@@ -460,6 +480,7 @@ async function startServer() {
       getReels: () => reels,
       setReels: (newReels) => { reels = newReels; },
       getProducts: () => products,
+      setProducts: (newProducts) => { products = newProducts; },
       getOrders: () => orders,
       setOrders: (newOrders) => { orders = newOrders; },
       uploadToGCS,
@@ -1443,7 +1464,7 @@ async function startServer() {
   app.post("/api/users/register", async (req, res) => {
     const { name, username, bio, avatar, coverPhoto, password, email } = req.body;
     if (!name || !username) {
-      res.status(400).json({ error: "Name and username are required" });
+      res.status(400).json({ error: "Nombre completo y nombre de usuario son obligatorios." });
       return;
     }
     if (!email || !email.trim()) {
@@ -1451,87 +1472,120 @@ async function startServer() {
       return;
     }
 
-    const cleanUsername = username.replace(/\s+/g, "").toLowerCase();
-    const cleanEmail = email.trim().toLowerCase();
-    
-    // Check if username already exists in database (excluding the temporary current_user session)
-    let existingUser = null;
-    let existingEmail = null;
-    if (mongoose.connection.readyState === 1) {
-      existingUser = await MongoUser.findOne({ username: cleanUsername, id: { $ne: "current_user" } });
-      existingEmail = await MongoUser.findOne({ email: cleanEmail, id: { $ne: "current_user" } });
-    }
+    const cleanUsername = String(username).replace(/\s+/g, "").toLowerCase().replace("@", "");
+    const cleanEmail = String(email).trim().toLowerCase();
 
-    if (existingUser) {
-      res.status(400).json({ error: "⚠️ El nombre de usuario ya está registrado." });
+    // SERVER-LEVEL CONCURRENCY MUTEX: Strictly prevent duplicate simultaneous registrations
+    const lockKey = `${cleanUsername}:${cleanEmail}`;
+    if (pendingRegistrations.has(lockKey) || pendingRegistrations.has(cleanEmail) || pendingRegistrations.has(cleanUsername)) {
+      res.status(409).json({ error: "⚠️ Ya hay una solicitud de registro en proceso con este correo o usuario. Por favor espera." });
       return;
     }
+    pendingRegistrations.add(lockKey);
+    pendingRegistrations.add(cleanEmail);
+    pendingRegistrations.add(cleanUsername);
 
-    if (existingEmail) {
-      res.status(400).json({ error: "⚠️ Este correo electrónico ya está registrado con otra cuenta." });
-      return;
-    }
+    try {
+      if (mongoose.connection.readyState === 1) {
+        // Purge any ghost/anonymous documents that might match or contaminate state
+        await MongoUser.deleteMany({
+          $or: [
+            { id: "current_user" },
+            { id: "usuario_actual" },
+            { id: "user_guest" },
+            { id: "usuario_invitado" }
+          ]
+        });
 
-    let resolvedAvatar = avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
-    let resolvedCoverPhoto = coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80";
+        // Check if user with this email or username already exists in database
+        const existing = await MongoUser.findOne({
+          $or: [
+            { username: cleanUsername },
+            { email: cleanEmail }
+          ]
+        });
 
-    if (avatar && avatar.startsWith("data:")) {
-      try {
-        console.log("📸 Base64 avatar detected in registration, uploading to GCS...");
-        resolvedAvatar = await uploadBase64ToGCS(avatar, "avatars");
-        console.log(`✅ Base64 avatar uploaded to GCS: ${resolvedAvatar}`);
-      } catch (uploadErr) {
-        console.error("❌ Failed to upload base64 avatar during registration:", uploadErr);
+        if (existing) {
+          if (existing.email && existing.email.toLowerCase() === cleanEmail) {
+            res.status(409).json({ error: "⚠️ Este correo electrónico ya está registrado con otra cuenta." });
+            return;
+          }
+          res.status(409).json({ error: "⚠️ El nombre de usuario ya está registrado." });
+          return;
+        }
       }
-    }
 
-    if (coverPhoto && coverPhoto.startsWith("data:")) {
-      try {
-        console.log("📸 Base64 cover photo detected in registration, uploading to GCS...");
-        resolvedCoverPhoto = await uploadBase64ToGCS(coverPhoto, "covers");
-        console.log(`✅ Base64 cover photo uploaded to GCS: ${resolvedCoverPhoto}`);
-      } catch (uploadErr) {
-        console.error("❌ Failed to upload base64 cover photo during registration:", uploadErr);
+      let resolvedAvatar = avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
+      let resolvedCoverPhoto = coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80";
+
+      if (avatar && avatar.startsWith("data:")) {
+        try {
+          console.log("📸 Base64 avatar detected in registration, uploading to GCS...");
+          resolvedAvatar = await uploadBase64ToGCS(avatar, "avatars");
+          console.log(`✅ Base64 avatar uploaded to GCS: ${resolvedAvatar}`);
+        } catch (uploadErr) {
+          console.error("❌ Failed to upload base64 avatar during registration:", uploadErr);
+        }
       }
-    }
 
-    const newUser: User = {
-      id: "user_" + generateId(),
-      name,
-      username: cleanUsername,
-      email: email.trim(),
-      bio: bio || "Nuevo creador de contenido en la plataforma",
-      avatar: resolvedAvatar,
-      coverPhoto: resolvedCoverPhoto,
-      followers: 0,
-      following: 0,
-      isOnline: true,
-      password: password || ""
-    };
+      if (coverPhoto && coverPhoto.startsWith("data:")) {
+        try {
+          console.log("📸 Base64 cover photo detected in registration, uploading to GCS...");
+          resolvedCoverPhoto = await uploadBase64ToGCS(coverPhoto, "covers");
+          console.log(`✅ Base64 cover photo uploaded to GCS: ${resolvedCoverPhoto}`);
+        } catch (uploadErr) {
+          console.error("❌ Failed to upload base64 cover photo during registration:", uploadErr);
+        }
+      }
 
-    // Save to MongoDB if connected
-    if (mongoose.connection.readyState === 1) {
-      try {
+      const newUserId = "user_" + generateId();
+      const newUser: User = {
+        id: newUserId,
+        originalId: newUserId,
+        name: String(name).trim(),
+        username: cleanUsername,
+        email: cleanEmail,
+        bio: bio || "Nuevo creador de contenido en la plataforma",
+        avatar: resolvedAvatar,
+        coverPhoto: resolvedCoverPhoto,
+        followers: 0,
+        following: 0,
+        isOnline: true,
+        password: password || "",
+        isGuest: false
+      };
+
+      // Save to MongoDB if connected
+      if (mongoose.connection.readyState === 1) {
         const mongoUser = new MongoUser(newUser);
         await mongoUser.save();
-        console.log(`💾 Registered new user @${newUser.username} in MongoDB Atlas!`);
+        console.log(`💾 Successfully registered exactly 1 user @${newUser.username} (${newUser.email}) with id=${newUser.id} in MongoDB Atlas!`);
 
-        // Automatically set active session in-memory to this newly registered user
+        // Update active session pointer in-memory
         activeOriginalUserId = newUser.id;
-        console.log(`💾 Automatically set active session to @${newUser.username}`);
-      } catch (err) {
-        console.error("Failed to save registered user to MongoDB:", err);
       }
+
+      const returnedUser = {
+        ...newUser,
+        id: newUser.id,
+        originalId: newUser.id,
+        isGuest: false
+      };
+
+      res.status(201).json({ success: true, user: returnedUser });
+    } catch (err: any) {
+      if (err.code === 11000) {
+        console.warn("⚠️ Duplicate key collision caught in MongoDB registration:", err.message);
+        res.status(409).json({ error: "⚠️ Este usuario o correo electrónico ya existe en la base de datos." });
+        return;
+      }
+      console.error("❌ Error registering user:", err);
+      res.status(500).json({ error: "Error al registrar el usuario", details: err.message });
+    } finally {
+      pendingRegistrations.delete(lockKey);
+      pendingRegistrations.delete(cleanEmail);
+      pendingRegistrations.delete(cleanUsername);
     }
-
-    const returnedUser = {
-      ...newUser,
-      id: "current_user",
-      originalId: newUser.id,
-      isGuest: false
-    };
-
-    res.json({ success: true, user: returnedUser });
   });
 
   // Switch current active user (swaps details and saves to Mongo)
@@ -1626,45 +1680,20 @@ async function startServer() {
           if (u._id) userMap.set(u._id.toString(), u);
         });
 
-        const dbReels = await MongoReel.find();
+        const dbReels = await MongoReel.find().sort({ _id: -1 });
         const seenReelIds = new Set<string>();
-        const uniqueDbReels = dbReels.filter((r) => {
+        const uniqueDbReels = dbReels.filter((r: any) => {
           if (!r.id || seenReelIds.has(r.id)) return false;
           seenReelIds.add(r.id);
           return true;
         });
-        reels = uniqueDbReels.map(r => {
-          const creatorUser =
-            userMap.get(r.creatorId) ||
-            (r.creatorUsername ? userMap.get(r.creatorUsername.toLowerCase()) : null);
-          return {
-            id: r.id,
-            videoUrl: r.videoUrl || "",
-            thumbnailUrl: r.thumbnailUrl || "",
-            description: r.description || "",
-            creatorId: creatorUser ? creatorUser.id : (r.creatorId || "creator"),
-            creatorName: creatorUser ? creatorUser.name : (r.creatorName || "Creador"),
-            creatorUsername: creatorUser ? creatorUser.username : (r.creatorUsername || undefined),
-            creatorAvatar: creatorUser ? creatorUser.avatar : (r.creatorAvatar || ""),
-            likes: r.likes || 0,
-            likedBy: r.likedBy || [],
-            comments: r.comments || [],
-            shares: r.shares || 0,
-            saves: r.saves || 0,
-            views: r.views || 0,
-            productId: r.productId || undefined,
-            type: r.type || "video",
-            images: r.images || [],
-            hlsUrl: (r.hlsUrl && r.hlsUrl.includes(".m3u8")) ? r.hlsUrl : undefined,
-            aspectRatio: r.aspectRatio || "vertical",
-          };
-        });
+        reels = uniqueDbReels.map((r: any) => formatReelDTO(r, userMap));
       } catch (err) {
         console.error("❌ Failed to load live reels from MongoDB Atlas during GET:", err);
       }
     }
     const seen = new Set<string>();
-    const uniqueReels = reels.filter((r) => {
+    const uniqueReels = reels.map(r => formatReelDTO(r)).filter((r) => {
       if (!r.id || seen.has(r.id)) return false;
       seen.add(r.id);
       return true;
@@ -2473,13 +2502,6 @@ async function startServer() {
         email: body.email || "",
         password: ""
       };
-
-      if (mongoose.connection.readyState === 1) {
-        try {
-          const newDoc = new MongoUser(resolvedUser);
-          await newDoc.save();
-        } catch (e) {}
-      }
     }
 
     // 4. Update session pointer activeOriginalUserId
@@ -2493,7 +2515,7 @@ async function startServer() {
   // Create a new publication (video, image, or carousel)
   app.post("/api/reels", async (req: any, res: any) => {
     try {
-      const { videoUrl, thumbnailUrl, description, creatorId, type, images, productId, hlsUrl } = req.body;
+      const { title, videoUrl, thumbnailUrl, description, creatorId, type, images, media, productId, taggedProductId, hlsUrl, aspectRatio } = req.body;
       
       const creator = await resolveAuthenticatedUser(req, "creator");
 
@@ -2504,8 +2526,9 @@ async function startServer() {
 
       const resolvedHlsUrl = hlsUrl || undefined;
 
-      const newReel: Reel = {
+      const newReel = formatReelDTO({
         id: "reel_" + generateId(),
+        title: (title || "").trim(),
         videoUrl: videoUrl || "",
         thumbnailUrl: (thumbnailUrl && !thumbnailUrl.includes("1618005182384")) ? thumbnailUrl : "",
         description: description || "",
@@ -2513,16 +2536,13 @@ async function startServer() {
         creatorName: creator.name || creator.username,
         creatorUsername: creator.username,
         creatorAvatar: creator.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-        likes: 0,
-        likedBy: [],
-        comments: [],
-        shares: 0,
-        views: 0,
-        productId: productId || undefined,
-        type: type || "video",
+        productId: productId || taggedProductId || undefined,
+        type: type || (productId || taggedProductId ? "product" : (videoUrl ? "video" : (images?.length > 1 ? "carousel" : "image"))),
         images: images || [],
-        hlsUrl: resolvedHlsUrl
-      };
+        media: media || undefined,
+        hlsUrl: resolvedHlsUrl,
+        aspectRatio: aspectRatio || "vertical",
+      });
 
       // Add to memory list
       reels.unshift(newReel);
@@ -2597,24 +2617,8 @@ async function startServer() {
         }
       }
 
-      // Also automatically create a matching Reel publication for the Reels section (Reels feed)
-      const newReel: Reel = {
-        id: "reel_" + generateId(),
-        videoUrl: newProduct.videos && newProduct.videos.length > 0 ? newProduct.videos[0] : "",
-        thumbnailUrl: newProduct.imageUrl,
-        description: `🛍️ ¡Nuevo producto en la categoría ${newProduct.category || "General"}!\n\n✨ **${newProduct.name}**\n\n${newProduct.description}`,
-        creatorId: seller.id,
-        creatorName: seller.name,
-        creatorUsername: seller.username,
-        creatorAvatar: seller.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-        likes: 0,
-        comments: [],
-        shares: 0,
-        views: 0,
-        productId: newProduct.id,
-        type: newProduct.videos && newProduct.videos.length > 0 ? "video" : (newProduct.images && newProduct.images.length > 1 ? "carousel" : "image"),
-        images: newProduct.images || []
-      };
+      // Also automatically create the unified companion Reel publication for the Reels feed
+      const newReel = createCompanionReelForProduct(newProduct, seller);
 
       // Add to memory list
       reels.unshift(newReel);

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Lock, UserPlus, LogIn, X, AlertCircle, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
 import { User } from "../../../types";
 import { apiFetch } from "../../../config";
@@ -27,6 +27,7 @@ export function AuthModal({
   const [regPassword, setRegPassword] = useState("");
   const [regError, setRegError] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
+  const registeringRef = useRef(false);
 
   // Login state
   const [loginInput, setLoginInput] = useState("");
@@ -41,26 +42,32 @@ export function AuthModal({
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isRegistering || registeringRef.current) return;
+    registeringRef.current = true;
     setRegError("");
 
     if (!regName.trim() || !regUsername.trim()) {
       setRegError("El nombre completo y nombre de usuario son obligatorios.");
+      registeringRef.current = false;
       return;
     }
 
     if (!regEmail.trim() || !regEmail.includes("@")) {
       setRegError("Por favor ingresa un correo electrónico válido.");
+      registeringRef.current = false;
       return;
     }
 
     if (!regPassword.trim()) {
       setRegError("Por favor define una contraseña.");
+      registeringRef.current = false;
       return;
     }
 
     const cleanUsername = regUsername.trim().toLowerCase().replace(/\s+/g, "").replace("@", "");
-    if (cleanUsername === "invitado" || cleanUsername === "current_user") {
+    if (cleanUsername === "invitado" || cleanUsername === "current_user" || cleanUsername === "usuario_actual") {
       setRegError("Nombre de usuario reservado. Elige otro.");
+      registeringRef.current = false;
       return;
     }
 
@@ -99,6 +106,7 @@ export function AuthModal({
       setRegError("Error de conexión al registrar. Inténtalo nuevamente.");
     } finally {
       setIsRegistering(false);
+      registeringRef.current = false;
     }
   };
 

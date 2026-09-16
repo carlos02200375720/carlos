@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { User as UserIcon, ShieldCheck, UserPlus, ArrowRight, Sparkles, Check, Play, ShoppingBag, MessageSquare, Radio } from "lucide-react";
 import { User } from "../../types";
 import { apiFetch } from "../../config";
@@ -90,29 +90,36 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
     }
   };
 
+  const registeringRef = useRef(false);
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isRegistering) return;
+    if (isRegistering || registeringRef.current) return;
+    registeringRef.current = true;
     setRegisterError("");
 
     if (!regName.trim() || !regUsername.trim()) {
       setRegisterError("El nombre completo y nombre de usuario son obligatorios.");
+      registeringRef.current = false;
       return;
     }
 
     if (!regEmail.trim()) {
       setRegisterError("El correo electrónico es obligatorio.");
+      registeringRef.current = false;
       return;
     }
 
     if (!regPassword.trim()) {
       setRegisterError("La contraseña es obligatoria.");
+      registeringRef.current = false;
       return;
     }
 
     const cleanUsername = regUsername.trim().toLowerCase().replace(/\s+/g, "").replace("@", "");
-    if (cleanUsername === "invitado" || cleanUsername === "current_user") {
+    if (cleanUsername === "invitado" || cleanUsername === "current_user" || cleanUsername === "usuario_actual") {
       setRegisterError("Nombre de usuario reservado. Elige otro.");
+      registeringRef.current = false;
       return;
     }
 
@@ -150,6 +157,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
       setRegisterError("Error de conexión. Inténtalo de nuevo.");
     } finally {
       setIsRegistering(false);
+      registeringRef.current = false;
     }
   };
 

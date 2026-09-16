@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Reel, Product, User, Comment, CartItem } from "../../types";
-import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X, RefreshCw, Video, Minus, Trash2, CreditCard, Check } from "lucide-react";
+import { Reel, ReelMedia, Product, User, Comment, CartItem } from "../../types";
+import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X, RefreshCw, Video, Minus, Trash2, CreditCard, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { AndroidVideoPlayer, AndroidVideoPlayerHandle } from "./components/AndroidVideoPlayer";
 import { AndroidProgressBar } from "./components/AndroidProgressBar";
@@ -151,11 +151,19 @@ export default function AndroidReelsView({
   }, []);
 
   const playerRef = useRef<AndroidVideoPlayerHandle>(null);
+  const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
+  const mouseStartX = useRef<number>(0);
   const isMouseDownRef = useRef<boolean>(false);
   const isGuest = !currentUser || currentUser.isGuest || currentUser.username === "invitado";
 
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+
   const currentReel = reels[currentIndex] || reels[0];
+
+  useEffect(() => {
+    setActiveMediaIndex(0);
+  }, [currentIndex]);
 
   const handleProductSelect = onProductClick || onSelectProduct;
 
@@ -174,20 +182,45 @@ export default function AndroidReelsView({
     setCurrentIndex((i) => (i - 1 + reels.length) % reels.length);
   }, [reels.length]);
 
+  const mediaItems: ReelMedia[] = (currentReel?.media && currentReel.media.length > 0)
+    ? currentReel.media
+    : (currentReel?.videoUrl && currentReel.videoUrl.trim() !== "")
+    ? [{ type: "video", url: currentReel.videoUrl, hlsUrl: currentReel.hlsUrl }]
+    : (currentReel?.images && currentReel.images.length > 0)
+    ? currentReel.images.map((img, i) => ({ type: "image", url: img, order: i }))
+    : [{ type: "image", url: currentReel?.thumbnailUrl || "" }];
+
+  const currentMedia = mediaItems[activeMediaIndex] || mediaItems[0];
+  const isVideo = currentMedia?.type === "video" && !!currentMedia.url;
+
   const handleTouchStart = (e: React.TouchEvent) => {
     if (showComments || showCartPanel) return;
+    touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (showComments || showCartPanel) return;
+    const touchEndX = e.changedTouches[0].clientX;
     const touchEndY = e.changedTouches[0].clientY;
-    const diff = touchStartY.current - touchEndY;
+    const diffX = touchStartX.current - touchEndX;
+    const diffY = touchStartY.current - touchEndY;
     const SWIPE_THRESHOLD = 45;
 
-    if (diff > SWIPE_THRESHOLD) {
+    // Detect horizontal swipe inside reel media sequence
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > SWIPE_THRESHOLD && mediaItems.length > 1) {
+      if (diffX > 0 && activeMediaIndex < mediaItems.length - 1) {
+        setActiveMediaIndex((prev) => prev + 1);
+        return;
+      } else if (diffX < 0 && activeMediaIndex > 0) {
+        setActiveMediaIndex((prev) => prev - 1);
+        return;
+      }
+    }
+
+    if (diffY > SWIPE_THRESHOLD) {
       handleNext();
-    } else if (diff < -SWIPE_THRESHOLD) {
+    } else if (diffY < -SWIPE_THRESHOLD) {
       handlePrev();
     }
   };
@@ -195,17 +228,30 @@ export default function AndroidReelsView({
   const handleMouseDown = (e: React.MouseEvent) => {
     if (showComments || showCartPanel) return;
     isMouseDownRef.current = true;
+    mouseStartX.current = e.clientX;
     touchStartY.current = e.clientY;
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
     if (showComments || showCartPanel || !isMouseDownRef.current) return;
     isMouseDownRef.current = false;
-    const diff = touchStartY.current - e.clientY;
+    const diffX = mouseStartX.current - e.clientX;
+    const diffY = touchStartY.current - e.clientY;
     const SWIPE_THRESHOLD = 45;
-    if (diff > SWIPE_THRESHOLD) {
+
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > SWIPE_THRESHOLD && mediaItems.length > 1) {
+      if (diffX > 0 && activeMediaIndex < mediaItems.length - 1) {
+        setActiveMediaIndex((prev) => prev + 1);
+        return;
+      } else if (diffX < 0 && activeMediaIndex > 0) {
+        setActiveMediaIndex((prev) => prev - 1);
+        return;
+      }
+    }
+
+    if (diffY > SWIPE_THRESHOLD) {
       handleNext();
-    } else if (diff < -SWIPE_THRESHOLD) {
+    } else if (diffY < -SWIPE_THRESHOLD) {
       handlePrev();
     }
   };
@@ -304,8 +350,6 @@ export default function AndroidReelsView({
     currentReel.creatorAvatar ||
     "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
 
-  const isVideo = !currentReel.type || currentReel.type === "video" || (!!currentReel.videoUrl && currentReel.videoUrl.trim() !== "");
-
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     if (img.naturalWidth && img.naturalHeight) {
@@ -381,13 +425,59 @@ export default function AndroidReelsView({
       onMouseUp={handleMouseUp}
       id="android-reels-view"
     >
+      {/* Media item sequence indicators for multi-media publications (Video -> Image -> Image etc.) */}
+      {mediaItems.length > 1 && (
+        <div className="absolute top-1.5 inset-x-3 z-35 flex items-center space-x-1.5 pointer-events-none">
+          {mediaItems.map((_, idx) => (
+            <div
+              key={idx}
+              className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                idx === activeMediaIndex ? "bg-amber-400 shadow-sm" : "bg-white/35"
+              }`}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Navigation chevrons for multi-media publication sequence */}
+      {mediaItems.length > 1 && (
+        <>
+          {activeMediaIndex > 0 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMediaIndex((prev) => prev - 1);
+              }}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 z-35 w-8 h-8 rounded-full bg-black/45 backdrop-blur-xs text-white/90 flex items-center justify-center active:scale-90 transition-all cursor-pointer border border-white/10 shadow-lg"
+              title="Anterior elemento"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          )}
+          {activeMediaIndex < mediaItems.length - 1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMediaIndex((prev) => prev + 1);
+              }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 z-35 w-8 h-8 rounded-full bg-black/45 backdrop-blur-xs text-white/90 flex items-center justify-center active:scale-90 transition-all cursor-pointer border border-white/10 shadow-lg"
+              title="Siguiente elemento"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          )}
+        </>
+      )}
+
       {/* Media Player Container: Dynamic Aspect Architecture (Vertical 100%, Horizontal 16:9, Square 1:1) */}
       {isVideo ? (
         <AndroidVideoPlayer
-          key={currentReel.id}
+          key={`${currentReel.id}_media_${activeMediaIndex}`}
           ref={playerRef}
-          src={currentReel.videoUrl}
-          hlsUrl={currentReel.hlsUrl || (currentReel.videoUrl?.includes(".m3u8") ? currentReel.videoUrl : undefined)}
+          src={currentMedia.url}
+          hlsUrl={currentMedia.hlsUrl || (currentMedia.url?.includes(".m3u8") ? currentMedia.url : currentReel.hlsUrl)}
           poster={currentReel.thumbnailUrl}
           autoPlay={true}
           loop={true}
@@ -408,7 +498,7 @@ export default function AndroidReelsView({
               aria-hidden="true"
             >
               <img
-                src={currentReel.thumbnailUrl || (currentReel.images && currentReel.images[0])}
+                src={currentMedia?.url || currentReel.thumbnailUrl || (currentReel.images && currentReel.images[0])}
                 alt=""
                 className="w-full h-full object-cover"
               />
@@ -424,7 +514,7 @@ export default function AndroidReelsView({
             }
           >
             <img
-              src={currentReel.thumbnailUrl || (currentReel.images && currentReel.images[0])}
+              src={currentMedia?.url || currentReel.thumbnailUrl || (currentReel.images && currentReel.images[0])}
               alt={currentReel.description}
               onLoad={handleImageLoad}
               className={
