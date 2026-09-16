@@ -67,7 +67,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       autoPlay = false,
       loop = true,
       muted = false,
-      preload = "auto",
+      preload = "metadata",
       isCurrent = true,
       isFeedMode = false,
       title,
@@ -111,7 +111,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       defaultAspectRatio === "contain" || defaultAspectRatio === "fit" ? "contain" : "cover"
     );
 
-    // Sync with defaultAspectRatio prop
     useEffect(() => {
       if (defaultAspectRatio === "contain" || defaultAspectRatio === "fit") {
         setAspectMode("contain");
@@ -120,13 +119,11 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
     }, [defaultAspectRatio]);
 
-    // Automatic aspect ratio detection based on real video dimensions
     const detectAndApplyAspect = useCallback(() => {
       if (videoRef.current) {
         const vw = videoRef.current.videoWidth;
         const vh = videoRef.current.videoHeight;
         if (vw > 0 && vh > 0) {
-          // If video is horizontal (widescreen, 16:9, landscape, or square), set to contain
           if (vw >= vh) {
             setAspectMode("contain");
           } else if (defaultAspectRatio === "cover" || defaultAspectRatio === "fill" || !defaultAspectRatio) {
@@ -140,11 +137,9 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       detectAndApplyAspect();
     }, [src, hlsUrl, detectAndApplyAspect]);
 
-    // Double-click timer for like / fullscreen
     const lastTapRef = useRef<number>(0);
     const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Expose handles via ref
     useImperativeHandle(
       ref,
       () => ({
@@ -212,7 +207,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       [duration]
     );
 
-    // Keep muted state synced with prop
     useEffect(() => {
       setIsMuted(muted);
       if (videoRef.current) {
@@ -220,7 +214,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
     }, [muted]);
 
-    // Format time helpers
     const formatTime = (secs: number) => {
       if (!secs || isNaN(secs) || !isFinite(secs)) return "0:00";
       const m = Math.floor(secs / 60);
@@ -228,7 +221,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       return `${m}:${s < 10 ? "0" : ""}${s}`;
     };
 
-    // Auto-hide controls
     const triggerShowControls = useCallback(() => {
       setShowControls(true);
       if (controlsTimeoutRef.current) {
@@ -241,7 +233,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }, 3000);
     }, [showSpeedMenu]);
 
-    // Setup MediaSession for Mobile / Web Background Playback & Lockscreen controls
     useEffect(() => {
       if (typeof window !== "undefined" && "mediaSession" in navigator && isCurrent) {
         try {
@@ -270,28 +261,25 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
     }, [title, creatorName, poster, isCurrent]);
 
-    // Target source resolution - Prioritize HLS (.m3u8) stream for smooth playback
     const targetSource = React.useMemo(() => {
-      // 1. If explicit hlsUrl is provided and contains .m3u8, prioritize it
       if (hlsUrl && hlsUrl.trim().length > 0 && hlsUrl.includes(".m3u8")) {
         return hlsUrl.trim();
       }
-      // 2. If src contains an HLS playlist (.m3u8)
       if (src && src.includes(".m3u8")) {
         return src.trim();
       }
-      // 3. Local in-memory blob for upload preview
       if (src && src.startsWith("blob:")) {
         return src.trim();
       }
-      // 4. Fallback to clean source
       const trimmed = (src || hlsUrl || "").trim();
       return trimmed.length > 0 ? trimmed : null;
     }, [src, hlsUrl]);
 
     const isM3u8 = Boolean(targetSource && targetSource.includes(".m3u8"));
 
-    // Mount and initialize native video / HLS source (runs only when the actual source changes)
+    // Only the active Reel owns an HLS/media source. Inactive players release
+    // their source and HLS instance so the browser does not keep decoding/buffering
+    // every Reel in the feed.
     useEffect(() => {
       const video = videoRef.current;
       if (!video || !targetSource) return;
@@ -301,19 +289,28 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
         hlsRef.current = null;
       }
 
+      if (!isCurrent) {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+        return;
+      }
+
       const canPlayNativeHls = video.canPlayType("application/vnd.apple.mpegurl");
 
-      // Case 1: Native Safari / iOS AVPlayer HLS Engine
       if (isM3u8 && (canPlayNativeHls === "probably" || canPlayNativeHls === "maybe" || deviceInfo.isIOS)) {
         video.src = targetSource;
-      }
-      // Case 2: Hls.js for Chrome / Firefox / Edge / Android
-      else if (isM3u8 && Hls.isSupported()) {
+      } else if (isM3u8 && Hls.isSupported()) {
         const hls = new Hls({
-          maxBufferLength: 30,
-          maxMaxBufferLength: 60,
           enableWorker: true,
           lowLatencyMode: false,
+          maxBufferLength: 12,
+          maxMaxBufferLength: 24,
+          backBufferLength: 4,
+          capLevelToPlayerSize: true,
+          manifestLoadingMaxRetry: 2,
+          levelLoadingMaxRetry: 2,
+          fragLoadingMaxRetry: 3,
         });
         hlsRef.current = hls;
         hls.loadSource(targetSource);
@@ -325,6 +322,8 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
             if (data.type === Hls.ErrorTypes.NETWORK_ERROR && retryCount < 2) {
               retryCount++;
               hls.startLoad();
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              hls.recoverMediaError();
             } else {
               hls.destroy();
               hlsRef.current = null;
@@ -336,27 +335,24 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
             }
           }
         });
-      }
-      // Case 3: Standard Native HTML5 Video stream or local blob preview
-      else {
-        if (!video.src || !video.src.includes(targetSource)) {
-          video.src = targetSource;
-        }
+      } else {
+        video.src = targetSource;
       }
 
-      // Sync muted and volume directly to native hardware audio
       video.muted = isMuted;
       video.volume = isMuted ? 0 : volume;
 
       return () => {
+        video.pause();
         if (hlsRef.current) {
           hlsRef.current.destroy();
           hlsRef.current = null;
         }
+        video.removeAttribute("src");
+        video.load();
       };
-    }, [targetSource, src, isM3u8, deviceInfo.isIOS]);
+    }, [targetSource, isM3u8, deviceInfo.isIOS, isCurrent]);
 
-    // Handle play state sync when isCurrent changes
     useEffect(() => {
       const video = videoRef.current;
       if (!video) return;
@@ -379,13 +375,11 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
     }, [isCurrent, autoPlay, isMuted, volume]);
 
-    // Fullscreen toggle handler
     const handleToggleFullscreen = () => {
       const container = containerRef.current;
       const video = videoRef.current;
       if (!container || !video) return;
 
-      // On iOS native Safari video fullscreen
       // @ts-ignore
       if (video.webkitEnterFullscreen && deviceInfo.isIOS) {
         // @ts-ignore
@@ -414,7 +408,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
     };
 
-    // Fullscreen change listener
     useEffect(() => {
       const onFullscreenChange = () => {
         setIsFullscreen(!!document.fullscreenElement);
@@ -427,7 +420,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       };
     }, []);
 
-    // Picture-in-Picture handler
     const handleTogglePiP = async () => {
       const video = videoRef.current;
       if (!video) return;
@@ -450,13 +442,11 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
     };
 
-    // Video Tap / Click handler
     const handleContainerClick = (e: React.MouseEvent) => {
       const now = Date.now();
       const DOUBLE_TAP_THRESHOLD = 300;
 
       if (now - lastTapRef.current < DOUBLE_TAP_THRESHOLD) {
-        // Double tap
         lastTapRef.current = 0;
         if (onDoubleClickCenter) {
           onDoubleClickCenter();
@@ -467,7 +457,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
       lastTapRef.current = now;
 
-      // In feed mode, click toggles play/pause or triggers custom onClick
       if (onClick) {
         onClick();
       } else if (isFeedMode) {
@@ -484,7 +473,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
     };
 
-    // Keyboard controls for desktop/web
     const handleKeyDown = (e: React.KeyboardEvent) => {
       const video = videoRef.current;
       if (!video) return;
@@ -534,7 +522,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
     };
 
-    // Seek bar change
     const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const newTime = parseFloat(e.target.value);
       setCurrentTime(newTime);
@@ -543,7 +530,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
     };
 
-    // Volume bar change
     const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const newVol = parseFloat(e.target.value);
       setVolumeState(newVol);
@@ -554,7 +540,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
       }
     };
 
-    // Playback Speed Change
     const handleSpeedSelect = (speed: number) => {
       setPlaybackRate(speed);
       if (videoRef.current) {
@@ -577,7 +562,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
         onTouchStart={triggerShowControls}
         onClick={handleContainerClick}
       >
-        {/* Native HTML5 Video Element */}
         <video
           ref={videoRef}
           src={!isM3u8 && targetSource ? targetSource : undefined}
@@ -660,14 +644,12 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
           }}
         />
 
-        {/* Buffering Spinner */}
         {isBuffering && !isFeedMode && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
             <div className="w-12 h-12 rounded-full border-4 border-white/20 border-t-white animate-spin drop-shadow-md" />
           </div>
         )}
 
-        {/* Big Center Play Icon (When Paused in Non-Feed Mode) */}
         {!isPlaying && !isBuffering && !isFeedMode && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/45 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white shadow-2xl transition-transform transform scale-100 hover:scale-110">
@@ -676,7 +658,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
           </div>
         )}
 
-        {/* Standard Web / Desktop & Non-Feed Player Controls Bar */}
         {!isFeedMode && (
           <div
             className={`absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/85 via-black/40 to-transparent pt-10 pb-3 px-4 transition-opacity duration-300 ${
@@ -684,19 +665,15 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Timeline Progress Bar */}
             <div className="relative w-full h-1.5 bg-white/20 rounded-full mb-3 cursor-pointer group/seek flex items-center">
-              {/* Buffered Progress */}
               <div
                 className="absolute left-0 top-0 bottom-0 bg-white/35 rounded-full"
                 style={{ width: `${duration > 0 ? (bufferedEnd / duration) * 100 : 0}%` }}
               />
-              {/* Played Progress */}
               <div
                 className="absolute left-0 top-0 bottom-0 bg-white rounded-full transition-all"
                 style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
               />
-              {/* Input range for scrubbing */}
               <input
                 type="range"
                 min={0}
@@ -709,9 +686,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
               />
             </div>
 
-            {/* Bottom Controls Row */}
             <div className="flex items-center justify-between text-white text-xs">
-              {/* Left Controls: Play, Rewind, Volume, Time */}
               <div className="flex items-center space-x-3">
                 <button
                   type="button"
@@ -738,7 +713,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
                   <RotateCcw className="w-4 h-4" />
                 </button>
 
-                {/* Volume & Mute */}
                 <div className="flex items-center space-x-1.5 group/vol">
                   <button
                     type="button"
@@ -765,15 +739,12 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
                   />
                 </div>
 
-                {/* Time Display */}
                 <span className="font-mono text-[11px] text-white/80 select-none pl-1">
                   {formatTime(currentTime)} / {formatTime(duration)}
                 </span>
               </div>
 
-              {/* Right Controls: Aspect Ratio, Speed, PiP, Fullscreen */}
               <div className="flex items-center space-x-2 relative">
-                {/* Aspect Ratio Toggle (Cover vs Contain) */}
                 <button
                   type="button"
                   onClick={() => setAspectMode((prev) => (prev === "cover" ? "contain" : "cover"))}
@@ -783,7 +754,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
                   {aspectMode === "cover" ? "Ajustar" : "Rellenar"}
                 </button>
 
-                {/* Speed Menu Toggle */}
                 <div className="relative">
                   <button
                     type="button"
@@ -813,7 +783,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
                   )}
                 </div>
 
-                {/* Picture in Picture */}
                 <button
                   type="button"
                   onClick={handleTogglePiP}
@@ -823,7 +792,6 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
                   <Sparkles className="w-4 h-4 text-white/90" />
                 </button>
 
-                {/* Fullscreen */}
                 <button
                   type="button"
                   onClick={handleToggleFullscreen}
