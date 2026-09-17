@@ -304,13 +304,14 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
-          maxBufferLength: 12,
-          maxMaxBufferLength: 24,
-          backBufferLength: 4,
+          maxBufferLength: 20,
+          maxMaxBufferLength: 40,
+          backBufferLength: 10,
+          maxBufferHole: 1.0,
           capLevelToPlayerSize: true,
-          manifestLoadingMaxRetry: 2,
-          levelLoadingMaxRetry: 2,
-          fragLoadingMaxRetry: 3,
+          manifestLoadingMaxRetry: 3,
+          levelLoadingMaxRetry: 3,
+          fragLoadingMaxRetry: 5,
         });
         hlsRef.current = hls;
         hls.loadSource(targetSource);

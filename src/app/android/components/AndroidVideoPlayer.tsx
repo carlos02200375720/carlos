@@ -65,6 +65,28 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
     const lastTapTimeRef = useRef<number>(0);
     const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const playInProgressRef = useRef(false);
+    const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastProgressTimeRef = useRef<number>(0);
+    const stallCountRef = useRef<number>(0);
+
+    const clearStallTimer = () => {
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
+    };
+
+    const handleWaitingOrStalled = () => {
+      clearStallTimer();
+      if (!isCurrentRef.current) return;
+      stallTimerRef.current = setTimeout(() => {
+        const v = videoRef.current;
+        if (!v || !isCurrentRef.current) return;
+        if (v.paused) {
+          v.play().catch(() => {});
+        }
+      }, 1500);
+    };
 
     // Keep callback refs stable to prevent unneeded re-renders or effect re-runs
     const onMuteChangeRef = useRef(onMuteChange);
@@ -237,6 +259,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             maxBufferLength: 30,
             maxMaxBufferLength: 60,
             maxBufferSize: 60 * 1000 * 1000,
+            maxBufferHole: 0.5,
             nudgeMaxRetry: 10,
             nudgeOffset: 0.1,
             startFragPrefetch: true,
@@ -252,15 +275,8 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           });
 
           hls.on(Hls.Events.ERROR, (_event, data) => {
-            // Non-fatal stall recovery: nudge playhead so focus video never freezes
-            if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
-              const v = videoRef.current;
-              if (v && isCurrentRef.current && !v.paused) {
-                if (v.currentTime > 0) {
-                  v.currentTime += 0.05;
-                }
-                v.play().catch(() => {});
-              }
+            if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR || data.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL) {
+              // Allow HLS.js internal nudge mechanism to handle buffer holes seamlessly
               return;
             }
 
@@ -334,6 +350,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
 
     useEffect(() => () => {
       if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+      clearStallTimer();
       hlsRef.current?.destroy();
       hlsRef.current = null;
       videoRef.current?.pause();
@@ -412,8 +429,27 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
               checkVideoDimensions();
               if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current) safePlay();
             }}
-            onWaiting={() => {}}
-            onPlaying={() => setIsPlaying(true)}
+            onTimeUpdate={(e) => {
+              const v = e.currentTarget;
+              lastProgressTimeRef.current = v.currentTime;
+              stallCountRef.current = 0;
+              clearStallTimer();
+              if (loop && v.duration && isFinite(v.duration) && v.currentTime >= v.duration - 0.15) {
+                v.currentTime = 0;
+                if (isCurrentRef.current && autoPlayRef.current) {
+                  v.play().catch(() => {});
+                }
+              }
+            }}
+            onWaiting={handleWaitingOrStalled}
+            onStalled={handleWaitingOrStalled}
+            onPlaying={() => {
+              const v = videoRef.current;
+              if (v) lastProgressTimeRef.current = v.currentTime;
+              stallCountRef.current = 0;
+              clearStallTimer();
+              setIsPlaying(true);
+            }}
             onEnded={handleEnded}
             onPlay={() => {
               setIsPlaying(true);
@@ -421,6 +457,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             }}
             onPause={() => {
               setIsPlaying(false);
+              clearStallTimer();
               onPauseRef.current?.();
             }}
           />

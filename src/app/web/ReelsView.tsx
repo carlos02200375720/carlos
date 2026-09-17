@@ -515,11 +515,48 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const hlsSource = (reel.hlsUrl || reel.videoUrl)?.trim();
+  const stallTimerRef = useRef<any>(null);
+  const lastProgressTimeRef = useRef<number>(0);
+  const stallCountRef = useRef<number>(0);
+
+  const clearStallTimer = () => {
+    if (stallTimerRef.current) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+  };
+
+  const handleWaitingOrStalled = () => {
+    clearStallTimer();
+    if (!isCurrent || !isPlaying) return;
+    stallTimerRef.current = setTimeout(() => {
+      const v = videoRef.current;
+      if (!v || !isCurrent || !isPlaying) return;
+      if (v.paused) {
+        v.play().catch(() => {});
+      }
+    }, 1500);
+  };
+
+  const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const v = e.currentTarget;
+    if (!v) return;
+    lastProgressTimeRef.current = v.currentTime;
+    stallCountRef.current = 0;
+    clearStallTimer();
+  };
+
+  const handlePlaying = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    lastProgressTimeRef.current = e.currentTarget.currentTime;
+    stallCountRef.current = 0;
+    clearStallTimer();
+  };
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
+    clearStallTimer();
     hlsRef.current?.destroy();
     hlsRef.current = null;
     video.pause();
@@ -532,27 +569,39 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        backBufferLength: 4,
-        maxBufferLength: 12,
-        maxMaxBufferLength: 24,
+        backBufferLength: 30,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        maxBufferSize: 60 * 1000 * 1000,
+        maxBufferHole: 0.5,
+        nudgeMaxRetry: 10,
+        nudgeOffset: 0.1,
+        startFragPrefetch: true,
         capLevelToPlayerSize: true,
-        manifestLoadingMaxRetry: 2,
-        levelLoadingMaxRetry: 2,
-        fragLoadingMaxRetry: 3,
+        manifestLoadingMaxRetry: 4,
+        levelLoadingMaxRetry: 4,
+        fragLoadingMaxRetry: 6,
+        fragLoadingRetryDelay: 500,
       });
       hlsRef.current = hls;
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (isCurrent && isPlaying) {
+          video.play().catch(() => {});
+        }
+      });
+
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
-          const v = videoRef.current;
-          if (v && isCurrent && !v.paused) {
-            v.play().catch(() => {});
-          }
+        if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR || data.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL) {
+          // Allow HLS.js internal nudge mechanism to handle buffer holes seamlessly
           return;
         }
         if (!data.fatal) return;
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-        else {
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          hls.startLoad();
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          hls.recoverMediaError();
+        } else {
           hls.destroy();
           hlsRef.current = null;
           if (video && hlsSource) {
@@ -575,6 +624,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     video.volume = isMuted ? 0 : 1;
 
     return () => {
+      clearStallTimer();
       video.pause();
       hlsRef.current?.destroy();
       hlsRef.current = null;
@@ -591,6 +641,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     video.volume = isMuted ? 0 : 1;
     if (!isCurrent || !isPlaying) {
       video.pause();
+      clearStallTimer();
       return;
     }
     video.play().catch((err) => {
@@ -609,6 +660,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
   }, [index, isMuted, onRegisterRef]);
 
   useEffect(() => () => {
+    clearStallTimer();
     hlsRef.current?.destroy();
     hlsRef.current = null;
     onRegisterRef(index, null);
@@ -634,5 +686,25 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     }
   };
 
-  return <video ref={handleRef} poster={posterUrl} autoPlay={isCurrent} playsInline loop muted={isMuted} preload="metadata" className={`w-full h-full block relative z-10 select-none cursor-pointer object-center ${(mediaAspectRatio === 'vertical' || !mediaAspectRatio) ? "object-cover md:object-contain" : "object-contain"}`} style={{ touchAction: "pan-y" }} onClick={(e) => onVideoClick(e, index)} onDoubleClick={(e) => { e.stopPropagation(); onDoubleTap(reel.id); }} onLoadedMetadata={handleLoadedMetadata} onEnded={handleEnded} />;
+  return (
+    <video
+      ref={handleRef}
+      poster={posterUrl}
+      autoPlay={isCurrent}
+      playsInline
+      loop
+      muted={isMuted}
+      preload="metadata"
+      className={`w-full h-full block relative z-10 select-none cursor-pointer object-center ${(mediaAspectRatio === 'vertical' || !mediaAspectRatio) ? "object-cover md:object-contain" : "object-contain"}`}
+      style={{ touchAction: "pan-y" }}
+      onClick={(e) => onVideoClick(e, index)}
+      onDoubleClick={(e) => { e.stopPropagation(); onDoubleTap(reel.id); }}
+      onLoadedMetadata={handleLoadedMetadata}
+      onTimeUpdate={handleTimeUpdate}
+      onPlaying={handlePlaying}
+      onWaiting={handleWaitingOrStalled}
+      onStalled={handleWaitingOrStalled}
+      onEnded={handleEnded}
+    />
+  );
 });
