@@ -82,7 +82,46 @@ async function startServer() {
         return res.sendStatus(204);
       }
       next();
-    },
+    }
+  );
+
+  // Dynamic on-demand poster extractor for HLS folders
+  app.get("/uploads/hls/:folder/poster.jpg", async (req, res, next) => {
+    try {
+      const folder = req.params.folder;
+      const posterPath = path.join(uploadsDir, "hls", folder, "poster.jpg");
+      if (fs.existsSync(posterPath)) {
+        res.setHeader("Content-Type", "image/jpeg");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        return res.sendFile(posterPath);
+      }
+      const dirPath = path.join(uploadsDir, "hls", folder);
+      if (fs.existsSync(dirPath)) {
+        const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(".ts"));
+        if (files.length > 0) {
+          files.sort();
+          const targetTs = path.join(dirPath, files[0]);
+          const { getFfmpegBinary } = await import("./src/server/hlsTranscoder");
+          const ffmpegBin = getFfmpegBinary();
+          const { exec } = await import("child_process");
+          const { promisify } = await import("util");
+          const execAsync = promisify(exec);
+          await execAsync(`"${ffmpegBin}" -y -i "${targetTs}" -vframes 1 -q:v 2 "${posterPath}"`).catch(() => {});
+          if (fs.existsSync(posterPath)) {
+            res.setHeader("Content-Type", "image/jpeg");
+            res.setHeader("Cache-Control", "public, max-age=86400");
+            return res.sendFile(posterPath);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+    next();
+  });
+
+  app.use(
+    "/uploads",
     express.static(uploadsDir, {
       setHeaders: (res, filePath) => {
         if (filePath.endsWith(".m3u8")) {

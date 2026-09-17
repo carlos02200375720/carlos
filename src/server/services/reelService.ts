@@ -195,5 +195,11 @@ export async function getUserCanonicalReelsFromMongo(
     return true;
   });
 
-  return unique.map((r: any) => formatReelDTO(r, resolvedUserMap));
+  return unique.map((r: any) => {
+    const dto = formatReelDTO(r, resolvedUserMap);
+    if ((!r.thumbnailUrl || r.thumbnailUrl.includes("1618005182384") || r.thumbnailUrl.endsWith(".m3u8")) && dto.thumbnailUrl && r._id) {
+      MongoReel.updateOne({ _id: r._id }, { $set: { thumbnailUrl: dto.thumbnailUrl } }).catch(() => {});
+    }
+    return dto;
+  });
 }

@@ -131,6 +131,12 @@ export async function transcodeVideoToLocalHlsDirect(
     if (fs.existsSync(playlistPath) && (await fs.promises.stat(playlistPath)).size > 0) {
       const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
       await fs.promises.writeFile(path.join(localHlsDir, "master.m3u8"), masterContent);
+      // Generate poster.jpg from the video
+      const posterPath = path.join(localHlsDir, "poster.jpg");
+      await execAsync(`"${ffmpegBin}" -y -ss 00:00:00.500 -i "${normalizedMp4}" -vframes 1 -q:v 2 "${posterPath}"`).catch(() => {});
+      if (!fs.existsSync(posterPath)) {
+        await execAsync(`"${ffmpegBin}" -y -i "${normalizedMp4}" -vframes 1 -q:v 2 "${posterPath}"`).catch(() => {});
+      }
       return `/uploads/hls/${videoId}/index.m3u8`;
     }
   } catch (err2: any) {
@@ -161,6 +167,9 @@ export async function transcodeVideoToLocalHlsDirect(
     const simpleM3u8 = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:60.0,\nsegment_000.ts\n#EXT-X-ENDLIST\n`;
     await fs.promises.writeFile(playlistPath, simpleM3u8);
     await fs.promises.writeFile(path.join(localHlsDir, "master.m3u8"), simpleM3u8);
+
+    const posterPath = path.join(localHlsDir, "poster.jpg");
+    await execAsync(`"${ffmpegBin}" -y -i "${singleTsPath}" -vframes 1 -q:v 2 "${posterPath}"`).catch(() => {});
 
     console.log(`🛡️ [HLS Direct] Fail-safe fallback generated valid HLS stream at /uploads/hls/${videoId}/index.m3u8`);
     return `/uploads/hls/${videoId}/index.m3u8`;

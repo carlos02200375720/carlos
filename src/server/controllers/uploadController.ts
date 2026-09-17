@@ -87,13 +87,16 @@ export async function processUploadHlsOnly(req: any, res: any): Promise<void> {
 
     console.log(`✅ [HLS ONLY] HLS generado: ${hlsUrl}`);
 
+    const posterUrl = `/uploads/hls/${pubId}/poster.jpg`;
+
     res.json({
       success: true,
       message: "Video convertido a HLS correctamente.",
       url: hlsUrl,
       hlsUrl,
+      thumbnailUrl: posterUrl,
       jobId,
-      publicacion: { id: pubId, url: hlsUrl, hlsUrl },
+      publicacion: { id: pubId, url: hlsUrl, hlsUrl, thumbnailUrl: posterUrl },
       hlsStats: {
         latencyMs,
         totalSegments,

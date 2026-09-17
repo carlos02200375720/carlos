@@ -4,6 +4,7 @@ import { Play, ShoppingBag, Bookmark, Settings, LogOut, Edit3, Grid, Camera, Che
 import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
 import AndroidUserPublicationsFeed from "./components/AndroidUserPublicationsFeed";
+import AndroidPublicationCover from "./components/AndroidPublicationCover";
 import AndroidPublishView from "./PublishView";
 import AndroidLoginView from "./LoginView";
 
@@ -177,11 +178,26 @@ export default function AndroidProfileView({
           if (Array.isArray(data.publicaciones)) {
             data.publicaciones.forEach((pub: any) => {
               if (pub.url) {
+                const rawUrl = pub.url || "";
+                const isVideo = rawUrl.includes(".m3u8") || /\.(mp4|mov|webm|m4v)/i.test(rawUrl);
+                const hlsFolder = (rawUrl || pub.hlsUrl || "").match(/\/uploads\/hls\/([a-zA-Z0-9_-]+)\//);
+                const resolvedThumb =
+                  pub.thumbnailUrl &&
+                  typeof pub.thumbnailUrl === "string" &&
+                  !pub.thumbnailUrl.toLowerCase().endsWith(".m3u8") &&
+                  !pub.thumbnailUrl.includes("1618005182384")
+                    ? pub.thumbnailUrl
+                    : hlsFolder
+                    ? `/uploads/hls/${hlsFolder[1]}/poster.jpg`
+                    : !isVideo
+                    ? rawUrl
+                    : "";
+
                 addEntry({
                   id: pub.id,
                   videoUrl: pub.url,
                   hlsUrl: pub.hlsUrl || pub.url,
-                  thumbnailUrl: pub.thumbnailUrl || pub.url,
+                  thumbnailUrl: resolvedThumb,
                   description: pub.title || pub.description || "Publicación",
                   creatorId: pub.creatorId || activeUser.id,
                   creatorName: activeUser.name,
@@ -193,7 +209,7 @@ export default function AndroidProfileView({
                   shares: 0,
                   saves: 0,
                   views: 0,
-                  type: "video",
+                  type: isVideo ? "video" : "image",
                 });
               }
             });
@@ -472,11 +488,12 @@ export default function AndroidProfileView({
               userReels.map((reel) => (
                 <div
                   key={reel.id}
+                  id={`android-profile-pub-${reel.id}`}
                   onClick={() => {
                     if (onSelectReel) onSelectReel(reel);
                     setSelectedFeedReelId(reel.id);
                   }}
-                  className="relative aspect-[9/16] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 cursor-pointer group active:scale-95 transition-transform"
+                  className="relative aspect-[9/16] rounded-xl overflow-hidden bg-slate-950 border border-slate-200 cursor-pointer group active:scale-95 transition-transform shadow-xs"
                 >
                   {canDelete && (
                     <button
@@ -497,13 +514,9 @@ export default function AndroidProfileView({
                       <X className="w-5 h-5 stroke-[2.5]" />
                     </button>
                   )}
-                  <img
-                    src={reel.thumbnailUrl || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80"}
-                    alt={reel.description || "Reel"}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2">
-                    <span className="text-[10px] font-bold text-white line-clamp-1">{reel.description || "Reel"}</span>
+                  <AndroidPublicationCover reel={reel} />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2 pointer-events-none">
+                    <span className="text-[10px] font-bold text-white line-clamp-1">{reel.description || reel.title || "Reel"}</span>
                   </div>
                 </div>
               ))
@@ -659,15 +672,11 @@ export default function AndroidProfileView({
                             if (onSelectReel) onSelectReel(reel);
                             setSelectedFeedReelId(reel.id);
                           }}
-                          className="relative aspect-[9/16] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 cursor-pointer active:scale-95 transition-transform group"
+                          className="relative aspect-[9/16] rounded-xl overflow-hidden bg-slate-950 border border-slate-200 cursor-pointer active:scale-95 transition-transform group shadow-xs"
                         >
-                          <img
-                            src={reel.thumbnailUrl || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80"}
-                            alt={reel.description || "Reel"}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2">
-                            <span className="text-[10px] font-bold text-white line-clamp-1">{reel.description || "Reel"}</span>
+                          <AndroidPublicationCover reel={reel} />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2 pointer-events-none">
+                            <span className="text-[10px] font-bold text-white line-clamp-1">{reel.description || reel.title || "Reel"}</span>
                           </div>
                           {onToggleSaveReel && (
                             <button

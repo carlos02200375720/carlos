@@ -61,12 +61,23 @@ export function formatReelDTO(r: any, userMap?: Map<string, any>): Reel {
 
   const videoUrl = typeof r.videoUrl === "string" ? r.videoUrl.trim() : "";
   const hlsUrl = r.hlsUrl && typeof r.hlsUrl === "string" && r.hlsUrl.includes(".m3u8") ? r.hlsUrl.trim() : undefined;
-  const thumbnailUrl =
-    r.thumbnailUrl && !r.thumbnailUrl.includes("1618005182384")
+  let thumbnailUrl =
+    r.thumbnailUrl &&
+    typeof r.thumbnailUrl === "string" &&
+    !r.thumbnailUrl.includes("1618005182384") &&
+    !r.thumbnailUrl.toLowerCase().endsWith(".m3u8")
       ? r.thumbnailUrl.trim()
-      : images.length > 0
+      : images.length > 0 && typeof images[0] === "string" && !images[0].toLowerCase().endsWith(".m3u8")
       ? images[0]
       : "";
+
+  if (!thumbnailUrl && (videoUrl || hlsUrl)) {
+    const targetUrl = hlsUrl || videoUrl;
+    const hlsMatch = targetUrl.match(/\/uploads\/hls\/([a-zA-Z0-9_-]+)\//);
+    if (hlsMatch) {
+      thumbnailUrl = `/uploads/hls/${hlsMatch[1]}/poster.jpg`;
+    }
+  }
 
   const media = buildReelMedia({ ...r, videoUrl, hlsUrl, thumbnailUrl, images });
 
