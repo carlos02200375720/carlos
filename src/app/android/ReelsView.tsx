@@ -182,10 +182,15 @@ export default function AndroidReelsView({
     setCurrentIndex((i) => (i - 1 + reels.length) % reels.length);
   }, [reels.length]);
 
-  const mediaItems: ReelMedia[] = (currentReel?.media && currentReel.media.length > 0)
-    ? currentReel.media
-    : (currentReel?.videoUrl && currentReel.videoUrl.trim() !== "")
-    ? [{ type: "video", url: currentReel.videoUrl, hlsUrl: currentReel.hlsUrl }]
+  const mediaItems: ReelMedia[] =
+    Array.isArray(currentReel?.media) && currentReel.media.length > 0
+      ? currentReel.media.map((item) =>
+          item.type === "video"
+            ? { ...item, url: currentReel.hlsUrl || currentReel.videoUrl || item.url, hlsUrl: currentReel.hlsUrl || item.hlsUrl, thumbnailUrl: item.thumbnailUrl || currentReel.thumbnailUrl || undefined }
+            : item
+        )
+      : currentReel?.videoUrl && currentReel.videoUrl.trim() !== ""
+        ? [{ type: "video", url: currentReel.hlsUrl || currentReel.videoUrl, hlsUrl: currentReel.hlsUrl, thumbnailUrl: currentReel.thumbnailUrl || undefined }]
     : (currentReel?.images && currentReel.images.length > 0)
     ? currentReel.images.map((img, i) => ({ type: "image", url: img, order: i }))
     : [{ type: "image", url: currentReel?.thumbnailUrl || "" }];
