@@ -59,6 +59,7 @@ export async function processUploadHlsOnly(req: any, res: any): Promise<void> {
     let latencyMs = 0;
     let totalSegments = 1;
     let durationSec: number | undefined = undefined;
+    let posterUrl = "";
 
     try {
       const hlsResult = await hlsQueue.enqueueAndWait(
@@ -73,6 +74,7 @@ export async function processUploadHlsOnly(req: any, res: any): Promise<void> {
       );
 
       hlsUrl = hlsResult.masterM3u8Url;
+      posterUrl = hlsResult.posterUrl || "";
       latencyMs = hlsResult.latencyMs;
       totalSegments = hlsResult.totalSegments;
       durationSec = hlsResult.durationSec;
@@ -87,7 +89,11 @@ export async function processUploadHlsOnly(req: any, res: any): Promise<void> {
 
     console.log(`✅ [HLS ONLY] HLS generado: ${hlsUrl}`);
 
-    const posterUrl = `/uploads/hls/${pubId}/poster.jpg`;
+    if (!posterUrl) {
+      posterUrl = hlsUrl.startsWith("https://storage.googleapis.com/")
+        ? hlsUrl.replace(/\/(?:master|index)\.m3u8$/, "/poster.jpg")
+        : `/uploads/hls/${pubId}/poster.jpg`;
+    }
 
     res.json({
       success: true,
