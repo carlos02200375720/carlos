@@ -606,13 +606,42 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       }
 
       const effectiveProductId = productId || taggedProductId || undefined;
-      const effectiveType = type || (effectiveProductId ? "product" : (videoUrl ? "video" : (images && images.length > 1 ? "carousel" : "image")));
+      const normalizedVideoUrl = typeof videoUrl === "string" ? videoUrl.trim() : "";
+      const normalizedHlsUrl = typeof hlsUrl === "string" && hlsUrl.includes(".m3u8") ? hlsUrl.trim() : undefined;
+      const normalizedThumbnailUrl =
+        typeof thumbnailUrl === "string" && thumbnailUrl.trim() &&
+        !thumbnailUrl.includes("1618005182384") && !thumbnailUrl.toLowerCase().endsWith(".m3u8")
+          ? thumbnailUrl.trim() : "";
+
+      const normalizedMedia =
+        Array.isArray(media) && media.length > 0
+          ? media.map((item: any) => {
+              const itemType = item?.type === "video" ? "video" : "image";
+              const itemUrl = itemType === "video"
+                ? normalizedHlsUrl || normalizedVideoUrl || item?.url
+                : item?.url;
+              if (typeof itemUrl !== "string" || !itemUrl.trim()) return null;
+              return {
+                type: itemType,
+                url: itemUrl.trim(),
+                hlsUrl: itemType === "video" ? normalizedHlsUrl || item?.hlsUrl : undefined,
+                thumbnailUrl: item?.thumbnailUrl || normalizedThumbnailUrl || undefined,
+              };
+            }).filter(Boolean)
+          : normalizedVideoUrl
+            ? [{ type: "video", url: normalizedHlsUrl || normalizedVideoUrl, hlsUrl: normalizedHlsUrl, thumbnailUrl: normalizedThumbnailUrl || undefined }]
+            : Array.isArray(images)
+              ? images.filter((url: any) => typeof url === "string" && url.trim()).map((url: string, index: number) => ({ type: "image", url: url.trim(), order: index }))
+              : [];
+
+      const effectiveType =
+        type || (effectiveProductId ? "product" : normalizedVideoUrl ? "video" : images && images.length > 1 ? "carousel" : "image");
 
       const rawReelData = {
         id: "reel_" + generateId(),
         title: (title || "").trim(),
-        videoUrl: videoUrl || "",
-        thumbnailUrl: (thumbnailUrl && !thumbnailUrl.includes("1618005182384")) ? thumbnailUrl : "",
+        videoUrl: normalizedVideoUrl,
+        thumbnailUrl: normalizedThumbnailUrl,
         description: description || "",
         creatorId: resolvedCreatorId || "creator",
         creatorName: resolvedCreatorName || "Creador",
@@ -621,8 +650,8 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         productId: effectiveProductId,
         type: effectiveType,
         images: images || [],
-        media: media || undefined,
-        hlsUrl: hlsUrl || undefined,
+        media: normalizedMedia,
+        hlsUrl: normalizedHlsUrl,
         aspectRatio: aspectRatio || "vertical",
       };
 
