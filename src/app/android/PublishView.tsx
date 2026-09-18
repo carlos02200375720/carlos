@@ -135,9 +135,16 @@ export default function AndroidPublishView({
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim(),
+          type: "video",
           videoUrl: url,
           hlsUrl: d.hlsUrl,
           thumbnailUrl: d.thumbnailUrl,
+          media: [{
+            type: "video",
+            url: d.hlsUrl || url,
+            hlsUrl: d.hlsUrl,
+            thumbnailUrl: d.thumbnailUrl || undefined,
+          }],
           creatorId: currentUser.originalId || currentUser.id,
           creatorUsername: currentUser.username,
           creatorName: currentUser.name,

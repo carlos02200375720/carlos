@@ -610,12 +610,22 @@ export default function App() {
           case "hls_job_completed": {
             if (payload.hlsManifestUrl) {
               setReels((prev) =>
-                prev.map((r) =>
-                  r.videoUrl === payload.originalUrl || r.id === payload.jobId
-                    ? { ...r, videoUrl: payload.hlsManifestUrl, hlsUrl: payload.hlsManifestUrl }
-                    : r
-                )
+                prev.map((r) => {
+                  const matchesJob =
+                    r.videoUrl === payload.originalUrl ||
+                    r.id === payload.jobId ||
+                    r.media?.some((m) => m.type === "video" && m.url === payload.originalUrl);
+                  if (!matchesJob) return r;
+                  const hlsUrl = payload.hlsManifestUrl;
+                  const media = Array.isArray(r.media)
+                    ? r.media.map((m) => m.type === "video" ? { ...m, url: hlsUrl, hlsUrl } : m)
+                    : [{ type: "video" as const, url: hlsUrl, hlsUrl, thumbnailUrl: r.thumbnailUrl || undefined }];
+                  return { ...r, videoUrl: hlsUrl, hlsUrl, media };
+                })
               );
+              setTimeout(() => {
+                refreshReels().catch((err) => console.warn("Error refreshing reels after HLS completion:", err));
+              }, 250);
             }
             break;
           }

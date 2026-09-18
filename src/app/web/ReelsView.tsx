@@ -294,10 +294,15 @@ export default function ReelsView({
           const reelProduct = reel.productId ? taggedProductsMap[reel.productId] : null;
           const isLiked = Boolean(currentUser && ((currentUser.originalId && (reel.likedBy || []).includes(currentUser.originalId)) || (currentUser.id && currentUser.id !== "current_user" && (reel.likedBy || []).includes(currentUser.id)) || (currentUser.username && currentUser.username !== "invitado" && (reel.likedBy || []).includes(currentUser.username))));
 
-          const reelMediaItems: ReelMedia[] = (reel.media && reel.media.length > 0)
-            ? reel.media
-            : (reel.videoUrl && reel.videoUrl.trim() !== "")
-            ? [{ type: "video", url: reel.videoUrl, hlsUrl: reel.hlsUrl }]
+          const reelMediaItems: ReelMedia[] =
+            Array.isArray(reel.media) && reel.media.length > 0
+              ? reel.media.map((item) =>
+                  item.type === "video"
+                    ? { ...item, url: reel.hlsUrl || reel.videoUrl || item.url, hlsUrl: reel.hlsUrl || item.hlsUrl, thumbnailUrl: item.thumbnailUrl || reel.thumbnailUrl || undefined }
+                    : item
+                )
+              : reel.videoUrl && reel.videoUrl.trim() !== ""
+                ? [{ type: "video", url: reel.hlsUrl || reel.videoUrl, hlsUrl: reel.hlsUrl, thumbnailUrl: reel.thumbnailUrl || undefined }]
             : (reel.images && reel.images.length > 0)
             ? reel.images.map((img, i) => ({ type: "image", url: img, order: i }))
             : [{ type: "image", url: reel.thumbnailUrl || "" }];

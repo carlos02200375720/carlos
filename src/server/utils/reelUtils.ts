@@ -6,44 +6,40 @@ import { Reel, ReelMedia } from "../../types";
  * Otherwise, it extracts from videoUrl and images/thumbnailUrl in consistent order.
  */
 export function buildReelMedia(reel: any): ReelMedia[] {
-  if (Array.isArray(reel.media) && reel.media.length > 0) {
-    return reel.media.map((m: any) => ({
-      type: m.type === "video" ? ("video" as const) : ("image" as const),
-      url: m.url || "",
-      hlsUrl: m.hlsUrl || undefined,
-      thumbnailUrl: m.thumbnailUrl || undefined,
-    }));
+  const rawMedia = Array.isArray(reel.media) ? reel.media : [];
+
+  // media[] is canonical; reconcile video entries with current top-level URLs.
+  if (rawMedia.length > 0) {
+    return rawMedia
+      .map((m: any): ReelMedia | null => {
+        const type = m?.type === "video" ? "video" : "image";
+        const fallbackUrl = type === "video" ? reel.hlsUrl || reel.videoUrl || m?.url : m?.url;
+        const url = typeof fallbackUrl === "string" ? fallbackUrl.trim() : "";
+        if (!url) return null;
+        const candidateHls = reel.hlsUrl || m?.hlsUrl;
+        const candidateThumb = m?.thumbnailUrl || reel.thumbnailUrl;
+        return {
+          type,
+          url,
+          hlsUrl: type === "video" && typeof candidateHls === "string" && candidateHls.includes(".m3u8") ? candidateHls.trim() : undefined,
+          thumbnailUrl: typeof candidateThumb === "string" && candidateThumb.trim() ? candidateThumb.trim() : undefined,
+        };
+      })
+      .filter((m): m is ReelMedia => m !== null);
   }
 
   const mediaList: ReelMedia[] = [];
-
-  // 1. Primary video (if present)
   if (reel.videoUrl && typeof reel.videoUrl === "string" && reel.videoUrl.trim() !== "") {
-    mediaList.push({
-      type: "video",
-      url: reel.videoUrl.trim(),
-      hlsUrl: reel.hlsUrl && reel.hlsUrl.includes(".m3u8") ? reel.hlsUrl.trim() : undefined,
-      thumbnailUrl: reel.thumbnailUrl || undefined,
-    });
+    const hlsUrl = typeof reel.hlsUrl === "string" && reel.hlsUrl.includes(".m3u8") ? reel.hlsUrl.trim() : undefined;
+    mediaList.push({ type: "video", url: hlsUrl || reel.videoUrl.trim(), hlsUrl, thumbnailUrl: reel.thumbnailUrl || undefined });
   }
-
-  // 2. Additional / companion images
   if (Array.isArray(reel.images) && reel.images.length > 0) {
     for (const img of reel.images) {
-      if (img && typeof img === "string" && img.trim() !== "") {
-        mediaList.push({
-          type: "image",
-          url: img.trim(),
-        });
-      }
+      if (img && typeof img === "string" && img.trim() !== "") mediaList.push({ type: "image", url: img.trim() });
     }
   } else if (!reel.videoUrl && reel.thumbnailUrl && typeof reel.thumbnailUrl === "string" && reel.thumbnailUrl.trim() !== "") {
-    mediaList.push({
-      type: "image",
-      url: reel.thumbnailUrl.trim(),
-    });
+    mediaList.push({ type: "image", url: reel.thumbnailUrl.trim() });
   }
-
   return mediaList;
 }
 
@@ -81,6 +77,25 @@ export function formatReelDTO(r: any, userMap?: Map<string, any>): Reel {
 
   const media = buildReelMedia({ ...r, videoUrl, hlsUrl, thumbnailUrl, images });
 
+  const normalizedMedia: ReelMedia[] = media.map((item) => {
+    if (item.type !== "video") return item;
+    return {
+      ...item,
+      url: hlsUrl || videoUrl || item.url,
+      hlsUrl: hlsUrl || item.hlsUrl,
+      thumbnailUrl: item.thumbnailUrl || thumbnailUrl || undefined,
+    };
+  });
+
+  if ((videoUrl || hlsUrl) && !normalizedMedia.some((item) => item.type === "video")) {
+    normalizedMedia.unshift({
+      type: "video",
+      url: hlsUrl || videoUrl,
+      hlsUrl,
+      thumbnailUrl: thumbnailUrl || undefined,
+    });
+  }
+
   // Infer or respect explicit Reel type
   let type = r.type;
   if (!type) {
@@ -113,7 +128,7 @@ export function formatReelDTO(r: any, userMap?: Map<string, any>): Reel {
     hlsUrl,
     thumbnailUrl,
     images,
-    media,
+    media: normalizedMedia,
     likes: typeof r.likes === "number" ? r.likes : 0,
     likedBy: Array.isArray(r.likedBy) ? r.likedBy : [],
     comments: Array.isArray(r.comments) ? r.comments : [],
