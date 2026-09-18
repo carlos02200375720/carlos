@@ -451,6 +451,13 @@ export async function transcodeVideoToHLS(
 
     const gcsReady = await isGcsAvailable();
 
+    // Cloud Run's local filesystem is ephemeral. In production, never return a
+    // /uploads URL as a successful Reel media URL because it will disappear or
+    // be served by the wrong frontend origin after deployment.
+    if (!gcsReady && process.env.NODE_ENV === "production") {
+      throw new Error("Google Cloud Storage no está disponible para publicar el stream HLS. Verifica las credenciales y el bucket antes de publicar.");
+    }
+
     if (gcsReady && files.length > 0) {
       try {
         console.log(`📦 [HLS Pre-Transcoder] Uploading ${files.length} multi-bitrate HLS files to GCS bucket "${bucketName}"...`);
