@@ -59,8 +59,17 @@ export const isNativeMobileWrapper = (): boolean => {
 export const getApiUrl = (path: string): string => {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
 
-  // In any standard web browser over http/https (Dev server, AI Studio preview, Cloud Run container),
-  // always use relative paths so requests go directly to this container's Express server.
+  // Large media uploads must bypass Vercel. Vercel can reject the multipart body
+  // before it ever reaches Cloud Run, producing HTTP 413. Send upload requests
+  // directly to the Cloud Run backend from the browser.
+  const isLargeMediaUpload = cleanPath === "/api/upload" || cleanPath === "/api/android/upload" || cleanPath === "/upload";
+  if (isLargeMediaUpload) {
+    const trimmedBackend = (BACKEND_URL || CLOUD_RUN_BACKEND_URL).replace(/\/$/, "");
+    return `${trimmedBackend}${cleanPath}`;
+  }
+
+  // In a standard web browser, keep normal API requests relative so Vercel's
+  // /api rewrite can continue handling the regular application API.
   if (typeof window !== "undefined" && window.location && window.location.protocol.startsWith("http") && !isNativeMobileWrapper()) {
     return cleanPath;
   }
@@ -79,15 +88,8 @@ export const getApiUrl = (path: string): string => {
  * Helper to get the correct WebSocket server URL.
  */
 export const getWebSocketUrl = (): string => {
-  if (typeof window !== "undefined" && window.location && window.location.protocol.startsWith("http")) {
-    // In any web browser (local dev, Cloud Run, Render, container preview)
-    if (!isNativeMobileWrapper() && !isExternalStaticHost()) {
-      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const host = window.location.host;
-      return `${wsProtocol}//${host}`;
-    }
-  }
-
+  // Vercel does not host the application's WebSocket server. Always connect
+  // the browser directly to the Cloud Run backend.
   if (BACKEND_URL) {
     try {
       const parsed = new URL(BACKEND_URL);

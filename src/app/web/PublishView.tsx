@@ -21,7 +21,7 @@ import {
   PackageCheck,
   RefreshCw
 } from "lucide-react";
-import { apiFetch } from "../../config";
+import { apiFetch, getApiUrl } from "../../config";
 import VideoUploadPreview from "./components/VideoUploadPreview";
 
 interface PublishViewProps {
@@ -237,7 +237,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     } catch (primaryErr: any) {
       // Direct relative fallback if primary fetch failed
       try {
-        response = await fetch("/api/upload", {
+        response = await fetch(getApiUrl("/api/upload"), {
           method: "POST",
           body: createFormData(),
         });
@@ -251,7 +251,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     // If the server returned 5xx or HTML, attempt direct local fallback
     if (!response.ok || !rawText.trim().startsWith("{")) {
       try {
-        const directRes = await fetch("/api/upload", {
+        const directRes = await fetch(getApiUrl("/api/upload"), {
           method: "POST",
           body: createFormData(),
         });
@@ -266,7 +266,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     // Second fallback to android upload endpoint if standard failed
     if (!response.ok || !rawText.trim().startsWith("{")) {
       try {
-        const androidRes = await fetch("/api/android/upload", {
+        const androidRes = await fetch(getApiUrl("/api/android/upload"), {
           method: "POST",
           body: createFormData(),
         });
