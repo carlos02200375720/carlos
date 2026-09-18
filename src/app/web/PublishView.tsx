@@ -443,9 +443,16 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            type: "video",
             videoUrl,
             hlsUrl,
             thumbnailUrl,
+            media: [{
+              type: "video",
+              url: hlsUrl || videoUrl,
+              hlsUrl,
+              thumbnailUrl: thumbnailUrl || undefined,
+            }],
             description,
             creatorId: currentUser.originalId || currentUser.id,
             creatorOriginalId: currentUser.originalId || "",
