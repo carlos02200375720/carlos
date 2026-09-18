@@ -40,6 +40,7 @@ export interface TranscodeHlsResult {
   bucketPath: string;
   durationSec?: number;
   latencyMs: number;
+  posterUrl?: string;
 }
 
 export interface H264OptimizationResult {
@@ -436,12 +437,16 @@ export async function transcodeVideoToHLS(
     // Write index.m3u8 as backward-compatible alias to master
     await fs.promises.writeFile(path.join(outputDir, "index.m3u8"), masterContent);
 
+    const posterPath = path.join(outputDir, "poster.jpg");
+    await execAsync(`"${ffmpegBin}" -y -ss 00:00:00.500 -i "${inputFilePath}" -frames:v 1 -q:v 3 "${posterPath}"`, { timeout: 30000, maxBuffer: 10 * 1024 * 1024 }).catch(() => undefined);
+
     if (onProgress) onProgress(75);
 
     const files = await fs.promises.readdir(outputDir);
     const destinationFolder = `hls/${videoId}`;
 
     let masterM3u8Url = "";
+    let posterUrl = "";
     let usedGcs = false;
 
     const gcsReady = await isGcsAvailable();
@@ -455,6 +460,7 @@ export async function transcodeVideoToHLS(
           const filePath = path.join(outputDir, fileName);
           const isPlaylist = fileName.endsWith(".m3u8");
           const isSegment = fileName.endsWith(".ts");
+          const isPoster = fileName.endsWith(".jpg") || fileName.endsWith(".jpeg");
 
           const destination = `${destinationFolder}/${fileName}`;
           const gcsFile = bucket.file(destination);
@@ -463,6 +469,8 @@ export async function transcodeVideoToHLS(
             ? "application/x-mpegURL"
             : isSegment
             ? "video/MP2T"
+            : isPoster
+            ? "image/jpeg"
             : "application/octet-stream";
 
           const cacheControl = isSegment
@@ -495,6 +503,7 @@ export async function transcodeVideoToHLS(
         await Promise.all(uploadPromises);
         usedGcs = true;
         masterM3u8Url = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/master.m3u8`;
+        posterUrl = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/poster.jpg`;
         console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed adaptive HLS stream to GCS: ${masterM3u8Url}`);
       } catch (gcsErr: any) {
         console.warn(`⚠️ [HLS Pre-Transcoder] GCS upload unavailable (${gcsErr.message}). Switching to local persistent storage fallback...`);
@@ -514,6 +523,7 @@ export async function transcodeVideoToHLS(
       }
 
       masterM3u8Url = `/uploads/hls/${videoId}/master.m3u8`;
+      posterUrl = `/uploads/hls/${videoId}/poster.jpg`;
       console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed local adaptive HLS stream: ${masterM3u8Url}`);
     }
 
@@ -527,6 +537,7 @@ export async function transcodeVideoToHLS(
       bucketPath: usedGcs ? destinationFolder : `uploads/hls/${videoId}`,
       durationSec: undefined,
       latencyMs: totalLatencyMs,
+      posterUrl: posterUrl || undefined,
     };
   } catch (ffmpegErr: any) {
     console.warn(`⚠️ [HLS Pre-Transcoder] Encountered issue during primary HLS processing: ${ffmpegErr.message}. Fallback to direct local HLS generation...`);
