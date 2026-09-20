@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import { User, Product, Reel, Order } from "../../types";
 import { Eye, Heart, MessageCircle, BarChart3, ShoppingBag, ShieldCheck, Shield, Lock, FileText, Mail, Users, ArrowUpRight, Play, Star, Bookmark, Settings, Camera, Plus, Search, X, LogOut, BadgeCheck, UserPlus, UserCheck, Package, Edit3, Trash2, Upload, Check, AlertCircle, Sparkles, DollarSign, Layers, CheckCircle2, RefreshCw, Loader2, Truck, Copy, ExternalLink, MapPin, Calendar, Clock, TrendingUp, Send, PackageCheck, PackageSearch } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import PublishView from "./PublishView";
 import LoginView from "./LoginView";
 import UserPublicationsFeed from "./components/UserPublicationsFeed";
 import { apiFetch } from "../../config";
@@ -201,7 +200,7 @@ export default function ProfileView({
   const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
   const [savedReels, setSavedReels] = useState<Reel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeSubTab, setActiveSubTab] = useState<"publications" | "products" | "saved" | "orders" | "performance" | "edit" | "publish">("publications");
+  const [activeSubTab, setActiveSubTab] = useState<"publications" | "products" | "saved" | "orders" | "performance" | "edit">("publications");
   const [publicTab, setPublicTab] = useState<"publications" | "products" | "policies">("publications");
   // Dedicated user publications feed state
   const [activeFeedReelId, setActiveFeedReelId] = useState<string | null>(null);
@@ -1332,14 +1331,6 @@ export default function ProfileView({
                         <Play className="w-4 h-4 text-amber-500 fill-amber-500/10" />
                         <span>Mis Publicaciones ({userReels.length})</span>
                       </h3>
-                      <button
-                        onClick={() => setActiveSubTab("publish")}
-                        className="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold font-sans text-xs rounded-lg transition-all duration-200 shadow-sm shadow-amber-500/10 cursor-pointer"
-                        id="btn-publicar-contenido"
-                      >
-                        <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                        <span>Publicar</span>
-                      </button>
                     </div>
 
                     {userReels.length === 0 ? (
@@ -1467,15 +1458,6 @@ export default function ProfileView({
                           </div>
 
                           <div className="flex items-center space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => setActiveSubTab("publish")}
-                              className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs flex items-center space-x-1.5 transition-all shadow-xs shrink-0 cursor-pointer"
-                              id="btn-add-new-product"
-                            >
-                              <Plus className="w-4 h-4" />
-                              <span>Publicar Producto</span>
-                            </button>
                           </div>
                         </div>
 
@@ -1531,14 +1513,6 @@ export default function ProfileView({
                         <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
                           Agrega artículos a tu catálogo para que tus clientes puedan descubrirlos, comprarlos y agregarlos al carrito.
                         </p>
-                        <button
-                          type="button"
-                          onClick={() => setActiveSubTab("publish")}
-                          className="mt-4 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs inline-flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>Publicar mi primer producto</span>
-                        </button>
                       </div>
                     ) : (() => {
                       const filtered = userProducts.filter((p) => {
@@ -2164,49 +2138,6 @@ export default function ProfileView({
                         </div>
                       </div>
                     )}
-                  </motion.div>
-                )}
-
-                {activeSubTab === "publish" && (
-                  <motion.div
-                    key="admin-publish"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    <PublishView
-                      currentUser={currentUser}
-                      onBack={() => setActiveSubTab("publications")}
-                      onSuccess={() => {
-                        if (onPublishSuccess) {
-                          onPublishSuccess();
-                        }
-                        if (activeUserId) {
-                          setLoading(true);
-                          fetch(`/api/users/${activeUserId}`)
-                            .then((res) => res.json())
-                            .then((data) => {
-                              if (!data.error) {
-                                setProfileUser(data.user);
-                                setUserProducts(data.products || []);
-                                setUserReels(data.reels || []);
-                                setUserOrders(data.orders || []);
-                                setSavedReels(data.savedReels || []);
-                              }
-                              setLoading(false);
-                              setActiveSubTab("publications");
-                            })
-                            .catch(() => {
-                              setLoading(false);
-                              setActiveSubTab("publications");
-                            });
-                        } else {
-                          setActiveSubTab("publications");
-                        }
-                      }}
-                      userProducts={userProducts}
-                    />
                   </motion.div>
                 )}
 
