@@ -8,6 +8,7 @@ import ProfileView from "./ProfileView";
 import AndroidLoginView from "./LoginView";
 import { motion, AnimatePresence } from "motion/react";
 import { safeStorage } from "../../utils/safeStorage";
+import { navigateTo } from "../../router";
 
 export interface AndroidAppProps {
   activeTab: 'reels' | 'shop' | 'messages' | 'profile';
@@ -249,6 +250,14 @@ export default function AndroidApp({
                 onClearInitialStep={() => {
                   setShopInitialStep('catalog');
                   setShopInitialSelectedIndices([]);
+                }}
+                onSelectProduct={(p) => {
+                  setDirectSelectedProduct(p);
+                  navigateTo(`/product/${encodeURIComponent(p.id)}`);
+                }}
+                onBackToCatalog={() => {
+                  setDirectSelectedProduct(null);
+                  navigateTo('/shop');
                 }}
                 cartDrawerRequest={cartDrawerRequest}
                 savedReelIds={savedReelIds}

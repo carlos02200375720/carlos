@@ -24,6 +24,7 @@ export interface AndroidShopViewProps {
   selectedProductDirectly?: Product | null;
   clearDirectProduct?: () => void;
   onClearInitialProduct?: () => void;
+  onBackToCatalog?: () => void;
   reels?: Reel[];
   orders?: Order[];
   onUpdateOrders?: (orders: Order[]) => void;
@@ -173,6 +174,7 @@ export default function AndroidShopView({
   initialSelectedCartIndices,
   savedReelIds = [],
   onToggleSave,
+  onBackToCatalog,
 }: AndroidShopViewProps) {
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [searchQuery, setSearchQuery] = useState("");
@@ -1348,6 +1350,7 @@ export default function AndroidShopView({
                 setSelectedProduct(null);
                 clearDirectProduct?.();
                 onClearInitialProduct?.();
+                onBackToCatalog?.();
               }}
               className="pointer-events-auto p-2 bg-transparent text-white active:scale-90 transition-transform flex items-center justify-center cursor-pointer border-0 shadow-none outline-none group"
               title="Volver a la tienda"

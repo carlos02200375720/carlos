@@ -185,7 +185,6 @@ export default function App() {
     if (!currentRoute) return;
 
     if (currentRoute.type === 'product') {
-      setActivePlatform('web');
       setActiveTab('shop');
       setShopInitialStep('detail');
       setIsProductDetailOpen(true);
