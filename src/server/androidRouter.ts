@@ -698,7 +698,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
   // Android Publish / Create Product with auto Companion Reel
   router.post("/products", async (req: Request, res: Response) => {
     try {
-      const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, category } = req.body;
+      const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, variants, variantList, category } = req.body;
       let resolvedSellerId = sellerId || req.headers["x-user-id"];
       let seller: any = null;
 
@@ -729,8 +729,8 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         shippingCost: Number(shippingCost) || 0,
         images: images || [],
         videos: videos || [],
-        variants: [],
-        variantList: [],
+        variants: Array.isArray(variants) ? variants : [],
+        variantList: Array.isArray(variantList) ? variantList : [],
         category: category || "",
         views: 0,
       };
@@ -1045,6 +1045,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
               images: p.images || [],
               videos: p.videos || [],
               variants: p.variants || [],
+              variantList: p.variantList || [],
             };
           });
         }
