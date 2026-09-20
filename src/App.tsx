@@ -7,6 +7,7 @@ import { AndroidApp } from "./app/android";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { safeStorage } from "./utils/safeStorage";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
+import { useCurrentRoute, navigateTo } from "./router";
 
 const deduplicateById = <T extends { id?: string; _id?: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -130,6 +131,7 @@ export default function App() {
   const [isProductDetailOpen, setIsProductDetailOpen] = useState(false);
   const [shopInitialStep, setShopInitialStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>('catalog');
   const [shopInitialSelectedIndices, setShopInitialSelectedIndices] = useState<number[]>([]);
+  const [targetReelId, setTargetReelId] = useState<string | null>(null);
 
   // Private 1-on-1 Chat States
   const [activeChatUser, setActiveChatUser] = useState<User | null>(null);
@@ -150,13 +152,17 @@ export default function App() {
   const [guestInteractionAlert, setGuestInteractionAlert] = useState<string | null>(null);
   const [isLiveViewerOpen, setIsLiveViewerOpen] = useState(false);
 
-  // Platform Target: 'android' vs 'web' (defaults to 'android' as requested to preview and develop Android app)
+  // Platform Target: 'android' vs 'web'
   const [activePlatform, setActivePlatform] = useState<'android' | 'web'>(() => {
     if (typeof window !== "undefined") {
       const saved = safeStorage.getItem("mallsocial_platform_target");
       if (saved === "android" || saved === "web") return saved;
       if (window.location.search.includes("platform=android")) return "android";
       if (window.location.search.includes("platform=web")) return "web";
+      // If direct deep link route is accessed (e.g. /product, /reel, /store, /shop, etc.)
+      if (window.location.pathname.match(/^\/(product|store|creator|reel|shop|checkout|cart|messages|profile|admin)/i)) {
+        return "web";
+      }
       if ((import.meta as any).env?.VITE_APP_TARGET === "android") return "android";
       if ((import.meta as any).env?.VITE_APP_TARGET === "web") return "web";
       const win = window as any;
@@ -171,6 +177,64 @@ export default function App() {
     setActivePlatform(target);
     safeStorage.setItem("mallsocial_platform_target", target);
   }, []);
+
+  // Listen to browser URL route changes (e.g. /product/:id, /reel/:id, /store/:id, /shop, etc.)
+  const currentRoute = useCurrentRoute();
+
+  useEffect(() => {
+    if (!currentRoute) return;
+
+    if (currentRoute.type === 'product') {
+      setActivePlatform('web');
+      setActiveTab('shop');
+      setShopInitialStep('detail');
+      setIsProductDetailOpen(true);
+      // Find product in memory or fetch if not present yet
+      const existing = products.find(p => p.id === currentRoute.productId || (p as any)._id === currentRoute.productId);
+      if (existing) {
+        setDirectSelectedProduct(existing);
+      } else {
+        apiFetch(`/api/products/${encodeURIComponent(currentRoute.productId)}`)
+          .then(res => res.ok ? res.json() : null)
+          .then(data => {
+            if (data && !data.error && data.id) {
+              setDirectSelectedProduct(data);
+              setProducts(prev => {
+                const found = prev.some(p => p.id === data.id);
+                return found ? prev : [data, ...prev];
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    } else if (currentRoute.type === 'reels') {
+      setActiveTab('reels');
+      if (currentRoute.reelId) {
+        setTargetReelId(currentRoute.reelId);
+      }
+    } else if (currentRoute.type === 'store') {
+      setActivePlatform('web');
+      setActiveTab('profile');
+      setSelectedCreatorProfileId(currentRoute.sellerId);
+    } else if (currentRoute.type === 'shop') {
+      setActiveTab('shop');
+      setShopInitialStep('catalog');
+      setDirectSelectedProduct(null);
+      setIsProductDetailOpen(false);
+    } else if (currentRoute.type === 'checkout') {
+      setActiveTab('shop');
+      setShopInitialStep('checkout');
+    } else if (currentRoute.type === 'messages') {
+      setActiveTab('messages');
+    } else if (currentRoute.type === 'profile') {
+      setActiveTab('profile');
+      if (currentRoute.userId) {
+        setSelectedCreatorProfileId(currentRoute.userId);
+      }
+    } else if (currentRoute.type === 'admin') {
+      setActiveTab('admin');
+    }
+  }, [currentRoute, products]);
 
   // App Startup & Server Connection Splash State (disabled by default on web for instant paint)
   const [isInitialLoading, setIsInitialLoading] = useState(() => {
@@ -1152,19 +1216,19 @@ export default function App() {
   const handleCreatorProfileLink = (creatorId: string) => {
     setSelectedCreatorProfileId(creatorId);
     setActiveTab('profile');
+    navigateTo(`/creator/${encodeURIComponent(creatorId)}`);
   };
 
   const handleProductDetailsLink = (product: Product) => {
     setDirectSelectedProduct(product);
     setActiveTab('shop');
+    navigateTo(`/product/${encodeURIComponent(product.id)}`);
   };
 
   const handleReelLink = (reelId: string) => {
-    const idx = reels.findIndex(r => r.id === reelId);
-    if (idx !== -1) {
-      // Reels view auto-scrolls to active reel
-      setActiveTab('reels');
-    }
+    setTargetReelId(reelId);
+    setActiveTab('reels');
+    navigateTo(`/reel/${encodeURIComponent(reelId)}`);
   };
 
   // Go live action
@@ -1304,8 +1368,10 @@ export default function App() {
         onContinueAnyway={() => setIsInitialLoading(false)}
       />
 
-      {/* Floating Platform Switcher for Preview / Development */}
-      {typeof window !== "undefined" && !(typeof (window as any).Capacitor !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) && (
+      {/* Floating Platform Switcher for Android Preview Mode:
+          When on Web, it has been moved directly into the Admin Panel horizontal menu;
+          When on Android, it allows returning to Web mode cleanly. */}
+      {typeof window !== "undefined" && !(typeof (window as any).Capacitor !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) && activePlatform === 'android' && (
         <div
           className="fixed top-3 right-3 z-[9999] flex items-center bg-slate-900/90 backdrop-blur-md p-1 border border-slate-700/80 rounded-full shadow-2xl text-xs font-semibold text-white select-none transition-all"
           id="preview-platform-switcher"
@@ -1447,6 +1513,9 @@ export default function App() {
             setGuestInteractionAlert={setGuestInteractionAlert}
             openPrivateChatDirectly={openPrivateChatDirectly}
             socket={socketRef.current}
+            activePlatform={activePlatform}
+            onSwitchPlatform={handleSwitchPlatform}
+            targetReelId={targetReelId}
           />
         </div>
       )}

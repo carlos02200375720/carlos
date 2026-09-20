@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { apiFetch, getMediaUrl } from "../../config";
 import { ReelProgressBar } from "./components/ReelProgressBar";
 import Hls from "hls.js";
+import { getReelShareUrl } from "../../router";
 
 interface ReelsViewProps {
   reels: Reel[];
@@ -22,6 +23,8 @@ interface ReelsViewProps {
   onToggleSaveReel: (reelId: string) => void;
   onToggleFollowUser?: (creatorId: string) => void;
   onGuestInteraction: (action: string) => void;
+  initialReelId?: string | null;
+  onActiveReelChange?: (reelId: string) => void;
 }
 
 export default function ReelsView({
@@ -40,6 +43,8 @@ export default function ReelsView({
   onToggleSaveReel,
   onToggleFollowUser,
   onGuestInteraction,
+  initialReelId,
+  onActiveReelChange,
 }: ReelsViewProps) {
   const [activeReelIndex, setActiveReelIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
@@ -125,6 +130,22 @@ export default function ReelsView({
     setMediaAspectRatios((prev) => prev[reelId] === ratio ? prev : { ...prev, [reelId]: ratio });
   }, []);
 
+  // Auto-scroll to initialReelId if deep-linked via URL
+  useEffect(() => {
+    if (initialReelId && displayedReels.length > 0) {
+      const idx = displayedReels.findIndex((r) => r.id === initialReelId);
+      if (idx !== -1 && idx !== activeReelIndex) {
+        setActiveReelIndex(idx);
+        if (containerRef.current) {
+          const childHeight = containerRef.current.clientHeight;
+          if (childHeight) {
+            containerRef.current.scrollTo({ top: idx * childHeight, behavior: 'instant' });
+          }
+        }
+      }
+    }
+  }, [initialReelId, displayedReels]);
+
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const container = e.currentTarget;
     const childHeight = container.clientHeight;
@@ -134,6 +155,9 @@ export default function ReelsView({
       setActiveReelIndex(index);
       setActiveVideoElement(null);
       setIsPlaying(true);
+      if (displayedReels[index]) {
+        onActiveReelChange?.(displayedReels[index].id);
+      }
     }
   };
 
@@ -191,8 +215,8 @@ export default function ReelsView({
   };
 
   const copyToClipboard = (reelId: string) => {
-    const dummyUrl = `${window.location.origin}/reel/${reelId}`;
-    navigator.clipboard.writeText(dummyUrl).then(() => {
+    const shareUrl = getReelShareUrl(reelId);
+    navigator.clipboard.writeText(shareUrl).then(() => {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     });

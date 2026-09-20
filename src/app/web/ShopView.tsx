@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X, Video, Globe, PackageCheck, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Check, Eye } from "lucide-react";
+import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X, Video, Globe, PackageCheck, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Check, Eye, Share2 } from "lucide-react";
 import { Product, CartItem, Order, User } from "../../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../../config";
 import { NativeVideoPlayer } from "./components/VideoPlayer";
+import { getProductShareUrl } from "../../router";
 
 const CJ_DEST_COUNTRIES = [
   { code: "US", name: "Estados Unidos 🇺🇸" },
@@ -144,6 +145,9 @@ interface ShopViewProps {
   initialStep?: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou';
   initialSelectedCartIndices?: number[];
   onClearInitialStep?: () => void;
+  onProductSelect?: (product: Product) => void;
+  onBackToCatalog?: () => void;
+  onStepChange?: (step: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou') => void;
 }
 
 export default function ShopView({
@@ -163,7 +167,10 @@ export default function ShopView({
   onLoginSuccess,
   initialStep,
   initialSelectedCartIndices,
-  onClearInitialStep
+  onClearInitialStep,
+  onProductSelect,
+  onBackToCatalog,
+  onStepChange,
 }: ShopViewProps) {
   // Navigation states: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou'
   const [activeStep, setActiveStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>('catalog');
@@ -172,6 +179,7 @@ export default function ShopView({
   const [selectedVariants, setSelectedVariants] = useState<{[key: string]: string}>({});
   const [optionsValidationError, setOptionsValidationError] = useState<string | null>(null);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
+  const [copiedProductLink, setCopiedProductLink] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("todos");
   const [displayCount, setDisplayCount] = useState<number>(12);
@@ -638,6 +646,27 @@ export default function ShopView({
       gallerySliderRef.current.scrollLeft = 0;
     }
     setActiveStep('detail');
+    onProductSelect?.(product);
+    onStepChange?.('detail');
+  };
+
+  const handleBackToCatalog = () => {
+    setActiveStep('catalog');
+    setSelectedProduct(null);
+    onBackToCatalog?.();
+    onStepChange?.('catalog');
+  };
+
+  const handleShareProduct = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!selectedProduct) return;
+    const url = getProductShareUrl(selectedProduct.id);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopiedProductLink(true);
+        setTimeout(() => setCopiedProductLink(false), 2500);
+      }).catch(() => {});
+    }
   };
 
   // Track and count views when a product's detail page is visited
@@ -658,7 +687,7 @@ export default function ShopView({
   // Cart selection state
   const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>([]);
 
-  // Respond to initialStep or initialSelectedCartIndices from external navigation (e.g., from ReelsView)
+  // Respond to initialStep or initialSelectedCartIndices from external navigation
   useEffect(() => {
     if (initialStep && initialStep !== 'catalog') {
       setActiveStep(initialStep);
@@ -666,6 +695,9 @@ export default function ShopView({
         setSelectedCartIndices(initialSelectedCartIndices);
       }
       onClearInitialStep?.();
+    } else if (initialStep === 'catalog' && activeStep !== 'catalog') {
+      setActiveStep('catalog');
+      setSelectedProduct(null);
     }
   }, [initialStep, initialSelectedCartIndices, onClearInitialStep]);
 
@@ -849,6 +881,14 @@ export default function ShopView({
 
   return (
     <div className="w-full min-h-screen bg-white relative flex flex-col no-scrollbar" id="shop-panel" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      {/* Toast Notification when Product Link is Copied */}
+      {copiedProductLink && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] bg-slate-900/95 backdrop-blur-md text-white text-xs font-bold px-4 py-2 rounded-full shadow-2xl border border-amber-500/50 flex items-center gap-2 pointer-events-none animate-in fade-in zoom-in-95 duration-200">
+          <Check className="w-4 h-4 text-amber-400" />
+          <span>¡Enlace del producto copiado al portapapeles!</span>
+        </div>
+      )}
+
       {/* 1. Detail Page Transparent Fixed Header */}
       {activeStep === 'detail' ? (
         <header
@@ -862,8 +902,8 @@ export default function ShopView({
           <div className="flex items-center">
             <button
               type="button"
-              onClick={() => setActiveStep('catalog')}
-              className="w-10 h-10 rounded-full bg-transparent text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer"
+              onClick={handleBackToCatalog}
+              className="w-10 h-10 rounded-full bg-slate-900/60 backdrop-blur-md text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer"
               aria-label="Regresar al catálogo"
               id="detail-back-button"
             >
@@ -871,12 +911,22 @@ export default function ShopView({
             </button>
           </div>
 
-          {/* Carrito */}
-          <div className="flex items-center">
+          {/* Carrito y Botón Compartir */}
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={handleShareProduct}
+              className="w-10 h-10 rounded-full bg-slate-900/60 backdrop-blur-md text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer"
+              id="detail-share-trigger-btn"
+              aria-label="Compartir producto"
+              title="Copiar enlace directo del producto"
+            >
+              <Share2 className="w-5 h-5 text-white" />
+            </button>
             <button
               type="button"
               onClick={() => setShowCartDrawer(true)}
-              className="relative w-10 h-10 rounded-full bg-transparent text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer"
+              className="relative w-10 h-10 rounded-full bg-slate-900/60 backdrop-blur-md text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer"
               id="detail-cart-trigger-btn"
               aria-label="Ver carrito"
             >
@@ -904,10 +954,7 @@ export default function ShopView({
             <div className="flex items-center space-x-2 shrink-0">
               {activeStep !== 'catalog' && (
                 <button
-                  onClick={() => {
-                    if (activeStep === 'checkout') setActiveStep('catalog');
-                    else if (activeStep === 'thankyou') setActiveStep('catalog');
-                  }}
+                  onClick={handleBackToCatalog}
                   className="p-1 sm:p-1.5 rounded-full hover:bg-slate-200 text-slate-600 transition-all cursor-pointer flex items-center justify-center pointer-events-auto"
                 >
                   <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />

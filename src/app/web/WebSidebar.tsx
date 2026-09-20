@@ -1,6 +1,7 @@
 import React from "react";
 import { Play, ShoppingBag, User as UserIcon, MessageSquare, Sparkles, ShieldCheck } from "lucide-react";
 import { User, NavigationTab } from "../../types";
+import { navigateTo } from "../../router";
 
 export interface WebSidebarProps {
   activeTab: NavigationTab;
@@ -37,7 +38,7 @@ export default function WebSidebar({
         {/* Brand / Logo */}
         <div
           className="flex items-center space-x-2.5 px-3 py-3 mb-6 cursor-pointer group"
-          onClick={() => { refreshReels(); setActiveTab('reels'); }}
+          onClick={() => { refreshReels(); setActiveTab('reels'); navigateTo('/'); }}
         >
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-all">
             <Sparkles className="w-5 h-5 text-white" />
@@ -58,7 +59,7 @@ export default function WebSidebar({
         <nav className="space-y-1.5" id="web-sidebar-navigation">
           {/* 1. Reels */}
           <button
-            onClick={() => { refreshReels(); setActiveTab('reels'); }}
+            onClick={() => { refreshReels(); setActiveTab('reels'); navigateTo('/'); }}
             className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
               activeTab === 'reels'
                 ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
@@ -74,7 +75,7 @@ export default function WebSidebar({
 
           {/* 2. Tienda */}
           <button
-            onClick={() => setActiveTab('shop')}
+            onClick={() => { setActiveTab('shop'); navigateTo('/shop'); }}
             className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
               activeTab === 'shop'
                 ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
@@ -90,7 +91,7 @@ export default function WebSidebar({
 
           {/* 3. Mensajes */}
           <button
-            onClick={() => setActiveTab('messages')}
+            onClick={() => { setActiveTab('messages'); navigateTo('/messages'); }}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
               activeTab === 'messages'
                 ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
@@ -115,7 +116,7 @@ export default function WebSidebar({
 
           {/* 4. Perfil */}
           <button
-            onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
+            onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); navigateTo('/profile'); }}
             className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
               activeTab === 'profile' && selectedCreatorProfileId === null
                 ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
@@ -133,7 +134,7 @@ export default function WebSidebar({
 
           {/* 5. Panel de Administración */}
           <button
-            onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('admin'); }}
+            onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('admin'); navigateTo('/admin'); }}
             className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
               activeTab === 'admin'
                 ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
@@ -152,7 +153,7 @@ export default function WebSidebar({
       {/* Desktop Web Footer Profile Card */}
       <div className={`pt-4 border-t ${isDarkNavActive ? "border-slate-800/80" : "border-slate-200"}`}>
         <div
-          onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
+          onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); navigateTo('/profile'); }}
           className={`flex items-center space-x-3 p-2.5 rounded-2xl border transition-all cursor-pointer group ${
             isDarkNavActive
               ? "bg-slate-900/80 hover:bg-slate-900 border-slate-800/80"
@@ -191,7 +192,7 @@ export default function WebSidebar({
       id="mobile-web-bottom-nav"
     >
       <button
-        onClick={() => { refreshReels(); setActiveTab('reels'); }}
+        onClick={() => { refreshReels(); setActiveTab('reels'); navigateTo('/'); }}
         className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
           activeTab === 'reels' ? "text-amber-500" : isDarkNavActive ? "text-slate-400" : "text-slate-500"
         }`}
@@ -201,7 +202,7 @@ export default function WebSidebar({
       </button>
 
       <button
-        onClick={() => setActiveTab('shop')}
+        onClick={() => { setActiveTab('shop'); navigateTo('/shop'); }}
         className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
           activeTab === 'shop' ? "text-amber-500" : isDarkNavActive ? "text-slate-400" : "text-slate-500"
         }`}
@@ -211,7 +212,7 @@ export default function WebSidebar({
       </button>
 
       <button
-        onClick={() => setActiveTab('messages')}
+        onClick={() => { setActiveTab('messages'); navigateTo('/messages'); }}
         className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors relative ${
           activeTab === 'messages' ? "text-amber-500" : isDarkNavActive ? "text-slate-400" : "text-slate-500"
         }`}
@@ -228,7 +229,7 @@ export default function WebSidebar({
       </button>
 
       <button
-        onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); }}
+        onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); navigateTo('/profile'); }}
         className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
           activeTab === 'profile' ? "text-amber-500" : isDarkNavActive ? "text-slate-400" : "text-slate-500"
         }`}
@@ -245,7 +246,7 @@ export default function WebSidebar({
       </button>
 
       <button
-        onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('admin'); }}
+        onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('admin'); navigateTo('/admin'); }}
         className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
           activeTab === 'admin' ? "text-amber-500" : isDarkNavActive ? "text-slate-400" : "text-slate-500"
         }`}

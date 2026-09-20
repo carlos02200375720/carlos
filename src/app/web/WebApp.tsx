@@ -8,6 +8,7 @@ import ProfileView from "./ProfileView";
 import AdminView from "./AdminView";
 import { motion, AnimatePresence } from "motion/react";
 import { safeStorage } from "../../utils/safeStorage";
+import { navigateTo } from "../../router";
 
 export interface WebAppProps {
   activeTab: NavigationTab;
@@ -34,6 +35,7 @@ export interface WebAppProps {
   savedReelIds: string[];
   isLiveViewerOpen: boolean;
   totalUnreads: number;
+  targetReelId?: string | null;
   handleAddToCart: (product: Product, quantity?: number, selectedOptions?: Record<string, string>, selectedVariantVid?: string) => void;
   handleRemoveFromCart: (productId: string, idx?: number) => void;
   handleUpdateCartQuantity: (productId: string, qty: number, idx?: number) => void;
@@ -116,6 +118,9 @@ export default function WebApp({
   setGuestInteractionAlert,
   openPrivateChatDirectly,
   socket,
+  activePlatform,
+  onSwitchPlatform,
+  targetReelId,
 }: WebAppProps) {
   const isDarkNavActive = activeTab === 'reels';
 
@@ -152,11 +157,15 @@ export default function WebApp({
                 cart={cart}
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}
-                onNavigateToShop={() => setActiveTab('shop')}
+                onNavigateToShop={() => {
+                  setActiveTab('shop');
+                  navigateTo('/shop');
+                }}
                 onNavigateToCheckout={(selectedIndices) => {
                   setShopInitialStep('checkout');
                   setShopInitialSelectedIndices(selectedIndices || []);
                   setActiveTab('shop');
+                  navigateTo('/checkout');
                 }}
                 onProductClick={handleProductDetailsLink}
                 onCreatorClick={handleCreatorProfileLink}
@@ -167,6 +176,10 @@ export default function WebApp({
                 onToggleFollowUser={handleToggleFollowUser}
                 onGuestInteraction={(action) => {
                   setGuestInteractionAlert(`Para ${action} en este reel, por favor inicia sesión o crea una cuenta de creador.`);
+                }}
+                initialReelId={targetReelId}
+                onActiveReelChange={(reelId) => {
+                  navigateTo(`/reel/${encodeURIComponent(reelId)}`);
                 }}
               />
             )}
@@ -184,13 +197,28 @@ export default function WebApp({
                 onCreatorClick={handleCreatorProfileLink}
                 selectedProductDirectly={directSelectedProduct}
                 clearDirectProduct={() => setDirectSelectedProduct(null)}
-                onNavigateToHistory={() => { setSelectedCreatorProfileId(currentUser.id); setActiveTab('profile'); }}
+                onNavigateToHistory={() => { setSelectedCreatorProfileId(currentUser.id); setActiveTab('profile'); navigateTo('/profile'); }}
                 onToggleDetailView={setIsProductDetailOpen}
                 initialStep={shopInitialStep}
                 initialSelectedCartIndices={shopInitialSelectedIndices}
                 onClearInitialStep={() => {
                   setShopInitialStep('catalog');
                   setShopInitialSelectedIndices([]);
+                }}
+                onProductSelect={(prod) => {
+                  setDirectSelectedProduct(prod);
+                  navigateTo(`/product/${encodeURIComponent(prod.id)}`);
+                }}
+                onBackToCatalog={() => {
+                  setDirectSelectedProduct(null);
+                  navigateTo('/shop');
+                }}
+                onStepChange={(step) => {
+                  if (step === 'checkout') {
+                    navigateTo('/checkout');
+                  } else if (step === 'catalog') {
+                    navigateTo('/shop');
+                  }
                 }}
               />
             )}
@@ -260,6 +288,8 @@ export default function WebApp({
                   setUsers={setUsers}
                   setReels={setReels}
                   setProducts={setProducts}
+                  activePlatform={activePlatform}
+                  onSwitchPlatform={onSwitchPlatform}
                 />
               </div>
             )}
