@@ -7,7 +7,7 @@ import { AndroidApp } from "./app/android";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { safeStorage } from "./utils/safeStorage";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
-import { useCurrentRoute, navigateTo } from "./router";
+import { useCurrentRoute, navigateTo, parseRoute } from "./router";
 
 const deduplicateById = <T extends { id?: string; _id?: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -21,7 +21,28 @@ const deduplicateById = <T extends { id?: string; _id?: string }>(items: T[]): T
 
 export default function App() {
   // Navigation states: 'reels' | 'shop' | 'messages' | 'profile' | 'admin'
-  const [activeTab, setActiveTab] = useState<NavigationTab>('reels');
+  // Synchronously initialize from the URL pathname to avoid flashing Reels on deep-link entry
+  const [activeTab, setActiveTab] = useState<NavigationTab>(() => {
+    if (typeof window !== "undefined") {
+      const route = parseRoute(window.location.pathname);
+      if (route.type === 'product' || route.type === 'shop' || route.type === 'checkout' || route.type === 'cart') {
+        return 'shop';
+      }
+      if (route.type === 'store' || route.type === 'profile') {
+        return 'profile';
+      }
+      if (route.type === 'messages') {
+        return 'messages';
+      }
+      if (route.type === 'admin') {
+        return 'admin';
+      }
+      if (route.type === 'reels') {
+        return 'reels';
+      }
+    }
+    return 'reels';
+  });
 
   // Stop all media playback when switching away from reels tab (shop, messages, profile)
   useEffect(() => {
@@ -125,13 +146,57 @@ export default function App() {
     };
   });
 
-  // Selected details (for cross-tab linkage)
-  const [directSelectedProduct, setDirectSelectedProduct] = useState<Product | null>(null);
-  const [selectedCreatorProfileId, setSelectedCreatorProfileId] = useState<string | null>(null);
-  const [isProductDetailOpen, setIsProductDetailOpen] = useState(false);
-  const [shopInitialStep, setShopInitialStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>('catalog');
+  // Selected details (for cross-tab linkage & direct URL routes)
+  const [directSelectedProduct, setDirectSelectedProduct] = useState<Product | null>(() => {
+    if (typeof window !== "undefined") {
+      const route = parseRoute(window.location.pathname);
+      if (route.type === 'product') {
+        try {
+          const cached = safeStorage.getItem("cached_products");
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed)) {
+              const found = parsed.find((p: any) => p.id === route.productId || p._id === route.productId);
+              if (found) return found;
+            }
+          }
+        } catch {}
+        return INITIAL_PRODUCTS.find(p => p.id === route.productId || (p as any)._id === route.productId) || null;
+      }
+    }
+    return null;
+  });
+  const [selectedCreatorProfileId, setSelectedCreatorProfileId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      const route = parseRoute(window.location.pathname);
+      if (route.type === 'store') return route.sellerId;
+      if (route.type === 'profile' && route.userId) return route.userId;
+    }
+    return null;
+  });
+  const [isProductDetailOpen, setIsProductDetailOpen] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const route = parseRoute(window.location.pathname);
+      return route.type === 'product';
+    }
+    return false;
+  });
+  const [shopInitialStep, setShopInitialStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>(() => {
+    if (typeof window !== "undefined") {
+      const route = parseRoute(window.location.pathname);
+      if (route.type === 'product') return 'detail';
+      if (route.type === 'checkout') return 'checkout';
+    }
+    return 'catalog';
+  });
   const [shopInitialSelectedIndices, setShopInitialSelectedIndices] = useState<number[]>([]);
-  const [targetReelId, setTargetReelId] = useState<string | null>(null);
+  const [targetReelId, setTargetReelId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      const route = parseRoute(window.location.pathname);
+      if (route.type === 'reels' && route.reelId) return route.reelId;
+    }
+    return null;
+  });
 
   // Private 1-on-1 Chat States
   const [activeChatUser, setActiveChatUser] = useState<User | null>(null);
@@ -509,7 +574,6 @@ export default function App() {
 
   // Load initial catalog & files
   useEffect(() => {
-    setActiveTab('reels');
     loadInitialData();
 
     // Fallback safety timeout: allow up to 8 seconds for slower mobile networks before clearing splash screen

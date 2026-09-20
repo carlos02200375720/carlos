@@ -173,9 +173,17 @@ export default function ShopView({
   onStepChange,
 }: ShopViewProps) {
   // Navigation states: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou'
-  const [activeStep, setActiveStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>('catalog');
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [selectedProductMediaUrl, setSelectedProductMediaUrl] = useState<string>("");
+  const [activeStep, setActiveStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>(() => {
+    if (initialStep) return initialStep;
+    if (selectedProductDirectly) return 'detail';
+    return 'catalog';
+  });
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(() => {
+    return selectedProductDirectly || null;
+  });
+  const [selectedProductMediaUrl, setSelectedProductMediaUrl] = useState<string>(() => {
+    return selectedProductDirectly?.imageUrl || "";
+  });
   const [selectedVariants, setSelectedVariants] = useState<{[key: string]: string}>({});
   const [optionsValidationError, setOptionsValidationError] = useState<string | null>(null);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
@@ -1178,6 +1186,22 @@ export default function ShopView({
             </div>
           )}
 
+          {/* 2. DETAIL STEP - LOADING STATE WHILE FETCHING PRODUCT */}
+          {activeStep === 'detail' && !selectedProduct && (
+            <div className="w-full min-h-[60vh] flex flex-col items-center justify-center p-8 space-y-4">
+              <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+              <p className="text-sm font-medium text-slate-500">Cargando detalles del producto...</p>
+              <button
+                type="button"
+                onClick={handleBackToCatalog}
+                className="mt-2 px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Volver al catálogo
+              </button>
+            </div>
+          )}
+
           {/* 2. DETAIL STEP */}
           {activeStep === 'detail' && selectedProduct && (
             <>
@@ -1186,10 +1210,7 @@ export default function ShopView({
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 p-0 md:p-6"
-                style={{
-                  paddingBottom: "max(4.75rem, calc(4rem + env(safe-area-inset-bottom, 0px)))"
-                }}
+                className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 p-0 md:p-6 pb-12"
               >
                 {/* Image & Showcase */}
                 <div className="space-y-4">
@@ -1400,6 +1421,64 @@ export default function ShopView({
                         }`}>
                           {selectedProduct.stock > 0 ? `En Stock` : "Agotado"}
                         </span>
+                      </div>
+                    </div>
+
+                    {/* Botón y cálculo de envío integrado debajo del precio (Web & Escritorio) */}
+                    <div 
+                      className="mt-3 bg-gradient-to-r from-amber-50/80 via-slate-50 to-amber-50/40 p-3 sm:p-3.5 rounded-xl border border-amber-200/70 shadow-2xs"
+                      id="product-detail-shipping-card-desktop"
+                    >
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center space-x-3 min-w-0 flex-1">
+                          <div className="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center text-amber-700 shrink-0">
+                            <Truck className="w-5 h-5 text-amber-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-extrabold text-slate-900">
+                                Envío a {CJ_DEST_COUNTRIES.find(c => c.code === shippingCountry)?.name || shippingCountry}
+                              </span>
+                              {selectedShippingOption && (
+                                <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300/80">
+                                  {selectedShippingOption.shippingCost === 0 ? "GRATIS" : `$${selectedShippingOption.shippingCost.toFixed(2)}`}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-600 mt-0.5 truncate">
+                              {selectedShippingOption ? (
+                                <span className="flex items-center gap-1 text-slate-700 font-medium">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 inline" />
+                                  <span>{selectedShippingOption.carrier}</span>
+                                  {selectedShippingOption.aging && (
+                                    <span className="text-slate-500">({selectedShippingOption.aging})</span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="text-slate-500">
+                                  Calcula tarifas oficiales y tiempos de entrega estimados
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          id="btn-calcular-envio-desktop"
+                          onClick={() => {
+                            setShowShippingModal(true);
+                            fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
+                          }}
+                          className={`px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 ${
+                            selectedShippingOption
+                              ? "bg-white hover:bg-slate-100 text-slate-800 border border-slate-300"
+                              : "bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/25 ring-2 ring-amber-400/30"
+                          }`}
+                        >
+                          <Truck className="w-4 h-4 text-slate-950 shrink-0" />
+                          <span>{selectedShippingOption ? "Cambiar envío" : "Calcular envío"}</span>
+                        </button>
                       </div>
                     </div>
 
@@ -1636,105 +1715,116 @@ export default function ShopView({
                         </p>
 
                         {selectedShippingOption ? (
-                          <span className="text-[11px] font-extrabold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/80 flex items-center space-x-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowShippingModal(true);
+                              fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
+                            }}
+                            className="text-[11px] font-extrabold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200/80 flex items-center space-x-1 cursor-pointer transition-colors"
+                          >
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                             <span>{selectedShippingOption.carrier}: {selectedShippingOption.shippingCost === 0 ? "GRATIS" : `$${selectedShippingOption.shippingCost.toFixed(2)}`}</span>
-                          </span>
+                          </button>
                         ) : (
-                          <span className="text-[10px] font-extrabold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-300">
-                            Paso requerido antes de añadir
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowShippingModal(true);
+                              fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
+                            }}
+                            className="text-[10px] font-extrabold text-amber-900 bg-amber-100/90 hover:bg-amber-200 px-2.5 py-1 rounded-md border border-amber-300 cursor-pointer transition-colors flex items-center gap-1.5"
+                          >
+                            <Truck className="w-3.5 h-3.5 text-amber-700" />
+                            <span>Calcular envío</span>
+                          </button>
                         )}
+                      </div>
+
+                      {/* Add to Cart button integrated directly in product detail page */}
+                      <div className="pt-2">
+                        {(() => {
+                          const missingOpts = getMissingOptions(selectedProduct, selectedVariants);
+                          const hasMissingOpts = missingOpts.length > 0;
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (selectedProduct.stock > 0) {
+                                  const currentMissing = getMissingOptions(selectedProduct, selectedVariants);
+                                  if (currentMissing.length > 0) {
+                                    setOptionsValidationError(`Por favor selecciona tu ${currentMissing.join(" y ")} antes de añadir al carrito.`);
+                                    document.getElementById("product-options-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                                    return;
+                                  }
+
+                                  // Check if shipping option is selected for destination country
+                                  if (!selectedShippingOption) {
+                                    setShowShippingModal(true);
+                                    fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
+                                    return;
+                                  }
+
+                                  const variantStr = Object.entries(selectedVariants)
+                                    .map(([k, v]) => `${k}: ${v}`)
+                                    .join(", ");
+                                  
+                                  // Active variant image selected by user
+                                  const activeImageUrl = selectedProductMediaUrl || selectedProduct.imageUrl;
+
+                                  const customizedProduct: Product = {
+                                    ...selectedProduct,
+                                    imageUrl: activeImageUrl,
+                                    name: variantStr ? `${selectedProduct.name} (${variantStr})` : selectedProduct.name,
+                                    shippingCost: selectedShippingOption.shippingCost,
+                                    selectedCarrier: selectedShippingOption.carrier
+                                  };
+                                  
+                                  onAddToCart(customizedProduct);
+                                  setShowCartDrawer(true);
+                                }
+                              }}
+                              disabled={selectedProduct.stock <= 0}
+                              className={`w-full py-3 sm:py-3.5 px-6 rounded-xl font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-md active:scale-98 text-center ${
+                                selectedProduct.stock <= 0
+                                  ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                                  : hasMissingOpts
+                                  ? "bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/20"
+                                  : !selectedShippingOption
+                                  ? "bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/20"
+                                  : "bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-amber-500/25"
+                              }`}
+                              id="add-to-cart-detail-btn"
+                            >
+                              {selectedProduct.stock <= 0 ? (
+                                <span>Agotado</span>
+                              ) : hasMissingOpts ? (
+                                <>
+                                  <AlertCircle className="w-5 h-5 shrink-0 text-slate-950" />
+                                  <span className="whitespace-nowrap">
+                                    {missingOpts.length === 1 ? `Elegir ${missingOpts[0]}` : "Elegir opciones"}
+                                  </span>
+                                </>
+                              ) : !selectedShippingOption ? (
+                                <>
+                                  <Truck className="w-5 h-5 shrink-0 text-slate-950" />
+                                  <span className="whitespace-nowrap">Calcular envío</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ShoppingCart className="w-5 h-5 shrink-0 text-slate-950" />
+                                  <span className="whitespace-nowrap">Añadir al Carrito</span>
+                                </>
+                              )}
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
                 </div>
               </motion.div>
-
-              {/* Fixed Bottom Action Bar for Product Details (Replaces main navigation bar) */}
-              <div 
-                className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-100 py-1.5 sm:py-2 px-3 sm:px-5 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]"
-                style={{ paddingBottom: 'max(0.4rem, calc(env(safe-area-inset-bottom, 0px) + 0.25rem))' }}
-              >
-                <div className="max-w-md mx-auto w-full flex items-center justify-center min-h-[38px]">
-                  {(() => {
-                    const missingOpts = getMissingOptions(selectedProduct, selectedVariants);
-                    const hasMissingOpts = missingOpts.length > 0;
-
-                    return (
-                      <button
-                        onClick={() => {
-                          if (selectedProduct.stock > 0) {
-                            const currentMissing = getMissingOptions(selectedProduct, selectedVariants);
-                            if (currentMissing.length > 0) {
-                              setOptionsValidationError(`Por favor selecciona tu ${currentMissing.join(" y ")} antes de añadir al carrito.`);
-                              document.getElementById("product-options-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
-                              return;
-                            }
-
-                            // Check if shipping option is selected for destination country
-                            if (!selectedShippingOption) {
-                              setShowShippingModal(true);
-                              fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
-                              return;
-                            }
-
-                            const variantStr = Object.entries(selectedVariants)
-                              .map(([k, v]) => `${k}: ${v}`)
-                              .join(", ");
-                            
-                            // Active variant image selected by user
-                            const activeImageUrl = selectedProductMediaUrl || selectedProduct.imageUrl;
-
-                            const customizedProduct: Product = {
-                              ...selectedProduct,
-                              imageUrl: activeImageUrl,
-                              name: variantStr ? `${selectedProduct.name} (${variantStr})` : selectedProduct.name,
-                              shippingCost: selectedShippingOption.shippingCost,
-                              selectedCarrier: selectedShippingOption.carrier
-                            };
-                            
-                            onAddToCart(customizedProduct);
-                            setShowCartDrawer(true);
-                          }
-                        }}
-                        disabled={selectedProduct.stock <= 0}
-                        className={`w-full py-2.5 sm:py-3 px-4 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-98 text-center ${
-                          selectedProduct.stock <= 0
-                            ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                            : hasMissingOpts
-                            ? "bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/20"
-                            : !selectedShippingOption
-                            ? "bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/20"
-                            : "bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-amber-500/25"
-                        }`}
-                        id="add-to-cart-detail-btn"
-                      >
-                        {selectedProduct.stock <= 0 ? (
-                          <span>Agotado</span>
-                        ) : hasMissingOpts ? (
-                          <>
-                            <AlertCircle className="w-4 h-4 shrink-0 text-slate-950" />
-                            <span className="whitespace-nowrap">
-                              {missingOpts.length === 1 ? `Elegir ${missingOpts[0]}` : "Elegir opciones"}
-                            </span>
-                          </>
-                        ) : !selectedShippingOption ? (
-                          <>
-                            <Truck className="w-4 h-4 shrink-0 text-slate-950" />
-                            <span className="whitespace-nowrap">Calcular envío</span>
-                          </>
-                        ) : (
-                          <>
-                            <ShoppingCart className="w-4 h-4 shrink-0 text-slate-950" />
-                            <span className="whitespace-nowrap">Añadir al Carrito</span>
-                          </>
-                        )}
-                      </button>
-                    );
-                  })()}
-                </div>
-              </div>
             </>
           )}
 
