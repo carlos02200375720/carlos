@@ -8,6 +8,14 @@ export const CLOUD_RUN_BACKEND_URL = "https://carlos02200375720mall-113642516090
 export const BACKEND_URL: string =
   (import.meta as any).env?.VITE_BACKEND_URL || CLOUD_RUN_BACKEND_URL;
 
+export const SUPERADMIN_EMAIL: string =
+  String((import.meta as any).env?.VITE_SUPERADMIN_EMAIL || "").trim().toLowerCase();
+
+export const isSuperAdmin = (user?: { email?: string } | null): boolean => {
+  const email = String(user?.email || "").trim().toLowerCase();
+  return Boolean(SUPERADMIN_EMAIL && email && email === SUPERADMIN_EMAIL);
+};
+
 /**
  * Helper to determine if we are running on an external static frontend host without backend (GitHub Pages, Vercel, Netlify, etc.)
  */
