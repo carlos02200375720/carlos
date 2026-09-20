@@ -2081,8 +2081,8 @@ export default function ShopView({
                   </div>
                 </div>
 
-                {/* Desktop Integrated Pay Button & Notice */}
-                <div className="hidden md:flex flex-col space-y-3 pt-2">
+                {/* Integrated Pay Button inside the Order Summary (desktop + mobile) */}
+                <div className="flex flex-col space-y-3 pt-2">
                   {!isFormValid && (
                     <span className="text-[11px] text-rose-500 font-bold animate-pulse text-center bg-rose-50/70 border border-rose-100 py-1.5 px-2 rounded-lg">
                       Por favor complete los datos de envío y pago
@@ -2106,27 +2106,6 @@ export default function ShopView({
                 </div>
               </div>
 
-              {/* Mobile Only: Fixed Bottom Payment Bar */}
-              <div 
-                className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200/80 pt-2.5 px-4 shadow-lg"
-                style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
-              >
-                <div className="max-w-md mx-auto flex flex-col items-center justify-center">
-                  {!isFormValid && (
-                    <span className="text-[10px] text-rose-500 font-bold mb-1 animate-pulse text-center">
-                      Por favor complete todos los datos
-                    </span>
-                  )}
-                  <button
-                    onClick={executePayment}
-                    className="w-full bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold px-6 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-md shadow-amber-500/25 border border-amber-400"
-                    id="pay-now-btn"
-                  >
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>Pagar (${cartTotal.toFixed(2)})</span>
-                  </button>
-                </div>
-              </div>
             </motion.div>
           )}
 
