@@ -4,7 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession, NavigationTab } from "./types";
 import { WebApp, SplashScreen, AuthModal } from "./app/web";
 import { AndroidApp } from "./app/android";
-import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
+import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch, isSuperAdmin } from "./config";
 import { safeStorage } from "./utils/safeStorage";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
 import { useCurrentRoute, navigateTo, parseRoute } from "./router";
@@ -35,7 +35,11 @@ export default function App() {
         return 'messages';
       }
       if (route.type === 'admin') {
-        return 'admin';
+        try {
+          const savedUserJson = safeStorage.getItem("currentUserData");
+          if (savedUserJson && isSuperAdmin(JSON.parse(savedUserJson))) return 'admin';
+        } catch {}
+        return 'reels';
       }
       if (route.type === 'reels') {
         return 'reels';
@@ -43,6 +47,14 @@ export default function App() {
     }
     return 'reels';
   });
+
+  // Admin is restricted to the configured superadministrator email.
+  useEffect(() => {
+    if (activeTab === "admin" && !isSuperAdmin(currentUser)) {
+      setActiveTab("reels");
+      navigateTo("/");
+    }
+  }, [activeTab, currentUser]);
 
   // Stop all media playback when switching away from reels tab (shop, messages, profile)
   useEffect(() => {
