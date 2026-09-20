@@ -184,6 +184,7 @@ export async function connectToMongoDB(): Promise<void> {
         images: p.images || [],
         videos: p.videos || [],
         variants: p.variants || [],
+        variantList: p.variantList || [],
         category: p.category || "",
         views: p.views || 0,
       }));
