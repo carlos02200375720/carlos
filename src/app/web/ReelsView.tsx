@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from "react";
 import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, VolumeX, Send, X, Play, Bookmark, Trash2, Check, ArrowLeft, Plus, Minus, ChevronLeft, ChevronRight } from "lucide-react";
 import { Reel, ReelMedia, Product, Comment, User, CartItem } from "../../types";
 import { motion, AnimatePresence } from "motion/react";
-import { apiFetch } from "../../config";
+import { apiFetch, getMediaUrl } from "../../config";
 import { ReelProgressBar } from "./components/ReelProgressBar";
 import Hls from "hls.js";
 
@@ -390,7 +390,7 @@ export default function ReelsView({
                           <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
                             {reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") && !reel.thumbnailUrl.includes("1618005182384") ? (
                               <img
-                                src={reel.thumbnailUrl}
+                                src={getMediaUrl(reel.thumbnailUrl)}
                                 alt={reel.description || ""}
                                 draggable={false}
                                 className={`w-full h-full block relative z-10 select-none object-center ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`}
@@ -519,7 +519,8 @@ interface ReelVideoItemProps {
 const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPlaying, isMuted, mediaAspectRatio, onVideoClick, onDoubleTap, onAspectRatioDetected, onRegisterRef }: ReelVideoItemProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
-  const hlsSource = (reel.hlsUrl || reel.videoUrl)?.trim();
+  const rawSource = (reel.hlsUrl || reel.videoUrl)?.trim();
+  const hlsSource = getMediaUrl(rawSource);
   const stallTimerRef = useRef<any>(null);
   const lastProgressTimeRef = useRef<number>(0);
   const stallCountRef = useRef<number>(0);
@@ -671,7 +672,8 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     onRegisterRef(index, null);
   }, [index, onRegisterRef]);
 
-  const posterUrl = reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".m3u8") ? reel.thumbnailUrl : undefined;
+  const rawPoster = reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".m3u8") ? reel.thumbnailUrl : undefined;
+  const posterUrl = rawPoster ? getMediaUrl(rawPoster) : undefined;
 
   const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
     const video = e.currentTarget;

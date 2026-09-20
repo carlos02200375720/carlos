@@ -77,6 +77,16 @@ export async function syncLegacyPublicacionesToMongoReel(userMap?: Map<string, a
       const creator = resolvedUserMap.get(pub.creatorId) ||
         (pub.creatorId ? resolvedUserMap.get(pub.creatorId.toLowerCase()) : null);
 
+      if (
+        pub.creatorId === "creator" ||
+        pub.creatorId === "creador" ||
+        pub.id === "pub_vatdfyio3" ||
+        (pub.title && /test_reel/i.test(pub.title))
+      ) {
+        await MongoPublicacion.deleteOne({ _id: pub._id }).catch(() => {});
+        continue;
+      }
+
       const canonicalReel = formatReelDTO({
         id: canonicalId,
         title: pub.title || "",
@@ -86,8 +96,8 @@ export async function syncLegacyPublicacionesToMongoReel(userMap?: Map<string, a
         thumbnailUrl: !isVideo ? pubUrl : (pub.thumbnailUrl || ""),
         type: isVideo ? "video" : "image",
         images: !isVideo && pubUrl ? [pubUrl] : [],
-        creatorId: creator ? creator.id : (pub.creatorId || "creator"),
-        creatorName: creator ? creator.name : "Creador",
+        creatorId: creator ? creator.id : (pub.creatorId || "user_anon"),
+        creatorName: creator ? creator.name : "Usuario",
         creatorUsername: creator ? creator.username : undefined,
         creatorAvatar: creator?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
         likes: pub.likes || 0,

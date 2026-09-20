@@ -4,6 +4,7 @@ import { User, Reel } from "../../types";
 import { MongoUser, MongoReel, MongoProduct } from "../models";
 import { generateId } from "../utils/helpers";
 import { uploadBase64ToGCS } from "../services/mediaStorage";
+import { getCachedDefaultAvatar, getCachedDefaultCoverPhoto } from "./settingsController";
 import { formatReelDTO } from "../utils/reelUtils";
 import { getUserCanonicalReelsFromMongo } from "../services/reelService";
 import {
@@ -23,8 +24,8 @@ export async function getUsers(): Promise<User[]> {
   try {
     if (mongoose.connection.readyState === 1) {
       const dbUsers = await MongoUser.find({
-        id: { $nin: ["current_user", "user_guest"] },
-        username: { $ne: "invitado" }
+        id: { $nin: ["current_user", "user_guest", "creator", "creador"] },
+        username: { $nin: ["invitado", "creador", "creator"] }
       });
       return dbUsers.map((u: any) => ({
         id: u.id,
@@ -154,9 +155,16 @@ export async function getAllUsers(req: Request, res: Response): Promise<void> {
  * GET /api/users/:id
  */
 export async function getUserById(req: Request, res: Response): Promise<void> {
-  const dbUsers = await getUsers();
   const rawParam = (req.params.id || "").trim();
-  const cleanParam = rawParam.toLowerCase();
+  const cleanParam = rawParam.toLowerCase().replace("@", "");
+
+  // The test profile 'creador' has been deleted and must return 404
+  if (cleanParam === "creador" || cleanParam === "creator") {
+    res.status(404).json({ error: "Usuario no encontrado" });
+    return;
+  }
+
+  const dbUsers = await getUsers();
 
   const headerUsername = (req.headers["x-user-username"] as string)?.trim().toLowerCase();
   const headerUserId = (req.headers["x-user-id"] as string)?.trim();
@@ -306,7 +314,13 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
       }
 
       const sourceReel = matchedReel || matchedMongoReel;
-      if (sourceReel) {
+      if (
+        sourceReel &&
+        sourceReel.creatorId !== "creator" &&
+        sourceReel.creatorId !== "creador" &&
+        sourceReel.creatorUsername !== "creador" &&
+        sourceReel.creatorUsername !== "creator"
+      ) {
         let creatorMongoUser = null;
         if (mongoose.connection.readyState === 1) {
           creatorMongoUser = await MongoUser.findOne({
@@ -319,12 +333,12 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
         user = {
           id: sourceReel.creatorId || rawParam,
           originalId: sourceReel.creatorId || rawParam,
-          username: sourceReel.creatorUsername || sourceReel.creatorName?.toLowerCase().replace(/\s+/g, "") || "creador",
-          name: sourceReel.creatorName || "Creador",
+          username: sourceReel.creatorUsername || sourceReel.creatorName?.toLowerCase().replace(/\s+/g, "") || rawParam,
+          name: sourceReel.creatorName || "Usuario",
           avatar: sourceReel.creatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-          bio: creatorMongoUser?.bio || "Creador oficial en la plataforma",
-          followers: creatorMongoUser?.followers || 120,
-          following: creatorMongoUser?.following || 35,
+          bio: creatorMongoUser?.bio || "Perfil en la plataforma",
+          followers: creatorMongoUser?.followers || 0,
+          following: creatorMongoUser?.following || 0,
           followingUserIds: creatorMongoUser?.followingUserIds || [],
           savedReelIds: creatorMongoUser?.savedReelIds || [],
           coverPhoto: creatorMongoUser?.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
@@ -899,8 +913,8 @@ export async function registerUser(req: Request, res: Response): Promise<void> {
       }
     }
 
-    let resolvedAvatar = avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
-    let resolvedCoverPhoto = coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80";
+    let resolvedAvatar = avatar || getCachedDefaultAvatar();
+    let resolvedCoverPhoto = coverPhoto || getCachedDefaultCoverPhoto();
 
     if (avatar && avatar.startsWith("data:")) {
       try {
@@ -1047,5 +1061,37 @@ export async function logoutUser(req: Request, res: Response): Promise<void> {
   } catch (routeErr: any) {
     console.error("❌ Exception caught in user/logout endpoint:", routeErr);
     res.status(500).json({ error: "Internal server error on logout", details: routeErr.message });
+  }
+}
+
+/**
+ * DELETE /api/users/:id
+ * Administrative deletion of a user profile
+ */
+export async function adminDeleteUser(req: Request, res: Response): Promise<void> {
+  try {
+    const rawId = (req.params.id || "").trim();
+    if (!rawId) {
+      res.status(400).json({ error: "ID de usuario requerido" });
+      return;
+    }
+    const cleanId = rawId.toLowerCase().replace("@", "");
+
+    if (mongoose.connection.readyState === 1) {
+      await MongoUser.deleteMany({
+        $or: [
+          { id: rawId },
+          { id: cleanId },
+          { username: rawId },
+          { username: cleanId }
+        ]
+      });
+    }
+
+    console.log(`🛡️ Admin deleted user ${rawId}`);
+    res.json({ success: true, message: `Usuario ${rawId} eliminado exitosamente` });
+  } catch (err: any) {
+    console.error("❌ Error deleting user as admin:", err);
+    res.status(500).json({ error: "Error al eliminar usuario", details: err.message });
   }
 }

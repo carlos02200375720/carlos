@@ -1,10 +1,10 @@
 import React from "react";
-import { Play, ShoppingBag, User as UserIcon, MessageSquare, Sparkles } from "lucide-react";
-import { User } from "../../types";
+import { Play, ShoppingBag, User as UserIcon, MessageSquare, Sparkles, ShieldCheck } from "lucide-react";
+import { User, NavigationTab } from "../../types";
 
 export interface WebSidebarProps {
-  activeTab: 'reels' | 'shop' | 'messages' | 'profile';
-  setActiveTab: (tab: 'reels' | 'shop' | 'messages' | 'profile') => void;
+  activeTab: NavigationTab;
+  setActiveTab: (tab: NavigationTab) => void;
   currentUser: User;
   totalUnreads: number;
   selectedCreatorProfileId: string | null;
@@ -130,6 +130,22 @@ export default function WebSidebar({
               {currentUser.username === "invitado" ? "Registro / Cuenta" : "Dashboard / Perfil"}
             </span>
           </button>
+
+          {/* 5. Panel de Administración */}
+          <button
+            onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('admin'); }}
+            className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
+              activeTab === 'admin'
+                ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                : isDarkNavActive
+                ? "text-slate-400 hover:text-white hover:bg-slate-900"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+            id="web-nav-admin"
+          >
+            <ShieldCheck strokeWidth={2.6} className={`w-5 h-5 ${activeTab === 'admin' ? "text-slate-950" : ""}`} />
+            <span className="font-black tracking-wide">Panel Admin</span>
+          </button>
         </nav>
       </div>
 
@@ -226,6 +242,17 @@ export default function WebSidebar({
           }`}
         />
         <span className="text-[10px] font-bold mt-1">Perfil</span>
+      </button>
+
+      <button
+        onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('admin'); }}
+        className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
+          activeTab === 'admin' ? "text-amber-500" : isDarkNavActive ? "text-slate-400" : "text-slate-500"
+        }`}
+        id="mobile-nav-admin"
+      >
+        <ShieldCheck strokeWidth={2.4} className={`w-5 h-5 ${activeTab === 'admin' ? "text-amber-500" : ""}`} />
+        <span className="text-[10px] font-bold mt-1">Admin</span>
       </button>
     </nav>
     </>

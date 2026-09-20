@@ -459,7 +459,6 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
             creatorUsername: currentUser.username,
             creatorName: currentUser.name,
             creatorAvatar: currentUser.avatar,
-            type: "video",
             productId: taggedProductId || undefined
           }),
         });

@@ -1,3 +1,5 @@
+export type NavigationTab = 'reels' | 'shop' | 'messages' | 'profile' | 'admin';
+
 export interface User {
   id: string;
   originalId?: string;
@@ -16,6 +18,8 @@ export interface User {
   password?: string;
   email?: string;
   privacyPolicy?: string;
+  role?: string;
+  isAdmin?: boolean;
 }
 
 export interface Comment {

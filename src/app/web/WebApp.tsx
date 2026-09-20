@@ -1,16 +1,17 @@
 import React from "react";
-import { User, Reel, Product, CartItem, Order, ChatMessage } from "../../types";
+import { User, Reel, Product, CartItem, Order, ChatMessage, NavigationTab } from "../../types";
 import WebSidebar from "./WebSidebar";
 import ReelsView from "./ReelsView";
 import ShopView from "./ShopView";
 import SocialPanel from "./SocialPanel";
 import ProfileView from "./ProfileView";
+import AdminView from "./AdminView";
 import { motion, AnimatePresence } from "motion/react";
 import { safeStorage } from "../../utils/safeStorage";
 
 export interface WebAppProps {
-  activeTab: 'reels' | 'shop' | 'messages' | 'profile';
-  setActiveTab: React.Dispatch<React.SetStateAction<'reels' | 'shop' | 'messages' | 'profile'>>;
+  activeTab: NavigationTab;
+  setActiveTab: React.Dispatch<React.SetStateAction<NavigationTab>>;
   users: User[];
   reels: Reel[];
   products: Product[];
@@ -55,11 +56,15 @@ export interface WebAppProps {
   refreshAllData: () => void;
   setCurrentUser: React.Dispatch<React.SetStateAction<User>>;
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+  setReels: React.Dispatch<React.SetStateAction<Reel[]>>;
+  setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
   handleLogout: () => void;
   setGuestInteractionAlert: (alert: string | null) => void;
   openPrivateChatDirectly: (targetUser: User) => void;
   socket: WebSocket | null;
+  activePlatform?: 'android' | 'web';
+  onSwitchPlatform?: (target: 'android' | 'web') => void;
 }
 
 export default function WebApp({
@@ -104,6 +109,8 @@ export default function WebApp({
   refreshAllData,
   setCurrentUser,
   setUsers,
+  setReels,
+  setProducts,
   setIsLoggedIn,
   handleLogout,
   setGuestInteractionAlert,
@@ -231,6 +238,30 @@ export default function WebApp({
                 clearUnreads={handleClearUnreads}
                 onClose={() => setActiveTab('reels')}
               />
+            )}
+
+            {activeTab === 'admin' && (
+              <div className="w-full pb-10" id="web-admin-container">
+                <AdminView
+                  currentUser={currentUser}
+                  users={users}
+                  reels={reels}
+                  products={products}
+                  onRefreshAll={refreshAllData}
+                  onCreatorClick={(creatorId) => {
+                    handleCreatorProfileLink(creatorId);
+                  }}
+                  onProductClick={handleProductDetailsLink}
+                  onReelClick={handleReelLink}
+                  onNavigateToTab={(tab) => {
+                    setSelectedCreatorProfileId(null);
+                    setActiveTab(tab);
+                  }}
+                  setUsers={setUsers}
+                  setReels={setReels}
+                  setProducts={setProducts}
+                />
+              </div>
             )}
           </motion.div>
         </AnimatePresence>

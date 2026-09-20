@@ -1,6 +1,7 @@
 import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect, useCallback } from "react";
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, FastForward, Check, Sparkles, Smartphone, Monitor, Apple } from "lucide-react";
 import Hls from "hls.js";
+import { getMediaUrl } from "../../../../config";
 
 export interface NativeVideoPlayerHandle {
   getVideoElement: () => HTMLVideoElement | null;
@@ -263,16 +264,16 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
 
     const targetSource = React.useMemo(() => {
       if (hlsUrl && hlsUrl.trim().length > 0 && hlsUrl.includes(".m3u8")) {
-        return hlsUrl.trim();
+        return getMediaUrl(hlsUrl.trim());
       }
       if (src && src.includes(".m3u8")) {
-        return src.trim();
+        return getMediaUrl(src.trim());
       }
       if (src && src.startsWith("blob:")) {
         return src.trim();
       }
       const trimmed = (src || hlsUrl || "").trim();
-      return trimmed.length > 0 ? trimmed : null;
+      return trimmed.length > 0 ? getMediaUrl(trimmed) : null;
     }, [src, hlsUrl]);
 
     const isM3u8 = Boolean(targetSource && targetSource.includes(".m3u8"));
@@ -567,7 +568,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
           ref={videoRef}
           src={!isM3u8 && targetSource ? targetSource : undefined}
           className={`w-full h-full block relative z-10 ${isHorizontal ? "object-contain" : "object-cover"}`}
-          poster={poster && poster.trim().length > 0 ? poster : undefined}
+          poster={poster && poster.trim().length > 0 ? getMediaUrl(poster.trim()) : undefined}
           playsInline
           autoPlay={autoPlay}
           loop={loop}

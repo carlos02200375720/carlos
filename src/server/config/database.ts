@@ -69,8 +69,8 @@ export async function connectToMongoDB(): Promise<void> {
     await mongoose.connect(mongoUri);
     console.log("✅ Successfully connected to MongoDB Atlas!");
 
-    // Delete any guest/ghost users from the database
-    console.log("🧹 Purging any leftover guest/ghost/anonymous profiles from database...");
+    // Delete any guest/ghost users or test profiles from the database
+    console.log("🧹 Purging any leftover guest/ghost/anonymous profiles and test creator profiles from database...");
     await MongoUser.deleteMany({
       $or: [
         { id: "user_guest" },
@@ -80,10 +80,41 @@ export async function connectToMongoDB(): Promise<void> {
         { username: "invitado" },
         { username: "current_user" },
         { username: "usuario_actual" },
+        { username: "creador" },
+        { username: "creator" },
+        { id: "creator" },
+        { id: "creador" },
+        { name: /^creador$/i },
+        { name: /^creator$/i },
         { isGuest: true }
       ]
     });
-    console.log("🧹 Guest/anonymous profiles purged successfully!");
+
+    // Permanently purge any test reel or test publicacion from creador/creator
+    await MongoReel.deleteMany({
+      $or: [
+        { id: "reel_pub_vatdfyio3" },
+        { creatorId: "creator" },
+        { creatorId: "creador" },
+        { creatorUsername: "creador" },
+        { creatorUsername: "creator" },
+        { creatorName: /^creador$/i },
+        { creatorName: /^creator$/i },
+        { videoUrl: { $regex: /hls_7a5hkwg34/ } },
+        { hlsUrl: { $regex: /hls_7a5hkwg34/ } }
+      ]
+    });
+    await MongoPublicacion.deleteMany({
+      $or: [
+        { id: "pub_vatdfyio3" },
+        { creatorId: "creator" },
+        { creatorId: "creador" },
+        { usuarioNombre: /^creador$/i },
+        { url: { $regex: /hls_7a5hkwg34/ } },
+        { hlsUrl: { $regex: /hls_7a5hkwg34/ } }
+      ]
+    });
+    console.log("🧹 Guest/anonymous profiles and test creator content purged successfully!");
 
     // Deduplicate any duplicate users by email or username in Atlas
     const allUsersInDb = await MongoUser.find();

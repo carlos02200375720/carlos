@@ -80,8 +80,8 @@ export async function broadcastPresence(getUsersFn?: () => Promise<User[]>): Pro
       dbUsers = await getUsersFn();
     } else if (mongoose.connection.readyState === 1) {
       const docs = await MongoUser.find({
-        id: { $nin: ["current_user", "user_guest"] },
-        username: { $ne: "invitado" },
+        id: { $nin: ["current_user", "user_guest", "creator", "creador"] },
+        username: { $nin: ["invitado", "creador", "creator"] },
       });
       dbUsers = docs.map((u: any) => ({
         id: u.id,

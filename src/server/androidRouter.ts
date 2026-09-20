@@ -593,15 +593,29 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       let resolvedCreatorUsername = creatorUsername;
       let resolvedCreatorAvatar = creatorAvatar;
 
-      if (mongoose.connection.readyState === 1 && (!resolvedCreatorUsername || resolvedCreatorUsername === "creador")) {
-        const author = await MongoUser.findOne({
-          $or: [{ id: resolvedCreatorId }, { username: req.headers["x-user-username"] }],
-        });
-        if (author) {
-          resolvedCreatorId = author.id;
-          resolvedCreatorName = author.name;
-          resolvedCreatorUsername = author.username;
-          resolvedCreatorAvatar = author.avatar;
+      if (
+        !resolvedCreatorId ||
+        resolvedCreatorId === "creator" ||
+        resolvedCreatorId === "creador" ||
+        !resolvedCreatorUsername ||
+        resolvedCreatorUsername === "creador" ||
+        resolvedCreatorUsername === "creator"
+      ) {
+        if (mongoose.connection.readyState === 1) {
+          const author = await MongoUser.findOne({
+            $or: [
+              ...(req.headers["x-user-username"] ? [{ username: (req.headers["x-user-username"] as string).trim().toLowerCase() }] : []),
+              ...(req.headers["x-user-id"] ? [{ id: (req.headers["x-user-id"] as string).trim() }] : []),
+              { id: { $nin: ["current_user", "user_guest", "creator", "creador"] } }
+            ],
+            username: { $nin: ["invitado", "creador", "creator"] }
+          });
+          if (author) {
+            resolvedCreatorId = author.id;
+            resolvedCreatorName = author.name;
+            resolvedCreatorUsername = author.username;
+            resolvedCreatorAvatar = author.avatar;
+          }
         }
       }
 
@@ -643,9 +657,9 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         videoUrl: normalizedVideoUrl,
         thumbnailUrl: normalizedThumbnailUrl,
         description: description || "",
-        creatorId: resolvedCreatorId || "creator",
-        creatorName: resolvedCreatorName || "Creador",
-        creatorUsername: resolvedCreatorUsername || "creador",
+        creatorId: resolvedCreatorId || "user_anon",
+        creatorName: resolvedCreatorName || "Usuario",
+        creatorUsername: resolvedCreatorUsername || "usuario",
         creatorAvatar: resolvedCreatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
         productId: effectiveProductId,
         type: effectiveType,

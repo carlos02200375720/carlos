@@ -85,8 +85,22 @@ async function startServer() {
     }
   );
 
-  // Dynamic on-demand poster extractor for HLS folders
-  app.get("/uploads/hls/:folder/poster.jpg", async (req, res, next) => {
+  const defaultPosterPath = fs.existsSync(path.join(process.cwd(), "public", "default-poster.jpg"))
+    ? path.join(process.cwd(), "public", "default-poster.jpg")
+    : path.join(uploadsDir, "default-poster.jpg");
+
+  // Universal fallback for direct poster requests
+  app.get(["/poster.jpg", "/uploads/poster.jpg", "/default-poster.jpg"], (_req, res) => {
+    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    if (fs.existsSync(defaultPosterPath)) {
+      return res.sendFile(defaultPosterPath);
+    }
+    return res.status(200).end();
+  });
+
+  // Dynamic on-demand poster extractor for HLS folders with guaranteed fallback
+  app.get("/uploads/hls/:folder/poster.jpg", async (req, res) => {
     try {
       const folder = req.params.folder;
       const posterPath = path.join(uploadsDir, "hls", folder, "poster.jpg");
@@ -117,6 +131,70 @@ async function startServer() {
     } catch {
       // ignore
     }
+    // Guaranteed fallback image so video poster never throws 404 in console
+    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    if (fs.existsSync(defaultPosterPath)) {
+      return res.sendFile(defaultPosterPath);
+    }
+    return res.status(200).end();
+  });
+
+  // HLS playlist alias and auto-recovery (master.m3u8 <-> index.m3u8)
+  app.get(["/uploads/hls/:folder/master.m3u8", "/uploads/hls/:folder/index.m3u8"], (req, res, next) => {
+    const folder = req.params.folder;
+    const isMaster = req.path.endsWith("master.m3u8");
+    const requestedFile = isMaster ? "master.m3u8" : "index.m3u8";
+    const alternateFile = isMaster ? "index.m3u8" : "master.m3u8";
+
+    const requestedPath = path.join(uploadsDir, "hls", folder, requestedFile);
+    if (fs.existsSync(requestedPath)) {
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      return res.sendFile(requestedPath);
+    }
+
+    const alternatePath = path.join(uploadsDir, "hls", folder, alternateFile);
+    if (fs.existsSync(alternatePath)) {
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      return res.sendFile(alternatePath);
+    }
+
+    // Check if .ts segments exist to construct a dynamic index.m3u8 playlist
+    const dirPath = path.join(uploadsDir, "hls", folder);
+    if (fs.existsSync(dirPath)) {
+      const tsFiles = fs.readdirSync(dirPath).filter((f) => f.endsWith(".ts")).sort();
+      if (tsFiles.length > 0) {
+        let manifest = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:10\n#EXT-X-MEDIA-SEQUENCE:0\n";
+        for (const seg of tsFiles) {
+          manifest += `#EXTINF:10.0,\n${seg}\n`;
+        }
+        manifest += "#EXT-X-ENDLIST\n";
+        fs.writeFileSync(path.join(dirPath, "index.m3u8"), manifest, "utf-8");
+        res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        return res.send(manifest);
+      }
+    }
+
+    next();
+  });
+
+  // Missing publication thumbnails / images fallback
+  app.get("/uploads/publicaciones/:file", (req, res, next) => {
+    const filePath = path.join(uploadsDir, "publicaciones", req.params.file);
+    if (fs.existsSync(filePath)) {
+      return res.sendFile(filePath);
+    }
+    // If it is an image request that was lost or missing, serve fallback image instead of 404
+    if (/\.(jpg|jpeg|png|webp)$/i.test(req.params.file)) {
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      if (fs.existsSync(defaultPosterPath)) {
+        return res.sendFile(defaultPosterPath);
+      }
+    }
     next();
   });
 
@@ -134,6 +212,18 @@ async function startServer() {
       },
     })
   );
+
+  // Catch-all for missing /uploads/* files: NEVER let /uploads/* fall through to SPA index.html
+  app.use("/uploads", (req, res) => {
+    if (/\.(jpg|jpeg|png|webp|gif)$/i.test(req.path)) {
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      if (fs.existsSync(defaultPosterPath)) {
+        return res.sendFile(defaultPosterPath);
+      }
+    }
+    res.status(404).type("text/plain").send("Media resource not found");
+  });
 
   // Dedicated Android API Router
   app.use(

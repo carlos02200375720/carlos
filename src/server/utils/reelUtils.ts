@@ -118,8 +118,8 @@ export function formatReelDTO(r: any, userMap?: Map<string, any>): Reel {
     title: r.title || r.name || "",
     description: r.description || "",
     caption: r.caption || r.description || "",
-    creatorId: creatorUser ? creatorUser.id : r.creatorId || "creator",
-    creatorName: creatorUser ? creatorUser.name : r.creatorName || "Creador",
+    creatorId: creatorUser ? creatorUser.id : r.creatorId || "user_anon",
+    creatorName: creatorUser ? creatorUser.name : r.creatorName || "Usuario",
     creatorUsername: creatorUser ? creatorUser.username : r.creatorUsername || undefined,
     creatorAvatar: creatorUser
       ? creatorUser.avatar

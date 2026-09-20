@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { User as UserIcon, Camera, Upload, AlertTriangle } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
-import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession } from "./types";
+import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession, NavigationTab } from "./types";
 import { WebApp, SplashScreen, AuthModal } from "./app/web";
 import { AndroidApp } from "./app/android";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
@@ -19,8 +19,8 @@ const deduplicateById = <T extends { id?: string; _id?: string }>(items: T[]): T
 };
 
 export default function App() {
-  // Navigation states: 'reels' | 'shop' | 'messages' | 'profile'
-  const [activeTab, setActiveTab] = useState<'reels' | 'shop' | 'messages' | 'profile'>('reels');
+  // Navigation states: 'reels' | 'shop' | 'messages' | 'profile' | 'admin'
+  const [activeTab, setActiveTab] = useState<NavigationTab>('reels');
 
   // Stop all media playback when switching away from reels tab (shop, messages, profile)
   useEffect(() => {
@@ -1440,6 +1440,8 @@ export default function App() {
             refreshAllData={refreshAllData}
             setCurrentUser={setCurrentUser}
             setUsers={setUsers}
+            setReels={setReels}
+            setProducts={setProducts}
             setIsLoggedIn={setIsLoggedIn}
             handleLogout={handleLogout}
             setGuestInteractionAlert={setGuestInteractionAlert}

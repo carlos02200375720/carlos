@@ -1,6 +1,7 @@
 import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect, useCallback } from "react";
 import { Play, Pause } from "lucide-react";
 import Hls from "hls.js";
+import { getMediaUrl } from "../../../config";
 
 export interface AndroidVideoPlayerHandle {
   getVideoElement: () => HTMLVideoElement | null;
@@ -209,8 +210,8 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
 
     // Compute safe target source: prefers .m3u8 if available, falls back to direct video
     const targetSource = React.useMemo(() => {
-      const cleanHls = typeof hlsUrl === "string" ? hlsUrl.trim() : "";
-      const cleanSrc = typeof src === "string" ? src.trim() : "";
+      const cleanHls = typeof hlsUrl === "string" ? getMediaUrl(hlsUrl.trim()) : "";
+      const cleanSrc = typeof src === "string" ? getMediaUrl(src.trim()) : "";
       if (cleanHls && cleanHls.includes(".m3u8")) return cleanHls;
       if (cleanSrc && cleanSrc.includes(".m3u8")) return cleanSrc;
       if (cleanSrc) return cleanSrc;
@@ -408,7 +409,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
         >
           <video
             ref={handleVideoRef}
-            poster={poster}
+            poster={poster ? getMediaUrl(poster) : undefined}
             autoPlay={autoPlay && isCurrent}
             loop={loop}
             muted={isMuted}

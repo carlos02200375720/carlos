@@ -10,6 +10,7 @@ import * as orderController from "../controllers/orderController";
 import * as chatController from "../controllers/chatController";
 import * as liveController from "../controllers/liveController";
 import * as uploadController from "../controllers/uploadController";
+import * as settingsController from "../controllers/settingsController";
 
 export function createApiRouter(): Router {
   const router = Router();
@@ -39,6 +40,7 @@ export function createApiRouter(): Router {
   router.get("/users", userController.getAllUsers);
   router.get("/users/:id", userController.getUserById);
   router.get("/users/:id/publications", userController.getUserPublications);
+  router.delete("/users/:id", userController.adminDeleteUser);
   router.post("/users/current/save", userController.toggleSaveReel);
   router.post("/users/:targetUserId/follow", userController.toggleFollow);
   router.post("/users/current/update", userController.updateCurrentUser);
@@ -83,6 +85,12 @@ export function createApiRouter(): Router {
   router.get("/live", liveController.getLiveSessions);
   router.post("/live", liveController.createLiveSession);
   router.post("/live/:id/end", liveController.endLiveSession);
+
+  // App Settings & Default Assets routes (Admin controlled)
+  router.get("/admin/default-assets", settingsController.getDefaultAssets);
+  router.get("/app-settings/defaults", settingsController.getDefaultAssets);
+  router.post("/admin/default-assets", settingsController.updateDefaultAssets);
+  router.post("/admin/default-assets/reset", settingsController.resetDefaultAssets);
 
   return router;
 }

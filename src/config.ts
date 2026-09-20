@@ -9,7 +9,7 @@ export const BACKEND_URL: string =
   (import.meta as any).env?.VITE_BACKEND_URL || CLOUD_RUN_BACKEND_URL;
 
 /**
- * Helper to determine if we are running on an external static frontend host without backend (GitHub Pages, etc.)
+ * Helper to determine if we are running on an external static frontend host without backend (GitHub Pages, Vercel, Netlify, etc.)
  */
 export const isExternalStaticHost = (): boolean => {
   if (typeof window === "undefined" || !window.location) return false;
@@ -17,8 +17,35 @@ export const isExternalStaticHost = (): boolean => {
   return (
     host.includes("pages.dev") ||
     host.includes("github.io") ||
-    host.includes("surge.sh")
+    host.includes("surge.sh") ||
+    host.includes("vercel.app") ||
+    host.includes("netlify.app")
   );
+};
+
+/**
+ * Helper to resolve media URLs (videos, HLS streams, thumbnails, posters).
+ * Ensures relative `/uploads/...` paths are directed to the active backend when running
+ * on external static hosts (Vercel, Netlify, GitHub Pages) or native mobile wrappers.
+ */
+export const getMediaUrl = (path: string | undefined | null): string => {
+  if (!path) return "";
+  const trimmed = path.trim();
+  if (!trimmed) return "";
+  if (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("blob:") ||
+    trimmed.startsWith("data:")
+  ) {
+    return trimmed;
+  }
+  const cleanPath = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  if (isNativeMobileWrapper() || isExternalStaticHost()) {
+    const trimmedBackend = (BACKEND_URL || CLOUD_RUN_BACKEND_URL).replace(/\/$/, "");
+    return `${trimmedBackend}${cleanPath}`;
+  }
+  return cleanPath;
 };
 
 /**

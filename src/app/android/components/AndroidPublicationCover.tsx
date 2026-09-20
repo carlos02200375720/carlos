@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Play } from "lucide-react";
 import { Reel } from "../../../types";
+import { getMediaUrl } from "../../../config";
 
 interface AndroidPublicationCoverProps {
   reel: Reel;
@@ -121,7 +122,7 @@ export default function AndroidPublicationCover({ reel, className = "" }: Androi
   if (thumbUrl && !hasError) {
     return (
       <img
-        src={thumbUrl}
+        src={getMediaUrl(thumbUrl)}
         alt={reel.description || reel.title || "Publicación"}
         onError={() => setHasError(true)}
         className={`w-full h-full object-cover select-none bg-slate-950 transition-transform duration-300 group-hover:scale-105 ${className}`}
@@ -134,7 +135,7 @@ export default function AndroidPublicationCover({ reel, className = "" }: Androi
     const vUrl = reel.videoUrl || reel.hlsUrl;
     return (
       <video
-        src={`${vUrl}#t=0.001`}
+        src={`${getMediaUrl(vUrl)}#t=0.001`}
         preload="metadata"
         muted
         playsInline

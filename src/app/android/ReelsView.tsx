@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { AndroidVideoPlayer, AndroidVideoPlayerHandle } from "./components/AndroidVideoPlayer";
 import { AndroidProgressBar } from "./components/AndroidProgressBar";
 import { AndroidAuthModal } from "./components/AndroidAuthModal";
+import { getMediaUrl } from "../../config";
 
 export interface AndroidReelsViewProps {
   reels: Reel[];
@@ -481,9 +482,9 @@ export default function AndroidReelsView({
         <AndroidVideoPlayer
           key={`${currentReel.id}_media_${activeMediaIndex}`}
           ref={playerRef}
-          src={currentMedia.url}
-          hlsUrl={currentMedia.hlsUrl || (currentMedia.url?.includes(".m3u8") ? currentMedia.url : currentReel.hlsUrl)}
-          poster={currentReel.thumbnailUrl}
+          src={getMediaUrl(currentMedia.url)}
+          hlsUrl={getMediaUrl(currentMedia.hlsUrl || (currentMedia.url?.includes(".m3u8") ? currentMedia.url : currentReel.hlsUrl))}
+          poster={currentReel.thumbnailUrl ? getMediaUrl(currentReel.thumbnailUrl) : undefined}
           autoPlay={true}
           loop={true}
           muted={isMuted}
@@ -503,7 +504,7 @@ export default function AndroidReelsView({
               aria-hidden="true"
             >
               <img
-                src={currentMedia?.url || currentReel.thumbnailUrl || (currentReel.images && currentReel.images[0])}
+                src={getMediaUrl(currentMedia?.url || currentReel.thumbnailUrl || (currentReel.images && currentReel.images[0]))}
                 alt=""
                 className="w-full h-full object-cover"
               />
@@ -519,7 +520,7 @@ export default function AndroidReelsView({
             }
           >
             <img
-              src={currentMedia?.url || currentReel.thumbnailUrl || (currentReel.images && currentReel.images[0])}
+              src={getMediaUrl(currentMedia?.url || currentReel.thumbnailUrl || (currentReel.images && currentReel.images[0]))}
               alt={currentReel.description}
               onLoad={handleImageLoad}
               className={

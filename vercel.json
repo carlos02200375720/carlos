@@ -16,6 +16,10 @@
       "destination": "https://carlos02200375720mall-113642516090.europe-west1.run.app/api/:match*"
     },
     {
+      "source": "/uploads/:match*",
+      "destination": "https://carlos02200375720mall-113642516090.europe-west1.run.app/uploads/:match*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

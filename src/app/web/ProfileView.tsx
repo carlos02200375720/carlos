@@ -7,6 +7,7 @@ import LoginView from "./LoginView";
 import UserPublicationsFeed from "./components/UserPublicationsFeed";
 import { apiFetch } from "../../config";
 import { safeStorage } from "../../utils/safeStorage";
+import { getDefaultAvatar, getDefaultCoverPhoto } from "../../utils/defaultAssets";
 
 const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -954,9 +955,17 @@ export default function ProfileView({
             alt="Profile cover banner"
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover opacity-85 rounded-t-none"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = getDefaultCoverPhoto();
+            }}
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900" />
+          <img
+            src={getDefaultCoverPhoto()}
+            alt="Profile cover banner"
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover opacity-85 rounded-t-none"
+          />
         )}
         <div className="absolute inset-0 bg-slate-950/20" />
 
@@ -981,10 +990,13 @@ export default function ProfileView({
           <div className="flex items-end space-x-4">
             <div className="flex flex-col items-center shrink-0">
               <img
-                src={profileUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
+                src={profileUser.avatar || getDefaultAvatar()}
                 alt={profileUser.name}
                 referrerPolicy="no-referrer"
                 className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-white shadow-md bg-white shrink-0"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = getDefaultAvatar();
+                }}
               />
               <span className="text-xs text-slate-500 font-bold font-mono mt-1 text-center">
                 @{profileUser.username}

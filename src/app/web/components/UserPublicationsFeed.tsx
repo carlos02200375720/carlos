@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { Reel, Product, Comment, User } from "../../../types";
 import { motion, AnimatePresence } from "motion/react";
-import { apiFetch } from "../../../config";
+import { apiFetch, getMediaUrl } from "../../../config";
 import { ReelProgressBar } from "./ReelProgressBar";
 
 interface UserPublicationsFeedProps {
@@ -102,10 +102,10 @@ const UserReelVideo = memo(function UserReelVideo({
     };
   }, [index, onRegisterRef]);
 
-  const rawVid = reel.hlsUrl || "";
-  const videoSrc = rawVid && rawVid.trim().length > 0 && rawVid.includes(".m3u8") ? rawVid.trim() : undefined;
+  const rawVid = (reel.hlsUrl || reel.videoUrl || "").trim();
+  const videoSrc = rawVid && rawVid.length > 0 ? getMediaUrl(rawVid) : undefined;
   const posterUrl =
-    reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") ? reel.thumbnailUrl : undefined;
+    reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") ? getMediaUrl(reel.thumbnailUrl) : undefined;
 
   const handlePointerDown = (e: React.MouseEvent) => {
     e.stopPropagation();
