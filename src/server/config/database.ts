@@ -155,13 +155,13 @@ export async function connectToMongoDB(): Promise<void> {
     const dbUsers = await MongoUser.find();
     console.log(`📦 Loaded ${dbUsers.length} users successfully from MongoDB Atlas!`);
 
-    // Seed or Load Products from MongoDB Atlas
+    // Load products from MongoDB Atlas.
+    // An empty collection is a valid state: products deleted by the administrator
+    // must not be recreated from in-memory/default data on server restart.
     const productCount = await MongoProduct.countDocuments();
     if (productCount === 0) {
-      console.log("🌱 Seeding default products to MongoDB...");
-      const currentProducts = getProducts();
-      await MongoProduct.insertMany(currentProducts as any);
-      console.log("🌱 Seeding products completed!");
+      setProducts([]);
+      console.log("📦 MongoDB product catalog is empty; preserving the empty catalog.");
     } else {
       console.log("📦 Loading products from MongoDB...");
       const dbProducts = await MongoProduct.find();
