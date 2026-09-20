@@ -9,7 +9,7 @@ import AdminView from "./AdminView";
 import { motion, AnimatePresence } from "motion/react";
 import { safeStorage } from "../../utils/safeStorage";
 import { navigateTo } from "../../router";
-import { isSuperAdmin } from "../../config";
+import { isSuperAdmin } from "../../superAdmin";
 
 export interface WebAppProps {
   activeTab: NavigationTab;
