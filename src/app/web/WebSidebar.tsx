@@ -2,7 +2,7 @@ import React from "react";
 import { Play, ShoppingBag, User as UserIcon, MessageSquare, Sparkles, ShieldCheck } from "lucide-react";
 import { User, NavigationTab } from "../../types";
 import { navigateTo } from "../../router";
-import { isSuperAdmin } from "../../config";
+import { isSuperAdmin } from "../../superAdmin";
 
 export interface WebSidebarProps {
   activeTab: NavigationTab;
@@ -246,6 +246,7 @@ export default function WebSidebar({
         <span className="text-[10px] font-bold mt-1">Perfil</span>
       </button>
 
+      {isSuperAdmin(currentUser) && (
       <button
         onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('admin'); navigateTo('/admin'); }}
         className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
@@ -256,7 +257,7 @@ export default function WebSidebar({
         <ShieldCheck strokeWidth={2.4} className={`w-5 h-5 ${activeTab === 'admin' ? "text-amber-500" : ""}`} />
         <span className="text-[10px] font-bold mt-1">Admin</span>
       </button>
-    </nav>
+        )}  </nav>
     </>
   );
 }
