@@ -9,6 +9,7 @@ import AdminView from "./AdminView";
 import { motion, AnimatePresence } from "motion/react";
 import { safeStorage } from "../../utils/safeStorage";
 import { navigateTo } from "../../router";
+import { isSuperAdmin } from "../../config";
 
 export interface WebAppProps {
   activeTab: NavigationTab;
@@ -268,7 +269,7 @@ export default function WebApp({
               />
             )}
 
-            {activeTab === 'admin' && (
+            {activeTab === 'admin' && isSuperAdmin(currentUser) && (
               <div className="w-full pb-10" id="web-admin-container">
                 <AdminView
                   currentUser={currentUser}
