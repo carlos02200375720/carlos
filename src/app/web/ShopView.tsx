@@ -185,6 +185,37 @@ export default function ShopView({
     return selectedProductDirectly?.imageUrl || "";
   });
   const [selectedVariants, setSelectedVariants] = useState<{[key: string]: string}>({});
+  // Normalize variants for detail rendering. Imported/CJ products may provide
+  // variantList without a structured variants array.
+  const effectiveVariantGroups = React.useMemo(() => {
+    if (!selectedProduct) return [];
+    if (Array.isArray(selectedProduct.variants) && selectedProduct.variants.length > 0) {
+      return selectedProduct.variants;
+    }
+    const list = Array.isArray(selectedProduct.variantList) ? selectedProduct.variantList : [];
+    const groups = new Map<string, Set<string>>();
+    for (const item of list) {
+      const color = typeof item.color === "string" ? item.color.trim() : "";
+      const size = typeof item.size === "string" ? item.size.trim() : "";
+      const name = typeof item.name === "string" ? item.name.trim() : "";
+      if (color) {
+        if (!groups.has("Color")) groups.set("Color", new Set());
+        groups.get("Color")!.add(color);
+      }
+      if (size) {
+        if (!groups.has("Talla")) groups.set("Talla", new Set());
+        groups.get("Talla")!.add(size);
+      }
+      if (!color && !size && name) {
+        if (!groups.has("Opción")) groups.set("Opción", new Set());
+        groups.get("Opción")!.add(name);
+      }
+    }
+    return Array.from(groups.entries()).map(([name, options]) => ({
+      name,
+      options: Array.from(options),
+    }));
+  }, [selectedProduct]);
   const [optionsValidationError, setOptionsValidationError] = useState<string | null>(null);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [copiedProductLink, setCopiedProductLink] = useState(false);
@@ -1502,7 +1533,7 @@ export default function ShopView({
                         });
                       }
                       const uniqueSwatches = Array.from(swatchesMap.values());
-                      const hasOptionGroups = selectedProduct.variants && selectedProduct.variants.length > 0;
+                      const hasOptionGroups = effectiveVariantGroups.length > 0;
 
                       return (
                         <div className="mt-6 space-y-4 border-t border-slate-100 pt-4" id="product-options-section">
@@ -1525,7 +1556,7 @@ export default function ShopView({
 
                           {/* If we have option groups (e.g. Color, Talla) */}
                           {hasOptionGroups ? (
-                            selectedProduct.variants!.map((v, idx) => {
+                            effectiveVariantGroups.map((v, idx) => {
                               const groupNameLower = v.name.toLowerCase().trim();
                               const isSizeGroup = groupNameLower.includes("talla") || groupNameLower.includes("size") || groupNameLower.includes("medida") || groupNameLower.includes("dimension");
                               
