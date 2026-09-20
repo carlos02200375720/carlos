@@ -279,6 +279,21 @@ export default function AndroidShopView({
   });
   const [selectedProductMediaUrl, setSelectedProductMediaUrl] = useState<string>("");
   const [selectedVariants, setSelectedVariants] = useState<{ [key: string]: string }>({});
+  // Normalize imported/CJ variants for the product detail UI.
+  const effectiveVariantGroups = React.useMemo(() => {
+    if (!selectedProduct) return [];
+    if (Array.isArray(selectedProduct.variants) && selectedProduct.variants.length > 0) return selectedProduct.variants;
+    const groups = new Map<string, Set<string>>();
+    for (const item of (Array.isArray(selectedProduct.variantList) ? selectedProduct.variantList : [])) {
+      const color = typeof item.color === "string" ? item.color.trim() : "";
+      const size = typeof item.size === "string" ? item.size.trim() : "";
+      const name = typeof item.name === "string" ? item.name.trim() : "";
+      if (color) { if (!groups.has("Color")) groups.set("Color", new Set()); groups.get("Color")!.add(color); }
+      if (size) { if (!groups.has("Talla")) groups.set("Talla", new Set()); groups.get("Talla")!.add(size); }
+      if (!color && !size && name) { if (!groups.has("Opción")) groups.set("Opción", new Set()); groups.get("Opción")!.add(name); }
+    }
+    return Array.from(groups.entries()).map(([name, options]) => ({ name, options: Array.from(options) }));
+  }, [selectedProduct]);
   const [optionsValidationError, setOptionsValidationError] = useState<string | null>(null);
   const [isGalleryVideoMuted, setIsGalleryVideoMuted] = useState(true);
 
@@ -1657,7 +1672,7 @@ export default function AndroidShopView({
                 });
               }
               const uniqueSwatches = Array.from(swatchesMap.values());
-              const hasOptionGroups = selectedProduct.variants && selectedProduct.variants.length > 0;
+              const hasOptionGroups = effectiveVariantGroups.length > 0;
 
               return (
                 <div className="mt-4 space-y-3.5 border-t border-slate-100 pt-3" id="android-product-options-section">
@@ -1678,7 +1693,7 @@ export default function AndroidShopView({
                   )}
 
                   {hasOptionGroups ? (
-                    selectedProduct.variants!.map((v, idx) => {
+                    effectiveVariantGroups.map((v, idx) => {
                       const groupNameLower = v.name.toLowerCase().trim();
                       const isSizeGroup = groupNameLower.includes("talla") || groupNameLower.includes("size") || groupNameLower.includes("medida") || groupNameLower.includes("dimension");
                       const isColorGroup = !isSizeGroup && (
