@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Reel, Product, Order } from "../../types";
+import PublishView from "./PublishView";
 import { apiFetch } from "../../config";
 import { safeStorage } from "../../utils/safeStorage";
 import {
@@ -90,6 +91,7 @@ export default function AdminView({
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [isPublishOpen, setIsPublishOpen] = useState(false);
 
   // Filter & Search states
   const [userSearch, setUserSearch] = useState("");
@@ -543,7 +545,7 @@ export default function AdminView({
               <span className="hidden xl:inline">{isRefreshing ? "..." : "Sincronizar"}</span>
             </button>
             <button
-              onClick={() => onNavigateToTab('profile')}
+              onClick={() => setIsPublishOpen(true)}
               className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-sm active:scale-95"
               id="admin-header-publish-btn"
             >
@@ -553,6 +555,27 @@ export default function AdminView({
           </div>
         </div>
       </header>
+
+      {isPublishOpen && (
+        <div
+          className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm overflow-y-auto p-3 sm:p-6"
+          id="admin-publish-overlay"
+        >
+          <div className="min-h-full flex items-start justify-center py-2 sm:py-6">
+            <div className="w-full max-w-5xl">
+              <PublishView
+                currentUser={currentUser}
+                onBack={() => setIsPublishOpen(false)}
+                onSuccess={() => {
+                  onRefreshAll();
+                  setIsPublishOpen(false);
+                }}
+                userProducts={products}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Top Banner Header */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-xl shadow-slate-950/20">
