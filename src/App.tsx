@@ -380,7 +380,7 @@ export default function App() {
       } catch (e) {
         console.warn("Primary products fetch failed, trying android products route:", e);
       }
-      if (!Array.isArray(data) || data.length === 0) {
+      if (!Array.isArray(data)) {
         try {
           const res = await apiFetch("/api/android/products");
           if (res.ok) data = await res.json();
@@ -388,7 +388,7 @@ export default function App() {
           console.warn("Android products route also failed:", e);
         }
       }
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         const unique = deduplicateById(data) as Product[];
         setProducts(unique);
         safeStorage.setItem("cached_products", JSON.stringify(unique));
@@ -492,23 +492,28 @@ export default function App() {
 
       // Hydrate products with dedicated Android route fallback
       let loadedProducts: Product[] = [];
+      let productsSyncCompleted = false;
       if (productsRes.status === "fulfilled") {
         const val = productsRes.value;
         const list = Array.isArray(val) ? val : (val && Array.isArray(val.products) ? val.products : []);
-        if (list.length > 0) loadedProducts = list;
+        loadedProducts = list;
+        productsSyncCompleted = true;
       }
-      if (loadedProducts.length === 0) {
+      if (!productsSyncCompleted) {
         try {
           const aRes = await apiFetch("/api/android/products");
           if (aRes.ok) {
             const aData = await aRes.json();
-            if (Array.isArray(aData) && aData.length > 0) loadedProducts = aData;
+            if (Array.isArray(aData)) {
+              loadedProducts = aData;
+              productsSyncCompleted = true;
+            }
           }
         } catch (e) {
           console.warn("Android fallback products fetch failed:", e);
         }
       }
-      if (loadedProducts.length > 0) {
+      if (productsSyncCompleted) {
         const uniqueProducts = deduplicateById(loadedProducts) as Product[];
         setProducts(uniqueProducts);
         safeStorage.setItem("cached_products", JSON.stringify(uniqueProducts));
