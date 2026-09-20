@@ -1761,10 +1761,7 @@ export default function ShopView({
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
-              className="grid grid-cols-1 md:grid-cols-5 gap-8 max-w-5xl mx-auto px-2 sm:px-4 py-2"
-              style={{
-                paddingBottom: 'calc(68px + env(safe-area-inset-bottom, 0px) + 5px)'
-              }}
+              className="grid grid-cols-1 md:grid-cols-5 gap-8 max-w-5xl mx-auto px-2 sm:px-4 py-2 pb-24 md:pb-8"
             >
               {/* Left Column: Checkout Inputs (3 cols) */}
               <div className="md:col-span-3 space-y-6">
@@ -1913,7 +1910,7 @@ export default function ShopView({
               </div>
 
               {/* Right Column: Order Summary (2 cols) */}
-              <div className="md:col-span-2 bg-white text-slate-900 p-6 rounded-2xl flex flex-col justify-between border border-slate-200/90 shadow-xl shadow-slate-100/80 space-y-6 h-fit sticky top-20">
+              <div className="md:col-span-2 bg-white text-slate-900 p-6 rounded-2xl flex flex-col justify-between border border-slate-200/90 shadow-xl shadow-slate-100/80 space-y-5 h-fit sticky top-20" id="checkout-order-summary">
                 <div>
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
                     <div className="flex items-center space-x-2">
@@ -1963,6 +1960,23 @@ export default function ShopView({
                   </div>
                 </div>
 
+                {/* Desktop Integrated Pay Button & Notice */}
+                <div className="hidden md:flex flex-col space-y-3 pt-2">
+                  {!isFormValid && (
+                    <span className="text-[11px] text-rose-500 font-bold animate-pulse text-center bg-rose-50/70 border border-rose-100 py-1.5 px-2 rounded-lg">
+                      Por favor complete los datos de envío y pago
+                    </span>
+                  )}
+                  <button
+                    onClick={executePayment}
+                    className="w-full bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-slate-950 font-extrabold py-3.5 px-6 rounded-xl text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-amber-500/25 border border-amber-400"
+                    id="pay-now-desktop-btn"
+                  >
+                    <ShieldCheck className="w-5 h-5 text-slate-950 shrink-0" />
+                    <span>Pagar (${cartTotal.toFixed(2)})</span>
+                  </button>
+                </div>
+
                 <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200/60 text-center">
                   <p className="text-[11px] text-amber-900 font-semibold flex items-center justify-center space-x-1.5">
                     <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
@@ -1971,10 +1985,10 @@ export default function ShopView({
                 </div>
               </div>
 
-              {/* Fixed Bottom Payment Bar */}
+              {/* Mobile Only: Fixed Bottom Payment Bar */}
               <div 
-                className="fixed bottom-0 inset-x-0 z-40 bg-white border-0 pt-2 px-4 sm:px-6 shadow-none"
-                style={{ paddingBottom: 'calc(0.4rem + env(safe-area-inset-bottom, 0px))' }}
+                className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200/80 pt-2.5 px-4 shadow-lg"
+                style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
               >
                 <div className="max-w-md mx-auto flex flex-col items-center justify-center">
                   {!isFormValid && (
@@ -1984,10 +1998,10 @@ export default function ShopView({
                   )}
                   <button
                     onClick={executePayment}
-                    className="w-full sm:w-auto min-w-[240px] bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold px-8 py-3 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-amber-500/25 border border-amber-400"
+                    className="w-full bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold px-6 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-md shadow-amber-500/25 border border-amber-400"
                     id="pay-now-btn"
                   >
-                    <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <ShieldCheck className="w-4 h-4" />
                     <span>Pagar (${cartTotal.toFixed(2)})</span>
                   </button>
                 </div>

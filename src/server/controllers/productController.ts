@@ -63,37 +63,54 @@ export async function getProducts(req: Request, res: Response): Promise<void> {
 
 /**
  * GET /api/products/:id
- * Get product by ID
+ * Get product by ID directly from MongoDB Atlas or memory
  */
 export async function getProductById(req: Request, res: Response): Promise<void> {
+  const targetId = req.params.id;
+
+  // 1. If MongoDB is connected, query directly for this specific product first
   if (mongoose.connection.readyState === 1) {
     try {
-      const dbProducts = await MongoProduct.find();
-      const parsed = dbProducts.map((p) => ({
-        id: p.id,
-        name: p.name,
-        description: p.description || "",
-        price: p.price,
-        imageUrl: p.imageUrl || "",
-        stock: p.stock !== undefined ? p.stock : 10,
-        sellerId: p.sellerId || "current_user",
-        rating: p.rating || 5,
-        shippingCost: p.shippingCost || 0,
-        images: p.images || [],
-        videos: p.videos || [],
-        variants: p.variants || [],
-        variantList: p.variantList || [],
-        category: p.category || "",
-        cjVid: p.cjVid || undefined,
-        cjPid: p.cjPid || undefined,
-        views: p.views || 0,
-      }));
-      setProducts(parsed);
+      const dbProduct = await MongoProduct.findOne({
+        $or: [{ id: targetId }, { _id: mongoose.isValidObjectId(targetId) ? targetId : undefined }].filter(Boolean),
+      });
+
+      if (dbProduct) {
+        const parsed: Product = {
+          id: dbProduct.id,
+          name: dbProduct.name,
+          description: dbProduct.description || "",
+          price: dbProduct.price,
+          imageUrl: dbProduct.imageUrl || "",
+          stock: dbProduct.stock !== undefined ? dbProduct.stock : 10,
+          sellerId: dbProduct.sellerId || "current_user",
+          rating: dbProduct.rating || 5,
+          shippingCost: dbProduct.shippingCost || 0,
+          images: dbProduct.images || [],
+          videos: dbProduct.videos || [],
+          variants: dbProduct.variants || [],
+          variantList: dbProduct.variantList || [],
+          category: dbProduct.category || "",
+          cjVid: dbProduct.cjVid || undefined,
+          cjPid: dbProduct.cjPid || undefined,
+          views: dbProduct.views || 0,
+        };
+
+        // Cache into in-memory state if not present or update it
+        const exists = products.some((p) => p.id === parsed.id);
+        if (!exists) {
+          setProducts([parsed, ...products]);
+        }
+        res.json(parsed);
+        return;
+      }
     } catch (err) {
-      console.error("❌ Failed to sync products on ID fetch:", err);
+      console.error("❌ Failed to query product by ID from MongoDB Atlas:", err);
     }
   }
-  const product = products.find((p) => p.id === req.params.id);
+
+  // 2. Check in-memory products fallback
+  const product = products.find((p) => p.id === targetId || (p as any)._id === targetId);
   if (!product) {
     res.status(404).json({ error: "Product not found" });
     return;
