@@ -4,6 +4,7 @@ import { Eye, Heart, MessageCircle, BarChart3, ShoppingBag, ShieldCheck, Shield,
 import { motion, AnimatePresence } from "motion/react";
 import LoginView from "./LoginView";
 import UserPublicationsFeed from "./components/UserPublicationsFeed";
+import PublishView from "./PublishView";
 import { apiFetch } from "../../config";
 import { safeStorage } from "../../utils/safeStorage";
 import { getDefaultAvatar, getDefaultCoverPhoto } from "../../utils/defaultAssets";
@@ -200,7 +201,9 @@ export default function ProfileView({
   const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
   const [savedReels, setSavedReels] = useState<Reel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeSubTab, setActiveSubTab] = useState<"publications" | "products" | "saved" | "orders" | "performance" | "edit">("publications");
+  const [activeSubTab, setActiveSubTab] = useState<"publish" | "publications" | "products" | "saved" | "orders" | "performance" | "edit">(currentUser.canSell === true ? "publish" : "saved");
+  const canSell = isSelf && currentUser.canSell === true;
+  const [isPublishOpen, setIsPublishOpen] = useState(false);
   const [publicTab, setPublicTab] = useState<"publications" | "products" | "policies">("publications");
   // Dedicated user publications feed state
   const [activeFeedReelId, setActiveFeedReelId] = useState<string | null>(null);
@@ -1104,142 +1107,97 @@ export default function ProfileView({
 
         {/* Horizontal Menu with Icons Only */}
         {isSelf ? (
-          <div className="mt-2 pt-0.5 border-t border-slate-200/80 flex items-center justify-around w-full max-w-sm sm:max-w-md mx-auto">
-            <button
-              onClick={() => setActiveSubTab("publications")}
-              className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
-                activeSubTab === "publications"
-                  ? "text-amber-500 font-bold scale-105"
-                  : "text-slate-400 hover:text-slate-600"
-              }`}
-              title="Mis Publicaciones"
-              id="profile-subtab-publications"
-            >
-              <Play className="w-4.5 h-4.5 fill-current stroke-[2]" />
-              {activeSubTab === "publications" && (
-                <motion.div
-                  layoutId="activeSubTabIndicator"
-                  className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full"
-                />
-              )}
-            </button>
+            {canSell && (
+              <button
+                onClick={() => setActiveSubTab("publish")}
+                className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
+                  activeSubTab === "publish" ? "text-amber-500 font-bold scale-105" : "text-slate-400 hover:text-slate-600"
+                }`}
+                title="Publicar"
+                id="profile-subtab-publish"
+              >
+                <Plus className="w-4.5 h-4.5 stroke-[2]" />
+                {activeSubTab === "publish" && <motion.div layoutId="activeSubTabIndicator" className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full" />}
+              </button>
+            )}
 
-            <button
-              onClick={() => {
-                setActiveSubTab("products");
-                fetchOrders();
-              }}
-              className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
-                activeSubTab === "products"
-                  ? "text-amber-500 font-bold scale-105"
-                  : "text-slate-400 hover:text-slate-600"
-              }`}
-              title={`Gestión de Productos y Ventas (${userProducts.length} productos, ${userSales.length} ventas)`}
-              id="profile-subtab-products"
-            >
-              <div className="relative flex items-center justify-center">
+            {canSell && (
+              <button
+                onClick={() => setActiveSubTab("publications")}
+                className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
+                  activeSubTab === "publications" ? "text-amber-500 font-bold scale-105" : "text-slate-400 hover:text-slate-600"
+                }`}
+                title="Mis Publicaciones"
+                id="profile-subtab-publications"
+              >
+                <Play className="w-4.5 h-4.5 fill-current stroke-[2]" />
+                {activeSubTab === "publications" && <motion.div layoutId="activeSubTabIndicator" className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full" />}
+              </button>
+            )}
+
+            {canSell && (
+              <button
+                onClick={() => { setActiveSubTab("products"); fetchOrders(); }}
+                className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
+                  activeSubTab === "products" ? "text-amber-500 font-bold scale-105" : "text-slate-400 hover:text-slate-600"
+                }`}
+                title={`Gestión de Productos y Ventas (${userProducts.length} productos, ${userSales.length} ventas)`}
+                id="profile-subtab-products"
+              >
                 <Package className="w-4.5 h-4.5 stroke-[2]" />
-                {userSales.filter((o) => o.status === "processing" || !o.trackingNumber).length > 0 && (
-                  <span
-                    className="absolute -top-1.5 -right-2 bg-emerald-500 text-white text-[8px] font-black px-1 rounded-full min-w-3 h-3 flex items-center justify-center border border-white leading-none shadow-xs"
-                    title="Ventas pendientes por despachar"
-                  >
-                    {userSales.filter((o) => o.status === "processing" || !o.trackingNumber).length}
-                  </span>
-                )}
-              </div>
-              {activeSubTab === "products" && (
-                <motion.div
-                  layoutId="activeSubTabIndicator"
-                  className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full"
-                />
-              )}
-            </button>
+                {activeSubTab === "products" && <motion.div layoutId="activeSubTabIndicator" className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full" />}
+              </button>
+            )}
 
             <button
               onClick={() => setActiveSubTab("saved")}
               className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
-                activeSubTab === "saved"
-                  ? "text-amber-500 font-bold scale-105"
-                  : "text-slate-400 hover:text-slate-600"
+                activeSubTab === "saved" ? "text-amber-500 font-bold scale-105" : "text-slate-400 hover:text-slate-600"
               }`}
               title="Publicaciones Guardadas"
               id="profile-subtab-saved"
             >
               <Bookmark className="w-4.5 h-4.5 stroke-[2]" />
-              {activeSubTab === "saved" && (
-                <motion.div
-                  layoutId="activeSubTabIndicator"
-                  className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full"
-                />
-              )}
+              {activeSubTab === "saved" && <motion.div layoutId="activeSubTabIndicator" className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full" />}
             </button>
 
             <button
-              onClick={() => {
-                setActiveSubTab("orders");
-                fetchOrders();
-              }}
+              onClick={() => { setActiveSubTab("orders"); fetchOrders(); }}
               className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
-                activeSubTab === "orders"
-                  ? "text-amber-500 font-bold scale-105"
-                  : "text-slate-400 hover:text-slate-600"
+                activeSubTab === "orders" ? "text-amber-500 font-bold scale-105" : "text-slate-400 hover:text-slate-600"
               }`}
               title="Historial de Mis Compras"
               id="profile-subtab-orders"
             >
-              <div className="relative flex items-center justify-center">
-                <ShoppingBag className="w-4.5 h-4.5 stroke-[2]" />
-                {userOrders.length > 0 && (
-                  <span className="absolute -top-1.5 -right-2 bg-amber-500 text-slate-950 text-[8px] font-black px-1 rounded-full min-w-3 h-3 flex items-center justify-center border border-white leading-none shadow-xs">
-                    {userOrders.length}
-                  </span>
-                )}
-              </div>
-              {activeSubTab === "orders" && (
-                <motion.div
-                  layoutId="activeSubTabIndicator"
-                  className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full"
-                />
-              )}
+              <ShoppingBag className="w-4.5 h-4.5 stroke-[2]" />
+              {userOrders.length > 0 && <span className="absolute -top-1.5 -right-2 bg-amber-500 text-slate-950 text-[8px] font-black px-1 rounded-full min-w-3 h-3 flex items-center justify-center border border-white leading-none shadow-xs">{userOrders.length}</span>}
+              {activeSubTab === "orders" && <motion.div layoutId="activeSubTabIndicator" className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full" />}
             </button>
 
-            <button
-              onClick={() => setActiveSubTab("performance")}
-              className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
-                activeSubTab === "performance"
-                  ? "text-amber-500 font-bold scale-105"
-                  : "text-slate-400 hover:text-slate-600"
-              }`}
-              title="Rendimiento"
-              id="profile-subtab-performance"
-            >
-              <BarChart3 className="w-4.5 h-4.5 stroke-[2]" />
-              {activeSubTab === "performance" && (
-                <motion.div
-                  layoutId="activeSubTabIndicator"
-                  className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full"
-                />
-              )}
-            </button>
+            {canSell && (
+              <button
+                onClick={() => setActiveSubTab("performance")}
+                className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
+                  activeSubTab === "performance" ? "text-amber-500 font-bold scale-105" : "text-slate-400 hover:text-slate-600"
+                }`}
+                title="Rendimiento"
+                id="profile-subtab-performance"
+              >
+                <BarChart3 className="w-4.5 h-4.5 stroke-[2]" />
+                {activeSubTab === "performance" && <motion.div layoutId="activeSubTabIndicator" className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full" />}
+              </button>
+            )}
 
             <button
               onClick={() => setActiveSubTab("edit")}
               className={`py-1.5 px-2.5 transition-all cursor-pointer flex flex-col items-center justify-center relative group ${
-                activeSubTab === "edit"
-                  ? "text-amber-500 font-bold scale-105"
-                  : "text-slate-400 hover:text-slate-600"
+                activeSubTab === "edit" ? "text-amber-500 font-bold scale-105" : "text-slate-400 hover:text-slate-600"
               }`}
               title="Editar Perfil"
               id="profile-subtab-edit"
             >
               <Settings className="w-4.5 h-4.5 stroke-[2]" />
-              {activeSubTab === "edit" && (
-                <motion.div
-                  layoutId="activeSubTabIndicator"
-                  className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full"
-                />
-              )}
+              {activeSubTab === "edit" && <motion.div layoutId="activeSubTabIndicator" className="absolute bottom-0 w-6 h-0.5 bg-amber-500 rounded-full" />}
             </button>
           </div>
         ) : (
@@ -1318,7 +1276,21 @@ export default function ProfileView({
             >
               <AnimatePresence mode="wait">
 
-                {activeSubTab === "publications" && (
+                {activeSubTab === "publish" && canSell && (
+                  <motion.div key="admin-publish" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-display font-extrabold text-sm text-slate-900 flex items-center space-x-2"><Plus className="w-4 h-4 text-amber-500" /><span>Publicar</span></h3>
+                    </div>
+                    <PublishView
+                      currentUser={currentUser}
+                      userProducts={userProducts}
+                      onBack={() => setActiveSubTab("publications")}
+                      onSuccess={() => { setActiveSubTab("publications"); onPublishSuccess?.(); }}
+                    />
+                  </motion.div>
+                )}
+
+                {activeSubTab === "publications" && canSell && (
                   <motion.div
                     key="admin-publications"
                     initial={{ opacity: 0, y: 10 }}
@@ -1380,7 +1352,7 @@ export default function ProfileView({
                   </motion.div>
                 )}
 
-                {activeSubTab === "products" && (
+                {activeSubTab === "products" && canSell && (
                   <motion.div
                     key="admin-products"
                     initial={{ opacity: 0, y: 10 }}
@@ -2647,7 +2619,7 @@ export default function ProfileView({
                   </motion.div>
                 )}
 
-                {activeSubTab === "performance" && (
+                {activeSubTab === "performance" && canSell && (
                   <motion.div
                     key="admin-performance"
                     initial={{ opacity: 0, y: 10 }}
