@@ -25,7 +25,7 @@ const PRESET_COVERS = [
 
 export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users }: AndroidLoginViewProps) {
   const [activeTab, setActiveTab] = useState<"login" | "register">(() => {
-    return (sessionState.getItem("androidAuthTab") as "login" | "register") || "login";
+    return "login";
   });
 
   // Login form state
@@ -163,7 +163,7 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
         {/* Android Material Tab Switcher */}
         <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200 mb-6">
           <button
-            onClick={() => { setActiveTab("login"); sessionState.setItem("androidAuthTab", "login"); setLoginError(""); }}
+            onClick={() => { setActiveTab("login");  setLoginError(""); }}
             className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
               activeTab === "login" ? "bg-amber-500 text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"
             }`}
@@ -171,7 +171,7 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
             Iniciar Sesión
           </button>
           <button
-            onClick={() => { setActiveTab("register"); sessionState.setItem("androidAuthTab", "register"); setRegisterError(""); }}
+            onClick={() => { setActiveTab("register");  setRegisterError(""); }}
             className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
               activeTab === "register" ? "bg-amber-500 text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"
             }`}
