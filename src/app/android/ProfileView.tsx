@@ -368,13 +368,15 @@ export default function AndroidProfileView({
                   <Edit3 className="w-3.5 h-3.5" />
                   <span>Editar</span>
                 </button>
-                <button
-                  onClick={() => (onOpenPublishModal ? onOpenPublishModal() : setIsPublishingOpen(true))}
-                  className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm active:scale-95 transition-transform cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Publicar</span>
-                </button>
+                {activeUser.canSell === true && (
+                  <button
+                    onClick={() => (onOpenPublishModal ? onOpenPublishModal() : setIsPublishingOpen(true))}
+                    className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm active:scale-95 transition-transform cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Publicar</span>
+                  </button>
+                )}
               </>
             ) : (
               <div className="flex space-x-2">
