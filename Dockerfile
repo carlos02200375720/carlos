@@ -1,20 +1,18 @@
 # Usar la imagen oficial de Node.js
 FROM node:18-alpine
 
-# Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos de dependencias
 COPY package*.json ./
+RUN npm install
 
-# Instalar dependencias
-RUN npm install --production
-
-# Copiar el resto del código del servidor
 COPY . .
+RUN npm run build
+RUN npm prune --omit=dev
 
-# Exponer el puerto predeterminado
+ENV NODE_ENV=production
+ENV PORT=8080
+
 EXPOSE 8080
 
-# Comando para iniciar la aplicación
 CMD ["npm", "start"]
