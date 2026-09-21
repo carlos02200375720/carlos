@@ -144,6 +144,16 @@ export async function resolveAuthenticatedUser(req: any, fallbackRole = "creator
   return resolvedUser;
 }
 
+export function isConfiguredSuperadmin(user: any): boolean {
+  const configured = String(process.env.VITE_SUPERADMIN_EMAIL || process.env.SUPERADMIN_EMAIL || "").trim().toLowerCase();
+  const email = String(user?.email || "").trim().toLowerCase();
+  return Boolean(configured && email && email === configured);
+}
+
+export function hasSellerPermission(user: any): boolean {
+  return Boolean(user?.canSell === true || isConfiguredSuperadmin(user));
+}
+
 /**
  * GET /api/users
  */
