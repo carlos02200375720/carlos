@@ -67,193 +67,53 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // Serve uploaded media files with proper HLS & video streaming headers
-  const uploadsDir = path.join(process.cwd(), "uploads");
-  ["avatars", "publicaciones", "videos", "covers", "hls"].forEach((sub) => {
-    const p = path.join(uploadsDir, sub);
-    if (!fs.existsSync(p)) {
-      fs.mkdirSync(p, { recursive: true });
+  // User media is stored exclusively in Google Cloud Storage.
+  // The /uploads/* routes remain only as compatibility aliases for legacy Mongo URLs.
+  app.use("/uploads", async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    if (req.method === "OPTIONS") return res.sendStatus(204);
+
+    const requestedPath = String(req.path || "").replace(/^\\/+/, "");
+    if (!requestedPath || requestedPath.includes("..")) {
+      return res.status(404).type("text/plain").send("Media resource not found");
     }
-  });
 
-  app.use(
-    "/uploads",
-    (req, res, next) => {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-      if (req.method === "OPTIONS") {
-        return res.sendStatus(204);
-      }
-      next();
-    }
-  );
-
-  const defaultPosterPath = fs.existsSync(path.join(process.cwd(), "public", "default-poster.jpg"))
-    ? path.join(process.cwd(), "public", "default-poster.jpg")
-    : path.join(uploadsDir, "default-poster.jpg");
-
-  // Universal fallback for direct poster requests
-  app.get(["/poster.jpg", "/uploads/poster.jpg", "/default-poster.jpg"], (_req, res) => {
-    res.setHeader("Content-Type", "image/jpeg");
-    res.setHeader("Cache-Control", "public, max-age=86400");
-    if (fs.existsSync(defaultPosterPath)) {
-      return res.sendFile(defaultPosterPath);
-    }
-    return res.status(200).end();
-  });
-
-  // Dynamic on-demand poster extractor for HLS folders with guaranteed fallback
-  app.get("/uploads/hls/:folder/poster.jpg", async (req, res) => {
-    try {
-      const folder = req.params.folder;
-      const posterPath = path.join(uploadsDir, "hls", folder, "poster.jpg");
+    // Keep the default poster as a packaged application asset, not user storage.
+    if (requestedPath === "poster.jpg") {
+      const posterPath = path.join(process.cwd(), "public", "default-poster.jpg");
       if (fs.existsSync(posterPath)) {
         res.setHeader("Content-Type", "image/jpeg");
         res.setHeader("Cache-Control", "public, max-age=86400");
         return res.sendFile(posterPath);
       }
-      const dirPath = path.join(uploadsDir, "hls", folder);
-      if (fs.existsSync(dirPath)) {
-        const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(".ts"));
-        if (files.length > 0) {
-          files.sort();
-          const targetTs = path.join(dirPath, files[0]);
-          const { getFfmpegBinary } = await import("./src/server/hlsTranscoder");
-          const ffmpegBin = getFfmpegBinary();
-          const { exec } = await import("child_process");
-          const { promisify } = await import("util");
-          const execAsync = promisify(exec);
-          await execAsync(`"${ffmpegBin}" -y -i "${targetTs}" -vframes 1 -q:v 2 "${posterPath}"`).catch(() => {});
-          if (fs.existsSync(posterPath)) {
-            res.setHeader("Content-Type", "image/jpeg");
-            res.setHeader("Cache-Control", "public, max-age=86400");
-            return res.sendFile(posterPath);
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
-    // Guaranteed fallback image so video poster never throws 404 in console
-    res.setHeader("Content-Type", "image/jpeg");
-    res.setHeader("Cache-Control", "public, max-age=86400");
-    if (fs.existsSync(defaultPosterPath)) {
-      return res.sendFile(defaultPosterPath);
-    }
-    return res.status(200).end();
-  });
-
-  // HLS playlist alias and auto-recovery (master.m3u8 <-> index.m3u8)
-  app.get(["/uploads/hls/:folder/master.m3u8", "/uploads/hls/:folder/index.m3u8"], async (req, res, next) => {
-    const folder = req.params.folder;
-    const isMaster = req.path.endsWith("master.m3u8");
-    const requestedFile = isMaster ? "master.m3u8" : "index.m3u8";
-    const alternateFile = isMaster ? "index.m3u8" : "master.m3u8";
-
-    const requestedPath = path.join(uploadsDir, "hls", folder, requestedFile);
-    if (fs.existsSync(requestedPath)) {
-      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      return res.sendFile(requestedPath);
+      return res.status(404).end();
     }
 
-    const alternatePath = path.join(uploadsDir, "hls", folder, alternateFile);
-    if (fs.existsSync(alternatePath)) {
-      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      return res.sendFile(alternatePath);
-    }
-
-    // Cloud Run local disk is ephemeral. Recover HLS objects from GCS when an
-    // older publication still points at /uploads/hls/<folder>/... .
     try {
-      const gcsCandidates = [requestedFile, alternateFile];
-      for (const fileName of gcsCandidates) {
-        const gcsFile = bucket.file(`hls/${folder}/${fileName}`);
-        const [exists] = await gcsFile.exists();
-        if (exists) {
-          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-          return res.redirect(302, `https://storage.googleapis.com/${bucketName}/hls/${folder}/${fileName}`);
-        }
+      const gcsFile = bucket.file(requestedPath);
+      const [exists] = await gcsFile.exists();
+      if (!exists) {
+        return res.status(404).type("text/plain").send("Media resource not found in Google Cloud Storage");
       }
-    } catch (gcsErr) {
-      console.warn(`⚠️ [HLS] GCS recovery check failed for ${folder}:`, gcsErr);
-    }
 
-    // Check if .ts segments exist to construct a dynamic index.m3u8 playlist
-    const dirPath = path.join(uploadsDir, "hls", folder);
-    if (fs.existsSync(dirPath)) {
-      const tsFiles = fs.readdirSync(dirPath).filter((f) => f.endsWith(".ts")).sort();
-      if (tsFiles.length > 0) {
-        let manifest = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:10\n#EXT-X-MEDIA-SEQUENCE:0\n";
-        for (const seg of tsFiles) {
-          manifest += `#EXTINF:10.0,\n${seg}\n`;
-        }
-        manifest += "#EXT-X-ENDLIST\n";
-        fs.writeFileSync(path.join(dirPath, "index.m3u8"), manifest, "utf-8");
+      const [metadata] = await gcsFile.getMetadata();
+      if (metadata.contentType) res.setHeader("Content-Type", metadata.contentType);
+      if (requestedPath.endsWith(".m3u8")) {
         res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
         res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-        return res.send(manifest);
+      } else if (requestedPath.endsWith(".ts")) {
+        res.setHeader("Content-Type", "video/mp2t");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else {
+        res.setHeader("Cache-Control", "public, max-age=86400");
       }
-    }
 
-    next();
-  });
-
-  // Missing avatar requests: return 404 so client onError/fallback activates instead of a black poster
-  app.get("/uploads/avatars/:file", (req, res) => {
-    const filePath = path.join(uploadsDir, "avatars", req.params.file);
-    if (fs.existsSync(filePath)) {
-      return res.sendFile(filePath);
+      return res.redirect(302, `https://storage.googleapis.com/${bucketName}/${requestedPath}`);
+    } catch (err) {
+      console.error("GCS media lookup failed:", err);
+      return res.status(500).type("text/plain").send("Google Cloud Storage unavailable");
     }
-    return res.status(404).type("text/plain").send("Avatar not found");
-  });
-
-  // Missing publication thumbnails / images fallback
-  app.get("/uploads/publicaciones/:file", (req, res, next) => {
-    const filePath = path.join(uploadsDir, "publicaciones", req.params.file);
-    if (fs.existsSync(filePath)) {
-      return res.sendFile(filePath);
-    }
-    // If it is an image request that was lost or missing, serve fallback image instead of 404
-    if (/\.(jpg|jpeg|png|webp)$/i.test(req.params.file)) {
-      res.setHeader("Content-Type", "image/jpeg");
-      res.setHeader("Cache-Control", "public, max-age=86400");
-      if (fs.existsSync(defaultPosterPath)) {
-        return res.sendFile(defaultPosterPath);
-      }
-    }
-    next();
-  });
-
-  app.use(
-    "/uploads",
-    express.static(uploadsDir, {
-      setHeaders: (res, filePath) => {
-        if (filePath.endsWith(".m3u8")) {
-          res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-        } else if (filePath.endsWith(".ts")) {
-          res.setHeader("Content-Type", "video/mp2t");
-          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        }
-      },
-    })
-  );
-
-  // Catch-all for missing /uploads/* files: NEVER let /uploads/* fall through to SPA index.html
-  app.use("/uploads", (req, res) => {
-    if (req.path.startsWith("/avatars/")) {
-      return res.status(404).type("text/plain").send("Avatar not found");
-    }
-    if (/\.(jpg|jpeg|png|webp|gif)$/i.test(req.path)) {
-      res.setHeader("Content-Type", "image/jpeg");
-      res.setHeader("Cache-Control", "public, max-age=86400");
-      if (fs.existsSync(defaultPosterPath)) {
-        return res.sendFile(defaultPosterPath);
-      }
-    }
-    res.status(404).type("text/plain").send("Media resource not found");
   });
 
   // Dedicated Android API Router
