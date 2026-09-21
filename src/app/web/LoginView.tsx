@@ -25,7 +25,7 @@ const PRESET_COVERS = [
 
 export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: LoginViewProps) {
   const [activeTab, setActiveTab] = useState<"login" | "register">(() => {
-    const saved = sessionState.getItem("authTab") as "login" | "register";
+    const saved: "login" | "register" | null = "login";
     return saved || "login";
   });
   
@@ -246,7 +246,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
             {/* Tab Swapping Header */}
             <div className="flex border-b border-slate-800 pb-3 mb-6">
               <button
-                onClick={() => { setActiveTab("login"); sessionState.setItem("authTab", "login"); setLoginError(""); }}
+                onClick={() => { setActiveTab("login");  setLoginError(""); }}
                 className={`text-xs font-bold px-4 py-2 rounded-xl transition-all mr-2 flex items-center space-x-2 ${
                   activeTab === "login"
                     ? "bg-amber-500 text-slate-950"
@@ -257,7 +257,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
                 <span>Iniciar Sesión</span>
               </button>
               <button
-                onClick={() => { setActiveTab("register"); sessionState.setItem("authTab", "register"); setRegisterError(""); }}
+                onClick={() => { setActiveTab("register");  setRegisterError(""); }}
                 className={`text-xs font-bold px-4 py-2 rounded-xl transition-all flex items-center space-x-2 ${
                   activeTab === "register"
                     ? "bg-amber-500 text-slate-950"
