@@ -49,17 +49,6 @@ export default function App() {
     return 'reels';
   });
 
-  // Admin is restricted to the configured superadministrator email.
-  // This effect must be declared after currentUser is initialized. Referencing
-  // currentUser in the dependency array before its const declaration causes
-  // a JavaScript TDZ error in the production bundle.
-  useEffect(() => {
-    if (activeTab === "admin" && !isSuperAdmin(currentUser)) {
-      setActiveTab("reels");
-      navigateTo("/");
-    }
-  }, [activeTab, currentUser]);
-
   // Stop all media playback when switching away from reels tab (shop, messages, profile)
   useEffect(() => {
     if (activeTab !== 'reels' && typeof document !== "undefined") {
@@ -124,6 +113,17 @@ export default function App() {
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
 
   // Current User (Session source of truth)
+
+  // Admin is restricted to the configured superadministrator email.
+  // currentUser is initialized above this effect so its dependency array is
+  // evaluated only after the variable has been initialized.
+  useEffect(() => {
+    if (activeTab === "admin" && !isSuperAdmin(currentUser)) {
+      setActiveTab("reels");
+      navigateTo("/");
+    }
+  }, [activeTab, currentUser]);
+
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => safeStorage.getItem("isLoggedIn") === "true");
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const savedUserJson = safeStorage.getItem("currentUserData");
