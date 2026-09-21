@@ -476,7 +476,6 @@ export default function App() {
         if (list.length > 0) {
           const uniqueUsers = deduplicateById(list) as User[];
           setUsers(uniqueUsers);
-          sessionState.setItem("cached_users", JSON.stringify(uniqueUsers));
           hasLoadedAnyCore = true;
         }
       }
@@ -507,7 +506,6 @@ export default function App() {
       if (reelsSyncCompleted) {
         const uniqueReels = deduplicateById(loadedReels) as Reel[];
         setReels(uniqueReels);
-        sessionState.setItem("cached_reels", JSON.stringify(uniqueReels));
         hasLoadedAnyCore = true;
       }
 
@@ -537,7 +535,6 @@ export default function App() {
       if (productsSyncCompleted) {
         const uniqueProducts = deduplicateById(loadedProducts) as Product[];
         setProducts(uniqueProducts);
-        sessionState.setItem("cached_products", JSON.stringify(uniqueProducts));
         hasLoadedAnyCore = true;
       }
 
