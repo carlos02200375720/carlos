@@ -114,16 +114,6 @@ export default function App() {
 
   // Current User (Session source of truth)
 
-  // Admin is restricted to the configured superadministrator email.
-  // currentUser is initialized above this effect so its dependency array is
-  // evaluated only after the variable has been initialized.
-  useEffect(() => {
-    if (activeTab === "admin" && !isSuperAdmin(currentUser)) {
-      setActiveTab("reels");
-      navigateTo("/");
-    }
-  }, [activeTab, currentUser]);
-
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => safeStorage.getItem("isLoggedIn") === "true");
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const savedUserJson = safeStorage.getItem("currentUserData");
@@ -161,6 +151,16 @@ export default function App() {
       isGuest: true,
     };
   });
+
+  // Admin is restricted to the configured superadministrator email.
+  // currentUser is initialized above this effect so its dependency array is
+  // evaluated only after the variable has been initialized.
+  useEffect(() => {
+    if (activeTab === "admin" && !isSuperAdmin(currentUser)) {
+      setActiveTab("reels");
+      navigateTo("/");
+    }
+  }, [activeTab, currentUser]);
 
   // Selected details (for cross-tab linkage & direct URL routes)
   const [directSelectedProduct, setDirectSelectedProduct] = useState<Product | null>(() => {
