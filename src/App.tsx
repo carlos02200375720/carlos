@@ -50,6 +50,9 @@ export default function App() {
   });
 
   // Admin is restricted to the configured superadministrator email.
+  // This effect must be declared after currentUser is initialized. Referencing
+  // currentUser in the dependency array before its const declaration causes
+  // a JavaScript TDZ error in the production bundle.
   useEffect(() => {
     if (activeTab === "admin" && !isSuperAdmin(currentUser)) {
       setActiveTab("reels");
