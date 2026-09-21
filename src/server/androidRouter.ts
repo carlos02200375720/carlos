@@ -254,6 +254,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         isGuest: false,
         isOnline: true,
         email: user.email || "",
+        canSell: user.canSell === true
       };
 
       res.json({ success: true, user: formattedUser });
@@ -314,6 +315,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         isGuest: false,
         isOnline: true,
         email: targetUser.email || "",
+        canSell: targetUser.canSell === true
       };
 
       console.log(`📱 [Android Gateway] Usuario autenticado exitosamente en Atlas: @${androidUser.username}`);
