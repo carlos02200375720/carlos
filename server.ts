@@ -161,6 +161,22 @@ async function startServer() {
       return res.sendFile(alternatePath);
     }
 
+    // Cloud Run local disk is ephemeral. Recover HLS objects from GCS when an
+    // older publication still points at /uploads/hls/<folder>/... .
+    try {
+      const gcsCandidates = [requestedFile, alternateFile];
+      for (const fileName of gcsCandidates) {
+        const gcsFile = bucket.file(`hls/${folder}/${fileName}`);
+        const [exists] = await gcsFile.exists();
+        if (exists) {
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+          return res.redirect(302, `https://storage.googleapis.com/${bucketName}/hls/${folder}/${fileName}`);
+        }
+      }
+    } catch (gcsErr) {
+      console.warn(`⚠️ [HLS] GCS recovery check failed for ${folder}:`, gcsErr);
+    }
+
     // Check if .ts segments exist to construct a dynamic index.m3u8 playlist
     const dirPath = path.join(uploadsDir, "hls", folder);
     if (fs.existsSync(dirPath)) {
