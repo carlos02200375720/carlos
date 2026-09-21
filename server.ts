@@ -47,7 +47,7 @@ async function startServer() {
   });
 
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
   // CORS middleware to allow requests from Cloud Run domain and client origins
   app.use((req, res, next) => {
