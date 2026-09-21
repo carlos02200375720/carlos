@@ -40,7 +40,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { User, Reel, Product, Order } from "../../types";
 import PublishView from "./PublishView";
 import { apiFetch } from "../../config";
-import { safeStorage } from "../../utils/safeStorage";
+import { sessionState } from "../../utils/sessionState";
 import { isSuperAdmin } from "../../superAdmin";
 import {
   getDefaultAvatar,
@@ -129,7 +129,7 @@ export default function AdminView({
 
   // Platform switcher state (app/web <-> app/android)
   const [currentPlatform, setCurrentPlatform] = useState<'android' | 'web'>(() => {
-    return activePlatform || (safeStorage.getItem("mallsocial_platform_target") as 'android' | 'web') || 'web';
+    return activePlatform || (sessionState.getPlatform() as 'android' | 'web') || 'web';
   });
 
   useEffect(() => {
@@ -140,7 +140,7 @@ export default function AdminView({
 
   const handlePlatformChange = (target: 'android' | 'web') => {
     setCurrentPlatform(target);
-    safeStorage.setItem("mallsocial_platform_target", target);
+    sessionState.setPlatform(target);
     if (onSwitchPlatform) {
       onSwitchPlatform(target);
     } else {
