@@ -7,7 +7,7 @@ import SocialPanel from "./SocialPanel";
 import ProfileView from "./ProfileView";
 import AndroidLoginView from "./LoginView";
 import { motion, AnimatePresence } from "motion/react";
-import { safeStorage } from "../../utils/safeStorage";
+import { sessionState } from "../../utils/sessionState";
 import { navigateTo } from "../../router";
 
 export interface AndroidAppProps {
@@ -280,9 +280,9 @@ export default function AndroidApp({
                     onLoginSuccess={(loggedUser) => {
                       setCurrentUser(loggedUser);
                       setIsLoggedIn(true);
-                      safeStorage.setItem("isLoggedIn", "true");
-                      safeStorage.setItem("loggedInUsername", loggedUser.username);
-                      safeStorage.setItem("currentUserData", JSON.stringify(loggedUser));
+                      sessionState.setAuthenticated(true);
+                      sessionState.setUsername(loggedUser.username);
+                      sessionState.setUser(loggedUser);
                       refreshAllData();
                       setSelectedCreatorProfileId(null);
                       setActiveTab('profile');
@@ -304,12 +304,12 @@ export default function AndroidApp({
                     onToggleFollowUser={handleToggleFollowUser}
                     onProfileUpdate={(updatedUser) => {
                       setCurrentUser(updatedUser);
-                      safeStorage.setItem("currentUserData", JSON.stringify(updatedUser));
+                      sessionState.setUser(updatedUser);
                       setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
                       if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
                         setIsLoggedIn(true);
-                        safeStorage.setItem("isLoggedIn", "true");
-                        safeStorage.setItem("loggedInUsername", updatedUser.username);
+                        sessionState.setAuthenticated(true);
+                        sessionState.setUsername(updatedUser.username);
                         setSelectedCreatorProfileId(null);
                         setActiveTab('profile');
                       }
