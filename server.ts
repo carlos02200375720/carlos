@@ -74,7 +74,7 @@ async function startServer() {
     res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
     if (req.method === "OPTIONS") return res.sendStatus(204);
 
-    const requestedPath = String(req.path || "").replace(/^\\/+/, "");
+    const requestedPath = String(req.path || "").replace(/^\/+/, "");
     if (!requestedPath || requestedPath.includes("..")) {
       return res.status(404).type("text/plain").send("Media resource not found");
     }
