@@ -141,7 +141,7 @@ async function startServer() {
   });
 
   // HLS playlist alias and auto-recovery (master.m3u8 <-> index.m3u8)
-  app.get(["/uploads/hls/:folder/master.m3u8", "/uploads/hls/:folder/index.m3u8"], (req, res, next) => {
+  app.get(["/uploads/hls/:folder/master.m3u8", "/uploads/hls/:folder/index.m3u8"], async (req, res, next) => {
     const folder = req.params.folder;
     const isMaster = req.path.endsWith("master.m3u8");
     const requestedFile = isMaster ? "master.m3u8" : "index.m3u8";
