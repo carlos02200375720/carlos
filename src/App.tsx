@@ -6,7 +6,7 @@ import { WebApp, SplashScreen, AuthModal } from "./app/web";
 import { AndroidApp } from "./app/android";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { isSuperAdmin } from "./superAdmin";
-import { safeStorage } from "./utils/safeStorage";
+import { sessionState } from "./utils/sessionState";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
 import { useCurrentRoute, navigateTo, parseRoute } from "./router";
 
@@ -37,7 +37,7 @@ export default function App() {
       }
       if (route.type === 'admin') {
         try {
-          const savedUserJson = safeStorage.getItem("currentUserData");
+          const savedUserJson = JSON.stringify(sessionState.getUser());
           if (savedUserJson && isSuperAdmin(JSON.parse(savedUserJson))) return 'admin';
         } catch {}
         return 'reels';
@@ -60,10 +60,10 @@ export default function App() {
     }
   }, [activeTab]);
 
-  // Core Data State - pre-hydrated from safeStorage cache if available so UI displays immediately
+  // Core Data State - pre-hydrated from sessionState cache if available so UI displays immediately
   const [users, setUsers] = useState<User[]>(() => {
     try {
-      const cached = safeStorage.getItem("cached_users");
+      const cached = null;
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return deduplicateById(parsed) as User[];
@@ -74,7 +74,7 @@ export default function App() {
 
   const [reels, setReels] = useState<Reel[]>(() => {
     try {
-      const cached = safeStorage.getItem("cached_reels");
+      const cached = null;
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return deduplicateById(parsed) as Reel[];
@@ -85,7 +85,7 @@ export default function App() {
 
   const [products, setProducts] = useState<Product[]>(() => {
     try {
-      const cached = safeStorage.getItem("cached_products");
+      const cached = null;
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return deduplicateById(parsed) as Product[];
@@ -95,18 +95,18 @@ export default function App() {
   });
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
-      const savedUsername = safeStorage.getItem("loggedInUsername");
-      const guestId = safeStorage.getItem("cartClientId");
+      const savedUsername = sessionState.getUsername();
+      const guestId = null;
       const key = savedUsername && savedUsername !== "invitado" && savedUsername !== "guest"
         ? `saved_cart_${savedUsername}`
         : (guestId ? `saved_cart_${guestId}` : "saved_cart_guest");
-      const raw = safeStorage.getItem(key);
+      const raw = sessionState.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
-      console.error("Error reading initial cart from safeStorage:", e);
+      console.error("Error reading initial cart from sessionState:", e);
     }
     return [];
   });
@@ -114,9 +114,9 @@ export default function App() {
 
   // Current User (Session source of truth)
 
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => safeStorage.getItem("isLoggedIn") === "true");
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => sessionState.isAuthenticated());
   const [currentUser, setCurrentUser] = useState<User>(() => {
-    const savedUserJson = safeStorage.getItem("currentUserData");
+    const savedUserJson = JSON.stringify(sessionState.getUser());
     if (savedUserJson) {
       try {
         const parsed = JSON.parse(savedUserJson);
@@ -130,7 +130,7 @@ export default function App() {
         }
       } catch (e) {}
     }
-    const savedUsername = safeStorage.getItem("loggedInUsername");
+    const savedUsername = sessionState.getUsername();
     if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
       return {
         id: "current_user",
@@ -173,7 +173,7 @@ export default function App() {
       const route = parseRoute(window.location.pathname);
       if (route.type === 'product') {
         try {
-          const cached = safeStorage.getItem("cached_products");
+          const cached = null;
           if (cached) {
             const parsed = JSON.parse(cached);
             if (Array.isArray(parsed)) {
@@ -225,7 +225,7 @@ export default function App() {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [savedReelIds, setSavedReelIds] = useState<string[]>(() => {
     try {
-      const cached = safeStorage.getItem("saved_publication_ids");
+      const cached = null;
       if (cached) return JSON.parse(cached);
     } catch (e) {}
     return [];
@@ -241,7 +241,7 @@ export default function App() {
   // Platform Target: 'android' vs 'web'
   const [activePlatform, setActivePlatform] = useState<'android' | 'web'>(() => {
     if (typeof window !== "undefined") {
-      const saved = safeStorage.getItem("mallsocial_platform_target");
+      const saved = sessionState.getPlatform();
       if (saved === "android" || saved === "web") return saved;
       if (window.location.search.includes("platform=android")) return "android";
       if (window.location.search.includes("platform=web")) return "web";
@@ -261,7 +261,7 @@ export default function App() {
 
   const handleSwitchPlatform = useCallback((target: 'android' | 'web') => {
     setActivePlatform(target);
-    safeStorage.setItem("mallsocial_platform_target", target);
+    sessionState.setPlatform(target);
   }, []);
 
   // Listen to browser URL route changes (e.g. /product/:id, /reel/:id, /store/:id, /shop, etc.)
@@ -385,7 +385,7 @@ export default function App() {
       if (Array.isArray(data)) {
         const unique = deduplicateById(data) as Reel[];
         setReels(unique);
-        safeStorage.setItem("cached_reels", JSON.stringify(unique));
+        
       }
     } catch (err) {
       console.error("Error fetching reels:", err);
@@ -412,7 +412,7 @@ export default function App() {
       if (Array.isArray(data)) {
         const unique = deduplicateById(data) as Product[];
         setProducts(unique);
-        safeStorage.setItem("cached_products", JSON.stringify(unique));
+        
       }
     } catch (err) {
       console.error("Error fetching products:", err);
@@ -429,7 +429,7 @@ export default function App() {
           if (Array.isArray(data) && data.length > 0) {
             const unique = deduplicateById(data) as User[];
             setUsers(unique);
-            safeStorage.setItem("cached_users", JSON.stringify(unique));
+            
           }
         })
         .catch((err) => console.error("Error fetching users:", err))
@@ -476,7 +476,7 @@ export default function App() {
         if (list.length > 0) {
           const uniqueUsers = deduplicateById(list) as User[];
           setUsers(uniqueUsers);
-          safeStorage.setItem("cached_users", JSON.stringify(uniqueUsers));
+          sessionState.setItem("cached_users", JSON.stringify(uniqueUsers));
           hasLoadedAnyCore = true;
         }
       }
@@ -507,7 +507,7 @@ export default function App() {
       if (reelsSyncCompleted) {
         const uniqueReels = deduplicateById(loadedReels) as Reel[];
         setReels(uniqueReels);
-        safeStorage.setItem("cached_reels", JSON.stringify(uniqueReels));
+        sessionState.setItem("cached_reels", JSON.stringify(uniqueReels));
         hasLoadedAnyCore = true;
       }
 
@@ -537,7 +537,7 @@ export default function App() {
       if (productsSyncCompleted) {
         const uniqueProducts = deduplicateById(loadedProducts) as Product[];
         setProducts(uniqueProducts);
-        safeStorage.setItem("cached_products", JSON.stringify(uniqueProducts));
+        sessionState.setItem("cached_products", JSON.stringify(uniqueProducts));
         hasLoadedAnyCore = true;
       }
 
@@ -545,16 +545,16 @@ export default function App() {
         setLiveSessions(deduplicateById(liveRes.value));
       }
 
-      // Step 3: Restore session from safeStorage if logged in
-      let savedUsername = safeStorage.getItem("loggedInUsername");
+      // Step 3: Restore session from sessionState if logged in
+      let savedUsername = sessionState.getUsername();
       if (savedUsername === "carlosg") {
         savedUsername = "carlos";
-        safeStorage.setItem("loggedInUsername", "carlos");
+        sessionState.setUsername("carlos");
       } else if (savedUsername === "davidb") {
         savedUsername = "david";
-        safeStorage.setItem("loggedInUsername", "david");
+        sessionState.setUsername("david");
       }
-      const savedPassword = safeStorage.getItem("loggedInPassword") || "";
+      const savedPassword = null || "";
       if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
         apiFetch("/api/users/current/switch", {
           method: "POST",
@@ -566,9 +566,9 @@ export default function App() {
             if (data && data.success && data.user) {
               setCurrentUser(data.user);
               setIsLoggedIn(true);
-              safeStorage.setItem("isLoggedIn", "true");
-              safeStorage.setItem("loggedInUsername", data.user.username);
-              safeStorage.setItem("currentUserData", JSON.stringify(data.user));
+              sessionState.setAuthenticated(true);
+              sessionState.setUsername(data.user.username);
+              sessionState.setUser(data.user);
               setSavedReelIds(data.user.savedReelIds || []);
             }
           })
@@ -923,7 +923,7 @@ export default function App() {
 
     // Optimistic update for UI state
     setSavedReelIds(newSavedIds);
-    safeStorage.setItem("saved_publication_ids", JSON.stringify(newSavedIds));
+    
     setCurrentUser((prev) => ({
       ...prev,
       savedReelIds: newSavedIds
@@ -961,7 +961,7 @@ export default function App() {
           if (data.success) {
             if (data.savedReelIds) {
               setSavedReelIds(data.savedReelIds);
-              safeStorage.setItem("saved_publication_ids", JSON.stringify(data.savedReelIds));
+              sessionState.setItem("saved_publication_ids", JSON.stringify(data.savedReelIds));
               setCurrentUser((prev) => ({
                 ...prev,
                 savedReelIds: data.savedReelIds
@@ -1049,17 +1049,17 @@ export default function App() {
   // Get persistent Cart User ID for MongoDB storage
   const getCartUserId = (userObj?: User) => {
     const target = userObj || currentUser;
-    const savedUsername = safeStorage.getItem("loggedInUsername");
+    const savedUsername = sessionState.getUsername();
     if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
       return savedUsername;
     }
     if (target && target.username && target.username !== "invitado" && !target.isGuest && target.id !== "current_user") {
       return target.originalId || target.id || target.username;
     }
-    let guestId = safeStorage.getItem("cartClientId");
+    let guestId = null;
     if (!guestId) {
       guestId = "guest_cart_" + Math.random().toString(36).substring(2, 11);
-      safeStorage.setItem("cartClientId", guestId);
+      sessionState.setItem("cartClientId", guestId);
     }
     return guestId;
   };
@@ -1070,9 +1070,9 @@ export default function App() {
 
     // Save locally immediately
     try {
-      safeStorage.setItem(`saved_cart_${userId}`, JSON.stringify(updatedCart));
+      sessionState.setItem(`saved_cart_${userId}`, JSON.stringify(updatedCart));
     } catch (e) {
-      console.error("Error writing cart to safeStorage:", e);
+      console.error("Error writing cart to sessionState:", e);
     }
 
     // Persist to MongoDB Atlas backend
@@ -1099,7 +1099,7 @@ export default function App() {
     // Load from local storage immediately for zero-latency UI
     try {
       const localKey = `saved_cart_${userId}`;
-      const rawLocal = safeStorage.getItem(localKey);
+      const rawLocal = sessionState.getItem(localKey);
       if (rawLocal) {
         const parsedLocal = JSON.parse(rawLocal);
         if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
@@ -1107,7 +1107,7 @@ export default function App() {
         }
       }
     } catch (e) {
-      // Ignore safeStorage parse errors
+      // Ignore sessionState parse errors
     }
 
     // Resilient background sync with retry
@@ -1124,12 +1124,12 @@ export default function App() {
             if (data.items.length > 0) {
               setCart(data.items);
               try {
-                safeStorage.setItem(`saved_cart_${userId}`, JSON.stringify(data.items));
+                sessionState.setItem(`saved_cart_${userId}`, JSON.stringify(data.items));
               } catch (e) {}
             } else {
               // If MongoDB returned 0 items, check if we have local items to sync UP to MongoDB
               const localKey = `saved_cart_${userId}`;
-              const rawLocal = safeStorage.getItem(localKey);
+              const rawLocal = sessionState.getItem(localKey);
               if (rawLocal) {
                 try {
                   const parsedLocal = JSON.parse(rawLocal);
@@ -1366,10 +1366,10 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    safeStorage.removeItem("isLoggedIn");
-    safeStorage.removeItem("loggedInUsername");
-    safeStorage.removeItem("loggedInPassword");
-    safeStorage.removeItem("currentUserData");
+    
+    
+    
+    
     setIsLoggedIn(false);
     
     // First notify server to clear session
