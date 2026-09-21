@@ -509,36 +509,52 @@ export async function getUserPublications(req: Request, res: Response): Promise<
       userIdentifiers.add(targetId.toLowerCase());
     }
 
+    // MongoDB is the primary source, but publication loading must remain available
+    // during transient DB/query failures. Always fall back to the in-memory feed.
     if (mongoose.connection.readyState === 1) {
-      const userDoc = await MongoUser.findOne({
-        $or: [
-          { id: targetId },
-          { username: targetId.toLowerCase() },
-        ],
-      });
-      if (userDoc) {
-        if (userDoc.id) userIdentifiers.add(userDoc.id);
-        if (userDoc.originalId) userIdentifiers.add(userDoc.originalId);
-        if (userDoc._id) userIdentifiers.add(userDoc._id.toString());
-        if (userDoc.username) {
-          userIdentifiers.add(userDoc.username);
-          userIdentifiers.add(userDoc.username.toLowerCase());
+      try {
+        const userDoc = await MongoUser.findOne({
+          $or: [
+            { id: targetId },
+            { username: targetId.toLowerCase() },
+          ],
+        });
+        if (userDoc) {
+          if (userDoc.id) userIdentifiers.add(userDoc.id);
+          if (userDoc.originalId) userIdentifiers.add(userDoc.originalId);
+          if (userDoc._id) userIdentifiers.add(userDoc._id.toString());
+          if (userDoc.username) {
+            userIdentifiers.add(userDoc.username);
+            userIdentifiers.add(userDoc.username.toLowerCase());
+          }
         }
+      } catch (dbErr: any) {
+        console.warn("⚠️ Publication user lookup failed; using fallback identifiers:", dbErr?.message || dbErr);
       }
     }
 
     let userReels: Reel[] = [];
     if (mongoose.connection.readyState === 1) {
-      userReels = await getUserCanonicalReelsFromMongo(userIdentifiers);
+      try {
+        userReels = await getUserCanonicalReelsFromMongo(userIdentifiers);
+      } catch (dbErr: any) {
+        console.warn("⚠️ MongoReel publication query failed; using in-memory fallback:", dbErr?.message || dbErr);
+      }
     }
 
     if (userReels.length === 0) {
+      const seenReelIds = new Set<string>();
       userReels = reels
         .filter(
           (r) =>
             userIdentifiers.has(r.creatorId) ||
             (r.creatorUsername && userIdentifiers.has(r.creatorUsername.toLowerCase()))
         )
+        .filter((r) => {
+          if (!r.id || seenReelIds.has(r.id)) return false;
+          seenReelIds.add(r.id);
+          return true;
+        })
         .map((r) => formatReelDTO(r));
     }
 
