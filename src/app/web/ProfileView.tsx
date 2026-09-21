@@ -6,7 +6,7 @@ import LoginView from "./LoginView";
 import UserPublicationsFeed from "./components/UserPublicationsFeed";
 import PublishView from "./PublishView";
 import { apiFetch } from "../../config";
-import { safeStorage } from "../../utils/safeStorage";
+import { sessionState } from "../../utils/sessionState";
 import { getDefaultAvatar, getDefaultCoverPhoto } from "../../utils/defaultAssets";
 import { isSuperAdmin } from "../../superAdmin";
 
@@ -414,11 +414,11 @@ export default function ProfileView({
         return;
       }
       if (response.ok && data.success) {
-        // Update safeStorage so session matches the newly typed password
-        safeStorage.setItem("isLoggedIn", "true");
-        safeStorage.setItem("loggedInUsername", targetUsername);
-        safeStorage.setItem("loggedInPassword", password || "");
-        safeStorage.setItem("currentUserData", JSON.stringify(data.user));
+        // Update sessionState so session matches the newly typed password
+        sessionState.setAuthenticated(true);
+        sessionState.setUsername(targetUsername);
+        
+        sessionState.setUser(data.user);
 
         setProfileUser(data.user);
         if (onProfileUpdate) {
