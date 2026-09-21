@@ -20,6 +20,8 @@ export interface User {
   privacyPolicy?: string;
   role?: string;
   isAdmin?: boolean;
+  /** Superadmin-granted access to publishing, product management and performance. */
+  canSell?: boolean;
 }
 
 export interface Comment {
