@@ -4,7 +4,7 @@ import path from "path";
 import os from "os";
 import { promisify } from "util";
 import { Bucket } from "@google-cloud/storage";
-import { isGcsAvailable } from "./config/storage";
+import { bucket, bucketName, isGcsAvailable } from "./config/storage";
 import ffmpegStatic from "ffmpeg-static";
 
 const execAsync = promisify(exec);
@@ -57,6 +57,44 @@ export interface H264OptimizationResult {
  * Produces pure HLS stream (.m3u8 playlist + .ts chunks) directly in uploads/hls/<videoId>/
  * with multi-tier fail-safe execution so it never crashes or fails.
  */
+
+/**
+ * Persists a locally generated HLS directory in Google Cloud Storage.
+ * Cloud Run instances have ephemeral local disks, so a local /uploads URL
+ * must never be returned as the canonical media URL in production.
+ */
+async function persistDirectHlsToGcs(localHlsDir: string, videoId: string): Promise<string> {
+  const gcsReady = await isGcsAvailable();
+  const files = await fs.promises.readdir(localHlsDir);
+
+  if (!gcsReady) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Google Cloud Storage no está disponible; no se puede publicar HLS persistente en Cloud Run.");
+    }
+    return `/uploads/hls/${videoId}/index.m3u8`;
+  }
+
+  const destinationFolder = `hls/${videoId}`;
+  await Promise.all(files.map(async (fileName) => {
+    const filePath = path.join(localHlsDir, fileName);
+    const ext = path.extname(fileName).toLowerCase();
+    const contentType =
+      ext === ".m3u8" ? "application/vnd.apple.mpegurl" :
+      ext === ".ts" ? "video/mp2t" :
+      ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" :
+      "application/octet-stream";
+    const cacheControl =
+      ext === ".ts" ? "public, max-age=31536000, immutable" :
+      ext === ".m3u8" ? "public, max-age=60" :
+      "public, max-age=86400";
+    await bucket.file(`${destinationFolder}/${fileName}`).save(
+      await fs.promises.readFile(filePath),
+      { resumable: false, metadata: { contentType, cacheControl } }
+    );
+  }));
+
+  return `https://storage.googleapis.com/${bucketName}/${destinationFolder}/index.m3u8`;
+}
 export async function transcodeVideoToLocalHlsDirect(
   videoBuffer: Buffer,
   videoId: string,
@@ -97,7 +135,7 @@ export async function transcodeVideoToLocalHlsDirect(
     if (fs.existsSync(playlistPath) && (await fs.promises.stat(playlistPath)).size > 0) {
       const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
       await fs.promises.writeFile(path.join(localHlsDir, "master.m3u8"), masterContent);
-      return `/uploads/hls/${videoId}/index.m3u8`;
+      return await persistDirectHlsToGcs(localHlsDir, videoId);
     }
   } catch (err1: any) {
     console.warn(`⚠️ [HLS Direct] Primary segmentation failed (${err1.message}). Trying normalized 2-pass fallback...`);
@@ -138,7 +176,7 @@ export async function transcodeVideoToLocalHlsDirect(
       if (!fs.existsSync(posterPath)) {
         await execAsync(`"${ffmpegBin}" -y -i "${normalizedMp4}" -vframes 1 -q:v 2 "${posterPath}"`).catch(() => {});
       }
-      return `/uploads/hls/${videoId}/index.m3u8`;
+      return await persistDirectHlsToGcs(localHlsDir, videoId);
     }
   } catch (err2: any) {
     console.warn(`⚠️ [HLS Direct] Secondary normalization failed (${err2.message}). Creating single-segment stream fail-safe...`);
@@ -172,8 +210,8 @@ export async function transcodeVideoToLocalHlsDirect(
     const posterPath = path.join(localHlsDir, "poster.jpg");
     await execAsync(`"${ffmpegBin}" -y -i "${singleTsPath}" -vframes 1 -q:v 2 "${posterPath}"`).catch(() => {});
 
-    console.log(`🛡️ [HLS Direct] Fail-safe fallback generated valid HLS stream at /uploads/hls/${videoId}/index.m3u8`);
-    return `/uploads/hls/${videoId}/index.m3u8`;
+    console.log(`🛡️ [HLS Direct] Fail-safe fallback generated valid HLS stream for ${videoId}`);
+    return await persistDirectHlsToGcs(localHlsDir, videoId);
   } catch (finalErr: any) {
     console.error(`🚨 [HLS Direct] Final fail-safe error:`, finalErr);
     throw finalErr instanceof Error ? finalErr : new Error(String(finalErr));
