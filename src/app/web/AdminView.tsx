@@ -106,6 +106,7 @@ export default function AdminView({
     name: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [updatingPermissionId, setUpdatingPermissionId] = useState<string | null>(null);
 
   // Order editing modal states
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -424,6 +425,28 @@ export default function AdminView({
     }
   };
 
+  const handleToggleSellerPermission = async (user: User) => {
+    if (user.id === currentUser.id || updatingPermissionId) return;
+    const nextCanSell = user.canSell !== true;
+    setUpdatingPermissionId(user.id);
+    try {
+      const res = await apiFetch(`/api/users/${encodeURIComponent(user.id)}/permission`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canSell: nextCanSell })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success !== true) throw new Error(data.error || "No se pudo actualizar el permiso.");
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, canSell: data.canSell === true } : u));
+      setStatusMessage({ type: "success", text: nextCanSell ? `@${user.username} ahora tiene permisos de vendedor.` : `Se retiraron los permisos de vendedor de @${user.username}.` });
+    } catch (err: any) {
+      console.error("Error updating seller permission:", err);
+      setStatusMessage({ type: "error", text: err.message || "Error al actualizar el permiso." });
+    } finally {
+      setUpdatingPermissionId(null);
+      setTimeout(() => setStatusMessage(null), 4000);
+    }
+  };
   // Save Order Tracking Updates
   const handleSaveOrderUpdate = async () => {
     if (!editingOrder) return;
@@ -1026,13 +1049,14 @@ export default function AdminView({
                   <th className="py-3 px-4">Correo Electrónico</th>
                   <th className="py-3 px-4">Seguidores</th>
                   <th className="py-3 px-4">Estado</th>
+                  <th className="py-3 px-4">Permiso</th>
                   <th className="py-3 px-4 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-slate-400">
+                    <td colSpan={6} className="py-10 text-center text-slate-400">
                       No se encontraron usuarios que coincidan con la búsqueda.
                     </td>
                   </tr>
@@ -1065,6 +1089,21 @@ export default function AdminView({
                           <span className={`w-1.5 h-1.5 rounded-full ${user.isOnline ? "bg-emerald-500" : "bg-slate-400"}`} />
                           <span>{user.isOnline ? "En línea" : "Desconectado"}</span>
                         </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSellerPermission(user)}
+                          disabled={user.id === currentUser.id || updatingPermissionId === user.id}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${user.canSell ? "bg-emerald-500" : "bg-slate-300"}`}
+                          title={user.canSell ? "Permiso activo: publicar, productos y rendimiento" : "Activar permisos de vendedor"}
+                          aria-label={user.canSell ? "Desactivar permiso de vendedor" : "Activar permiso de vendedor"}
+                        >
+                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${user.canSell ? "translate-x-6" : "translate-x-1"}`} />
+                        </button>
+                        <p className={`mt-1 text-[9px] font-bold ${user.canSell ? "text-emerald-600" : "text-slate-400"}`}>
+                          {updatingPermissionId === user.id ? "Guardando..." : user.canSell ? "Vendedor" : "Normal"}
+                        </p>
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="inline-flex items-center space-x-2">
