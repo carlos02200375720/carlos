@@ -1107,6 +1107,7 @@ export default function ProfileView({
 
         {/* Horizontal Menu with Icons Only */}
         {isSelf ? (
+          <div className="mt-2 pt-0.5 border-t border-slate-200/80 flex items-center justify-around w-full max-w-sm sm:max-w-md mx-auto">
             {canSell && (
               <button
                 onClick={() => setActiveSubTab("publish")}
