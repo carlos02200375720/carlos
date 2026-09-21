@@ -42,7 +42,8 @@ export async function getUsers(): Promise<User[]> {
         isGuest: u.isGuest || false,
         password: u.password || "",
         email: u.email || "",
-        privacyPolicy: u.privacyPolicy || ""
+        privacyPolicy: u.privacyPolicy || "",
+        canSell: u.canSell === true
       }));
     }
   } catch (err) {
@@ -225,7 +226,8 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
         isGuest: false,
         password: activeUser.password || "",
         email: activeUser.email || "",
-        privacyPolicy: activeUser.privacyPolicy || ""
+        privacyPolicy: activeUser.privacyPolicy || "",
+        canSell: activeUser.canSell === true
       };
     } else {
       user = {
@@ -276,7 +278,8 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
             isGuest: false,
             password: found.password || "",
             email: found.email || "",
-            privacyPolicy: found.privacyPolicy || ""
+            privacyPolicy: found.privacyPolicy || "",
+            canSell: found.canSell === true
           };
         }
       } catch (dbErr: any) {
@@ -693,7 +696,8 @@ export async function toggleFollow(req: Request, res: Response): Promise<void> {
       username: currentUsernameReq || "current_user",
       followingUserIds: [],
       following: 0,
-      isGuest: false
+      isGuest: false,
+      canSell: false
     };
   }
 
@@ -970,7 +974,8 @@ export async function registerUser(req: Request, res: Response): Promise<void> {
       following: 0,
       isOnline: true,
       password: password || "",
-      isGuest: false
+      isGuest: false,
+      canSell: false
     };
 
     if (mongoose.connection.readyState === 1) {
@@ -1059,7 +1064,8 @@ export async function switchUser(req: Request, res: Response): Promise<void> {
       isGuest: false,
       password: targetUser.password || "",
       email: targetUser.email || "",
-      privacyPolicy: targetUser.privacyPolicy || ""
+      privacyPolicy: targetUser.privacyPolicy || "",
+      canSell: targetUser.canSell === true
     };
 
     console.log(`🔄 Switched session user to @${returnedUser.username} (original id: ${activeOriginalUserId})`);
@@ -1067,6 +1073,63 @@ export async function switchUser(req: Request, res: Response): Promise<void> {
   } catch (routeErr: any) {
     console.error("❌ Exception caught in user/switch endpoint:", routeErr);
     res.status(500).json({ error: "Internal server error switching user profile", details: routeErr.message });
+  }
+}
+
+/**
+ * POST /api/users/:id/permission
+ * Superadmin-only toggle for seller capabilities.
+ */
+export async function updateUserSellerPermission(req: Request, res: Response): Promise<void> {
+  try {
+    const targetId = String(req.params.id || "").trim();
+    const canSell = req.body?.canSell === true;
+    const requesterId = String(req.headers["x-user-id"] || "").trim();
+    const requesterUsername = String(req.headers["x-user-username"] || "").trim().toLowerCase();
+    const configuredSuperadmin = String(process.env.VITE_SUPERADMIN_EMAIL || process.env.SUPERADMIN_EMAIL || "").trim().toLowerCase();
+
+    if (!targetId || !requesterId || !configuredSuperadmin) {
+      res.status(403).json({ error: "Solo el superadministrador puede cambiar permisos." });
+      return;
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      res.status(503).json({ error: "Base de datos no disponible." });
+      return;
+    }
+
+    const requester = await MongoUser.findOne({
+      $or: [
+        { id: requesterId },
+        ...(requesterUsername ? [{ username: requesterUsername }] : [])
+      ]
+    });
+
+    if (!requester || String(requester.email || "").trim().toLowerCase() !== configuredSuperadmin) {
+      res.status(403).json({ error: "Solo el superadministrador puede cambiar permisos." });
+      return;
+    }
+
+    const target = await MongoUser.findOne({
+      $or: [{ id: targetId }, { username: targetId.toLowerCase() }]
+    });
+
+    if (!target) {
+      res.status(404).json({ error: "Usuario no encontrado." });
+      return;
+    }
+
+    target.canSell = canSell;
+    await target.save();
+
+    res.json({
+      success: true,
+      userId: target.id,
+      canSell: target.canSell === true
+    });
+  } catch (err: any) {
+    console.error("❌ Error updating user seller permission:", err);
+    res.status(500).json({ error: "Error al actualizar el permiso del usuario", details: err.message });
   }
 }
 
