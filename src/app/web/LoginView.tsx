@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { User as UserIcon, ShieldCheck, UserPlus, ArrowRight, Sparkles, Check, Play, ShoppingBag, MessageSquare, Radio } from "lucide-react";
 import { User } from "../../types";
 import { apiFetch } from "../../config";
-import { safeStorage } from "../../utils/safeStorage";
+import { sessionState } from "../../utils/sessionState";
 
 interface LoginViewProps {
   onLoginSuccess: (user: User) => void;
@@ -25,7 +25,7 @@ const PRESET_COVERS = [
 
 export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: LoginViewProps) {
   const [activeTab, setActiveTab] = useState<"login" | "register">(() => {
-    const saved = safeStorage.getItem("authTab") as "login" | "register";
+    const saved = sessionState.getItem("authTab") as "login" | "register";
     return saved || "login";
   });
   
@@ -74,10 +74,10 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
       
       const data = await response.json();
       if (response.ok && data.success) {
-        safeStorage.setItem("isLoggedIn", "true");
-        safeStorage.setItem("loggedInUsername", cleanUsername);
-        safeStorage.setItem("loggedInPassword", passwordToUse || "");
-        safeStorage.setItem("currentUserData", JSON.stringify(data.user));
+        sessionState.setAuthenticated(true);
+        sessionState.setUsername(cleanUsername);
+        
+        sessionState.setUser(data.user);
         onLoginSuccess(data.user);
       } else {
         setLoginError(data.error || "El usuario no existe. Intenta registrándote primero o verifica tu contraseña.");
@@ -143,10 +143,10 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
       const data = await response.json();
       if (response.ok && data.success) {
         // Automatically log in using the returned user session
-        safeStorage.setItem("isLoggedIn", "true");
-        safeStorage.setItem("loggedInUsername", cleanUsername);
-        safeStorage.setItem("loggedInPassword", regPassword.trim());
-        safeStorage.setItem("currentUserData", JSON.stringify(data.user));
+        sessionState.setAuthenticated(true);
+        sessionState.setUsername(cleanUsername);
+        
+        sessionState.setUser(data.user);
         onRefreshUsers();
         onLoginSuccess(data.user);
       } else {
@@ -246,7 +246,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
             {/* Tab Swapping Header */}
             <div className="flex border-b border-slate-800 pb-3 mb-6">
               <button
-                onClick={() => { setActiveTab("login"); safeStorage.setItem("authTab", "login"); setLoginError(""); }}
+                onClick={() => { setActiveTab("login"); sessionState.setItem("authTab", "login"); setLoginError(""); }}
                 className={`text-xs font-bold px-4 py-2 rounded-xl transition-all mr-2 flex items-center space-x-2 ${
                   activeTab === "login"
                     ? "bg-amber-500 text-slate-950"
@@ -257,7 +257,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
                 <span>Iniciar Sesión</span>
               </button>
               <button
-                onClick={() => { setActiveTab("register"); safeStorage.setItem("authTab", "register"); setRegisterError(""); }}
+                onClick={() => { setActiveTab("register"); sessionState.setItem("authTab", "register"); setRegisterError(""); }}
                 className={`text-xs font-bold px-4 py-2 rounded-xl transition-all flex items-center space-x-2 ${
                   activeTab === "register"
                     ? "bg-amber-500 text-slate-950"
