@@ -41,6 +41,7 @@ export function createApiRouter(): Router {
   router.get("/users/:id", userController.getUserById);
   router.get("/users/:id/publications", userController.getUserPublications);
   router.delete("/users/:id", userController.adminDeleteUser);
+  router.post("/users/:id/permission", userController.updateUserSellerPermission);
   router.post("/users/current/save", userController.toggleSaveReel);
   router.post("/users/:targetUserId/follow", userController.toggleFollow);
   router.post("/users/current/update", userController.updateCurrentUser);
