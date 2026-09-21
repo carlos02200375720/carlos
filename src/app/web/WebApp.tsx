@@ -7,7 +7,7 @@ import SocialPanel from "./SocialPanel";
 import ProfileView from "./ProfileView";
 import AdminView from "./AdminView";
 import { motion, AnimatePresence } from "motion/react";
-import { safeStorage } from "../../utils/safeStorage";
+import { sessionState } from "../../utils/sessionState";
 import { navigateTo } from "../../router";
 import { isSuperAdmin } from "../../superAdmin";
 
@@ -237,12 +237,12 @@ export default function WebApp({
                   onToggleFollowUser={handleToggleFollowUser}
                   onProfileUpdate={(updatedUser) => {
                     setCurrentUser(updatedUser);
-                    safeStorage.setItem("currentUserData", JSON.stringify(updatedUser));
+                    sessionState.setUser(updatedUser);
                     setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
                     if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
                       setIsLoggedIn(true);
-                      safeStorage.setItem("isLoggedIn", "true");
-                      safeStorage.setItem("loggedInUsername", updatedUser.username);
+                      sessionState.setAuthenticated(true);
+                      sessionState.setUsername(updatedUser.username);
                       setSelectedCreatorProfileId(null);
                       setActiveTab('profile');
                     }
