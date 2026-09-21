@@ -27,13 +27,28 @@ function PublicationCover({ reel }: { reel: Reel }) {
     if (reel.images && reel.images.length > 0 && !reel.images[0].toLowerCase().endsWith(".m3u8")) {
       return reel.images[0];
     }
+    const targetUrl = reel.hlsUrl || reel.videoUrl || "";
+    const hlsMatch = targetUrl.match(/\/uploads\/hls\/([a-zA-Z0-9_-]+)\//);
+    if (hlsMatch) {
+      return `/uploads/hls/${hlsMatch[1]}/poster.jpg`;
+    }
     return null;
   });
 
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    if (thumbUrl) return;
+    if (thumbUrl && !hasError) return;
+
+    const rawUrl = reel.videoUrl || reel.hlsUrl;
+    if (!rawUrl) return;
+
+    const hlsMatch = rawUrl.match(/\/uploads\/hls\/([a-zA-Z0-9_-]+)\//);
+    if (hlsMatch && !thumbUrl) {
+      setThumbUrl(`/uploads/hls/${hlsMatch[1]}/poster.jpg`);
+      setHasError(false);
+      return;
+    }
 
     if (reel.videoUrl && typeof document !== "undefined") {
       let isCancelled = false;
@@ -57,6 +72,7 @@ function PublicationCover({ reel }: { reel: Reel }) {
             const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
             if (dataUrl && dataUrl.length > 100) {
               setThumbUrl(dataUrl);
+              setHasError(false);
             }
           }
         } catch (e) {
@@ -87,7 +103,7 @@ function PublicationCover({ reel }: { reel: Reel }) {
         }
       };
     }
-  }, [reel.videoUrl, thumbUrl]);
+  }, [reel.videoUrl, reel.hlsUrl, thumbUrl, hasError]);
 
   if (thumbUrl && !hasError) {
     return (
@@ -95,19 +111,19 @@ function PublicationCover({ reel }: { reel: Reel }) {
         src={thumbUrl}
         alt={reel.description || "Publicación"}
         onError={() => setHasError(true)}
-        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none bg-black"
+        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none bg-slate-900"
         referrerPolicy="no-referrer"
       />
     );
   }
 
   return (
-    <div className="w-full h-full bg-black flex flex-col items-center justify-center p-3 text-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
-      <div className="w-9 h-9 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white mb-2 shadow-md">
-        <Play className="w-4 h-4 fill-white translate-x-0.5" />
+    <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-800 to-amber-950/40 flex flex-col items-center justify-center p-3 text-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300 select-none">
+      <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-2 shadow-md">
+        <Play className="w-4 h-4 fill-amber-400 translate-x-0.5" />
       </div>
-      <p className="text-[10px] text-white/80 font-bold line-clamp-2 leading-tight">
-        {reel.description || (reel.type === "video" ? "Video" : "Publicación")}
+      <p className="text-[11px] text-white/90 font-bold line-clamp-2 leading-tight">
+        {reel.title || reel.description || (reel.type === "video" ? "Video" : "Publicación")}
       </p>
     </div>
   );

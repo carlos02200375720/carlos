@@ -53,30 +53,25 @@ export interface H264OptimizationResult {
 }
 
 /**
- * Direct local HLS transcode generator.
- * Produces pure HLS stream (.m3u8 playlist + .ts chunks) directly in uploads/hls/<videoId>/
- * with multi-tier fail-safe execution so it never crashes or fails.
+ * Direct HLS transcode generator.
+ * Produces pure HLS stream (.m3u8 playlist + .ts chunks) in memory / temporary directory
+ * and deploys directly to Google Cloud Storage.
  */
 
 /**
- * Persists a locally generated HLS directory in Google Cloud Storage.
- * Cloud Run instances have ephemeral local disks, so a local /uploads URL
- * must never be returned as the canonical media URL in production.
+ * Persists a transcode output directory in Google Cloud Storage.
+ * Local files are never persisted on disk; only GCS public URLs are returned.
  */
-async function persistDirectHlsToGcs(localHlsDir: string, videoId: string): Promise<string> {
+async function persistDirectHlsToGcs(transcodeOutputDir: string, videoId: string): Promise<string> {
   const gcsReady = await isGcsAvailable();
-  const files = await fs.promises.readdir(localHlsDir);
-
   if (!gcsReady) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Google Cloud Storage no está disponible; no se puede publicar HLS persistente en Cloud Run.");
-    }
-    return `/uploads/hls/${videoId}/index.m3u8`;
+    throw new Error("Google Cloud Storage no está disponible. No se puede publicar el stream HLS sin conexión a GCS.");
   }
 
+  const files = await fs.promises.readdir(transcodeOutputDir);
   const destinationFolder = `hls/${videoId}`;
   await Promise.all(files.map(async (fileName) => {
-    const filePath = path.join(localHlsDir, fileName);
+    const filePath = path.join(transcodeOutputDir, fileName);
     const ext = path.extname(fileName).toLowerCase();
     const contentType =
       ext === ".m3u8" ? "application/vnd.apple.mpegurl" :
@@ -103,14 +98,14 @@ export async function transcodeVideoToLocalHlsDirect(
   const ext = path.extname(originalName) || ".mp4";
   const tmpDir = path.join(os.tmpdir(), `hls_direct_${videoId}_${Date.now()}`);
   const inputFilePath = path.join(tmpDir, `input_media${ext}`);
-  const localHlsDir = path.join(process.cwd(), "uploads", "hls", videoId);
+  const transcodeOutputDir = path.join(tmpDir, "hls_output");
 
   await fs.promises.mkdir(tmpDir, { recursive: true });
-  await fs.promises.mkdir(localHlsDir, { recursive: true });
+  await fs.promises.mkdir(transcodeOutputDir, { recursive: true });
   await fs.promises.writeFile(inputFilePath, videoBuffer);
 
-  const playlistPath = path.join(localHlsDir, "index.m3u8");
-  const segmentPattern = path.join(localHlsDir, "segment_%03d.ts");
+  const playlistPath = path.join(transcodeOutputDir, "index.m3u8");
+  const segmentPattern = path.join(transcodeOutputDir, "segment_%03d.ts");
   const ffmpegBin = getFfmpegBinary();
 
   try {
@@ -134,8 +129,8 @@ export async function transcodeVideoToLocalHlsDirect(
 
     if (fs.existsSync(playlistPath) && (await fs.promises.stat(playlistPath)).size > 0) {
       const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
-      await fs.promises.writeFile(path.join(localHlsDir, "master.m3u8"), masterContent);
-      return await persistDirectHlsToGcs(localHlsDir, videoId);
+      await fs.promises.writeFile(path.join(transcodeOutputDir, "master.m3u8"), masterContent);
+      return await persistDirectHlsToGcs(transcodeOutputDir, videoId);
     }
   } catch (err1: any) {
     console.warn(`⚠️ [HLS Direct] Primary segmentation failed (${err1.message}). Trying normalized 2-pass fallback...`);
@@ -169,21 +164,21 @@ export async function transcodeVideoToLocalHlsDirect(
 
     if (fs.existsSync(playlistPath) && (await fs.promises.stat(playlistPath)).size > 0) {
       const masterContent = `#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=720x1280,NAME="Adaptive 720p"\nindex.m3u8\n`;
-      await fs.promises.writeFile(path.join(localHlsDir, "master.m3u8"), masterContent);
+      await fs.promises.writeFile(path.join(transcodeOutputDir, "master.m3u8"), masterContent);
       // Generate poster.jpg from the video
-      const posterPath = path.join(localHlsDir, "poster.jpg");
+      const posterPath = path.join(transcodeOutputDir, "poster.jpg");
       await execAsync(`"${ffmpegBin}" -y -ss 00:00:00.500 -i "${normalizedMp4}" -vframes 1 -q:v 2 "${posterPath}"`).catch(() => {});
       if (!fs.existsSync(posterPath)) {
         await execAsync(`"${ffmpegBin}" -y -i "${normalizedMp4}" -vframes 1 -q:v 2 "${posterPath}"`).catch(() => {});
       }
-      return await persistDirectHlsToGcs(localHlsDir, videoId);
+      return await persistDirectHlsToGcs(transcodeOutputDir, videoId);
     }
   } catch (err2: any) {
     console.warn(`⚠️ [HLS Direct] Secondary normalization failed (${err2.message}). Creating single-segment stream fail-safe...`);
   }
 
   try {
-    const singleTsPath = path.join(localHlsDir, "segment_000.ts");
+    const singleTsPath = path.join(transcodeOutputDir, "segment_000.ts");
     const transcodeSingleCmd = [
       `"${ffmpegBin}" -y -i`,
       `"${inputFilePath}"`,
@@ -205,13 +200,12 @@ export async function transcodeVideoToLocalHlsDirect(
 
     const simpleM3u8 = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:60.0,\nsegment_000.ts\n#EXT-X-ENDLIST\n`;
     await fs.promises.writeFile(playlistPath, simpleM3u8);
-    await fs.promises.writeFile(path.join(localHlsDir, "master.m3u8"), simpleM3u8);
+    await fs.promises.writeFile(path.join(transcodeOutputDir, "master.m3u8"), simpleM3u8);
 
-    const posterPath = path.join(localHlsDir, "poster.jpg");
+    const posterPath = path.join(transcodeOutputDir, "poster.jpg");
     await execAsync(`"${ffmpegBin}" -y -i "${singleTsPath}" -vframes 1 -q:v 2 "${posterPath}"`).catch(() => {});
 
-    console.log(`🛡️ [HLS Direct] Fail-safe fallback generated valid HLS stream for ${videoId}`);
-    return await persistDirectHlsToGcs(localHlsDir, videoId);
+    return await persistDirectHlsToGcs(transcodeOutputDir, videoId);
   } catch (finalErr: any) {
     console.error(`🚨 [HLS Direct] Final fail-safe error:`, finalErr);
     throw finalErr instanceof Error ? finalErr : new Error(String(finalErr));
@@ -488,89 +482,66 @@ export async function transcodeVideoToHLS(
     let usedGcs = false;
 
     const gcsReady = await isGcsAvailable();
-
-    // Cloud Run's local filesystem is ephemeral. In production, never return a
-    // /uploads URL as a successful Reel media URL because it will disappear or
-    // be served by the wrong frontend origin after deployment.
-    if (!gcsReady && process.env.NODE_ENV === "production") {
-      throw new Error("Google Cloud Storage no está disponible para publicar el stream HLS. Verifica las credenciales y el bucket antes de publicar.");
+    if (!gcsReady) {
+      throw new Error("Google Cloud Storage no está disponible. No se puede subir el stream HLS.");
     }
 
-    if (gcsReady && files.length > 0) {
-      try {
-        console.log(`📦 [HLS Pre-Transcoder] Uploading ${files.length} multi-bitrate HLS files to GCS bucket "${bucketName}"...`);
-        let uploadedCount = 0;
+    if (files.length === 0) {
+      throw new Error("No se generaron archivos HLS durante la transcodificación.");
+    }
 
-        const uploadPromises = files.map(async (fileName) => {
-          const filePath = path.join(outputDir, fileName);
-          const isPlaylist = fileName.endsWith(".m3u8");
-          const isSegment = fileName.endsWith(".ts");
-          const isPoster = fileName.endsWith(".jpg") || fileName.endsWith(".jpeg");
+    console.log(`📦 [HLS Pre-Transcoder] Subiendo ${files.length} archivos HLS multi-bitrate a Google Cloud Storage "${bucketName}"...`);
+    let uploadedCount = 0;
 
-          const destination = `${destinationFolder}/${fileName}`;
-          const gcsFile = bucket.file(destination);
+    const uploadPromises = files.map(async (fileName) => {
+      const filePath = path.join(outputDir, fileName);
+      const isPlaylist = fileName.endsWith(".m3u8");
+      const isSegment = fileName.endsWith(".ts");
+      const isPoster = fileName.endsWith(".jpg") || fileName.endsWith(".jpeg");
 
-          const contentType = isPlaylist
-            ? "application/x-mpegURL"
-            : isSegment
-            ? "video/MP2T"
-            : isPoster
-            ? "image/jpeg"
-            : "application/octet-stream";
+      const destination = `${destinationFolder}/${fileName}`;
+      const gcsFile = bucket.file(destination);
 
-          const cacheControl = isSegment
-            ? "public, max-age=31536000, immutable"
-            : "public, max-age=60";
+      const contentType = isPlaylist
+        ? "application/x-mpegURL"
+        : isSegment
+        ? "video/MP2T"
+        : isPoster
+        ? "image/jpeg"
+        : "application/octet-stream";
 
-          const fileBuffer = await fs.promises.readFile(filePath);
+      const cacheControl = isSegment
+        ? "public, max-age=31536000, immutable"
+        : "public, max-age=60";
 
-          return new Promise<void>((resolve, reject) => {
-            const stream = gcsFile.createWriteStream({
-              resumable: false,
-              metadata: {
-                contentType,
-                cacheControl,
-              },
-            });
-            stream.on("error", (err: any) => reject(err));
-            stream.on("finish", () => {
-              uploadedCount++;
-              if (onProgress) {
-                const uploadProgress = 75 + Math.round((uploadedCount / files.length) * 20);
-                onProgress(uploadProgress);
-              }
-              resolve();
-            });
-            stream.end(fileBuffer);
-          });
+      const fileBuffer = await fs.promises.readFile(filePath);
+
+      return new Promise<void>((resolve, reject) => {
+        const stream = gcsFile.createWriteStream({
+          resumable: false,
+          metadata: {
+            contentType,
+            cacheControl,
+          },
         });
+        stream.on("error", (err: any) => reject(err));
+        stream.on("finish", () => {
+          uploadedCount++;
+          if (onProgress) {
+            const uploadProgress = 75 + Math.round((uploadedCount / files.length) * 20);
+            onProgress(uploadProgress);
+          }
+          resolve();
+        });
+        stream.end(fileBuffer);
+      });
+    });
 
-        await Promise.all(uploadPromises);
-        usedGcs = true;
-        masterM3u8Url = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/master.m3u8`;
-        posterUrl = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/poster.jpg`;
-        console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed adaptive HLS stream to GCS: ${masterM3u8Url}`);
-      } catch (gcsErr: any) {
-        console.warn(`⚠️ [HLS Pre-Transcoder] GCS upload unavailable (${gcsErr.message}). Switching to local persistent storage fallback...`);
-        usedGcs = false;
-      }
-    }
-
-    if (!usedGcs) {
-      const localHlsDir = path.join(process.cwd(), "uploads", "hls", videoId);
-      await fs.promises.mkdir(localHlsDir, { recursive: true });
-
-      for (const fileName of files) {
-        await fs.promises.copyFile(
-          path.join(outputDir, fileName),
-          path.join(localHlsDir, fileName)
-        );
-      }
-
-      masterM3u8Url = `/uploads/hls/${videoId}/master.m3u8`;
-      posterUrl = `/uploads/hls/${videoId}/poster.jpg`;
-      console.log(`🚀 [HLS Pre-Transcoder] Successfully deployed local adaptive HLS stream: ${masterM3u8Url}`);
-    }
+    await Promise.all(uploadPromises);
+    usedGcs = true;
+    masterM3u8Url = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/master.m3u8`;
+    posterUrl = `https://storage.googleapis.com/${bucketName}/${destinationFolder}/poster.jpg`;
+    console.log(`🚀 [HLS Pre-Transcoder] Video HLS desplegado exclusivamente en GCS: ${masterM3u8Url}`);
 
     const segmentCount = files.filter((f) => f.endsWith(".ts")).length;
     const totalLatencyMs = Date.now() - startTime;
@@ -579,24 +550,14 @@ export async function transcodeVideoToHLS(
       masterM3u8Url,
       variantUrls: [masterM3u8Url],
       totalSegments: Math.max(1, segmentCount),
-      bucketPath: usedGcs ? destinationFolder : `uploads/hls/${videoId}`,
+      bucketPath: destinationFolder,
       durationSec: undefined,
       latencyMs: totalLatencyMs,
       posterUrl: posterUrl || undefined,
     };
   } catch (ffmpegErr: any) {
-    console.warn(`⚠️ [HLS Pre-Transcoder] Encountered issue during primary HLS processing: ${ffmpegErr.message}. Fallback to direct local HLS generation...`);
-
-    const localHlsUrl = await transcodeVideoToLocalHlsDirect(videoBuffer, videoId);
-
-    return {
-      masterM3u8Url: localHlsUrl,
-      variantUrls: [localHlsUrl],
-      totalSegments: 1,
-      bucketPath: `uploads/hls/${videoId}`,
-      durationSec: undefined,
-      latencyMs: Date.now() - startTime,
-    };
+    console.error(`❌ [HLS Pre-Transcoder] Error en transcodificación o subida a GCS:`, ffmpegErr);
+    throw ffmpegErr;
   } finally {
     await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -604,7 +565,7 @@ export async function transcodeVideoToHLS(
 
 /**
  * Batch Cleanup Function: Delete all HLS segments (.ts), playlists (.m3u8), and master file
- * from Google Cloud Storage or local storage in a single bulk operation.
+ * from Google Cloud Storage in a single bulk operation. No local disk storage used.
  */
 export async function deleteHlsStreamBatch(
   bucket: Bucket,
@@ -626,19 +587,13 @@ export async function deleteHlsStreamBatch(
       return { success: false, deletedCount: 0, prefix: "" };
     }
 
-    const localDir = path.join(process.cwd(), "uploads", prefix);
-    if (fs.existsSync(localDir)) {
-      await fs.promises.rm(localDir, { recursive: true, force: true }).catch(() => {});
-      console.log(`🧹 [HLS Cleanup] Removed local HLS files from ${localDir}`);
-    }
-
     try {
-      console.log(`🧹 [HLS Cleanup] Performing bulk deletion of all HLS files under GCS prefix "${prefix}/"...`);
+      console.log(`🧹 [HLS Cleanup] Eliminando archivos HLS de GCS en prefijo "${prefix}/"...`);
       await bucket.deleteFiles({
         prefix: `${prefix}/`,
         force: true
       });
-      console.log(`✨ [HLS Cleanup] Successfully removed HLS batch files from GCS prefix "${prefix}"`);
+      console.log(`✨ [HLS Cleanup] Archivos HLS eliminados de GCS con éxito: "${prefix}"`);
     } catch (gcsDelErr: any) {
       console.warn(`⚠️ [HLS Cleanup] GCS batch delete skipped: ${gcsDelErr.message}`);
     }

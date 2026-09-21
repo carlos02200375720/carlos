@@ -69,9 +69,8 @@ export function formatReelDTO(r: any, userMap?: Map<string, any>): Reel {
 
   if (!thumbnailUrl && (videoUrl || hlsUrl)) {
     const targetUrl = hlsUrl || videoUrl;
-    const hlsMatch = targetUrl.match(/\/uploads\/hls\/([a-zA-Z0-9_-]+)\//);
-    if (hlsMatch) {
-      thumbnailUrl = `/uploads/hls/${hlsMatch[1]}/poster.jpg`;
+    if (targetUrl.includes("/hls/")) {
+      thumbnailUrl = targetUrl.replace(/\/(?:master|index)\.m3u8.*$/, "/poster.jpg");
     }
   }
 

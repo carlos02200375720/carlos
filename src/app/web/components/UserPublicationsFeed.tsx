@@ -122,9 +122,22 @@ const UserReelVideo = memo(function UserReelVideo({
 
   return (
     <div
-      className="relative w-full h-full flex items-center justify-center bg-black cursor-pointer select-none"
+      className="relative w-full h-full flex items-center justify-center bg-slate-950 cursor-pointer select-none overflow-hidden"
       onClick={handlePointerDown}
     >
+      {/* Ambient blurred backdrop to eliminate black empty letterbox space */}
+      {posterUrl && (
+        <div className="absolute inset-0 pointer-events-none select-none overflow-hidden z-0" aria-hidden="true">
+          <img
+            src={posterUrl}
+            alt=""
+            className="w-full h-full object-cover blur-3xl opacity-35 scale-125"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-xs" />
+        </div>
+      )}
+
       {videoSrc ? (
         <video
           ref={(el) => {
@@ -138,10 +151,10 @@ const UserReelVideo = memo(function UserReelVideo({
           x5-playsinline="true"
           preload={isCurrent ? "auto" : "metadata"}
           loop
-          className="w-full h-full object-contain"
+          className="w-full h-full object-contain relative z-10"
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center">
+        <div className="w-full h-full flex items-center justify-center relative z-10">
           {posterUrl ? (
             <img
               src={posterUrl}
@@ -150,9 +163,9 @@ const UserReelVideo = memo(function UserReelVideo({
               referrerPolicy="no-referrer"
             />
           ) : (
-            <div className="text-white/40 flex flex-col items-center">
-              <Play className="w-12 h-12 stroke-1 mb-2" />
-              <p className="text-xs">Video no disponible</p>
+            <div className="text-white/60 flex flex-col items-center bg-slate-900/60 p-6 rounded-2xl border border-slate-800">
+              <Play className="w-12 h-12 stroke-1 mb-2 text-amber-400" />
+              <p className="text-xs font-semibold">Video no disponible</p>
             </div>
           )}
         </div>
@@ -513,8 +526,11 @@ export default function UserPublicationsFeed({
                 "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&q=80"
               }
               alt={user.name || user.username}
-              className="w-8 h-8 rounded-full object-cover border border-white/30 shrink-0"
+              className="w-8 h-8 rounded-full object-cover border border-white/30 shrink-0 bg-white"
               referrerPolicy="no-referrer"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&q=80";
+              }}
             />
             <div className="min-w-0">
               <div className="flex items-center space-x-1.5">

@@ -69,9 +69,12 @@ async function startServer() {
 
   // Serve uploaded media files with proper HLS & video streaming headers
   const uploadsDir = path.join(process.cwd(), "uploads");
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
+  ["avatars", "publicaciones", "videos", "covers", "hls"].forEach((sub) => {
+    const p = path.join(uploadsDir, sub);
+    if (!fs.existsSync(p)) {
+      fs.mkdirSync(p, { recursive: true });
+    }
+  });
 
   app.use(
     "/uploads",
@@ -197,6 +200,15 @@ async function startServer() {
     next();
   });
 
+  // Missing avatar requests: return 404 so client onError/fallback activates instead of a black poster
+  app.get("/uploads/avatars/:file", (req, res) => {
+    const filePath = path.join(uploadsDir, "avatars", req.params.file);
+    if (fs.existsSync(filePath)) {
+      return res.sendFile(filePath);
+    }
+    return res.status(404).type("text/plain").send("Avatar not found");
+  });
+
   // Missing publication thumbnails / images fallback
   app.get("/uploads/publicaciones/:file", (req, res, next) => {
     const filePath = path.join(uploadsDir, "publicaciones", req.params.file);
@@ -231,6 +243,9 @@ async function startServer() {
 
   // Catch-all for missing /uploads/* files: NEVER let /uploads/* fall through to SPA index.html
   app.use("/uploads", (req, res) => {
+    if (req.path.startsWith("/avatars/")) {
+      return res.status(404).type("text/plain").send("Avatar not found");
+    }
     if (/\.(jpg|jpeg|png|webp|gif)$/i.test(req.path)) {
       res.setHeader("Content-Type", "image/jpeg");
       res.setHeader("Cache-Control", "public, max-age=86400");

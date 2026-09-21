@@ -954,9 +954,9 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         });
       }
 
-      // Video branch: Android uses the same HLS pipeline and always returns HLS
+      // Video branch: Android uses the same HLS pipeline and always returns HLS directly from GCS
       const jobId = "hls_" + generateId();
-      console.log(`📱 [Android Gateway] Procesando video HLS-only desde Android: ${originalName}`);
+      console.log(`📱 [Android Gateway] Procesando video HLS-only desde Android para GCS: ${originalName}`);
 
       let hlsUrl = "";
       if (hlsQueue) {
@@ -971,12 +971,16 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
           );
           hlsUrl = hlsResult.masterM3u8Url;
         } catch (queueErr) {
-          console.warn("⚠️ [Android Gateway] Cola HLS falló, usando transcodificación local directa:", queueErr);
+          console.warn("⚠️ [Android Gateway] Cola HLS falló, subiendo directamente a GCS:", queueErr);
         }
       }
 
       if (!hlsUrl) {
         hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);
+      }
+
+      if (!hlsUrl.startsWith("https://storage.googleapis.com/")) {
+        throw new Error("No se pudo obtener URL pública de GCS para el video en Android");
       }
 
       return res.json({
@@ -987,33 +991,8 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         publicacionId: pubId,
       });
     } catch (err: any) {
-      console.error("❌ [Android Gateway] Error en upload:", err);
-
-      try {
-        if (req.file?.buffer) {
-          let emergencyUrl = "";
-          try {
-            emergencyUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, req.file.originalname || "video.mp4");
-          } catch {
-            const { saveToLocalStorage } = await import("./services/mediaStorage");
-            emergencyUrl = await saveToLocalStorage(req.file.buffer, "android_media", req.file.originalname || "video.mp4");
-          }
-          console.log(`🛡️ [Android Gateway] Fallback media stream generated: ${emergencyUrl}`);
-
-          return res.json({
-            success: true,
-            platform: "android",
-            url: emergencyUrl,
-            hlsUrl: emergencyUrl.endsWith(".m3u8") ? emergencyUrl : undefined,
-            videoUrl: emergencyUrl,
-            publicacionId: pubId,
-          });
-        }
-      } catch (fbErr) {
-        console.error("❌ Android emergency fallback failed:", fbErr);
-      }
-
-      res.status(400).json({ error: "Error al procesar archivo en Android", details: err?.message || "Error desconocido" });
+      console.error("❌ [Android Gateway] Error en upload a GCS:", err);
+      res.status(500).json({ error: "Error al procesar y subir archivo a Google Cloud Storage en Android", details: err?.message || "Error desconocido" });
     }
   });
 

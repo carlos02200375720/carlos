@@ -1,41 +1,18 @@
-import fs from "fs";
-import path from "path";
 import { bucket, bucketName, isGcsAvailable } from "../config/storage";
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
-// Helper: Save buffer to local uploads directory
-export async function saveToLocalStorage(
-  buffer: Buffer,
-  folder: string,
-  fileName: string
-): Promise<string> {
-  const uploadsDir = path.join(process.cwd(), "uploads", folder);
-  await fs.promises.mkdir(uploadsDir, { recursive: true });
-  const cleanName = fileName.replace(/\s+/g, "_");
-  const uniqueName = `${Date.now()}-${generateId()}-${cleanName}`;
-  const filePath = path.join(uploadsDir, uniqueName);
-  await fs.promises.writeFile(filePath, buffer);
-  return `/uploads/${folder}/${uniqueName}`;
-}
-
-// Helper: Upload file to GCS (with HLS stream conversion for all videos) with local storage fallback
+// Helper: Upload file exclusively to GCS (with HLS stream conversion for all videos). No local storage allowed.
 export const uploadToGCS = async (file: Express.Multer.File, folder: string = "publicaciones"): Promise<string> => {
   let originalName = file.originalname.replace(/\s+/g, "_");
   const mimeType = file.mimetype.toLowerCase();
 
   const isVideo = mimeType.startsWith("video/") || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(originalName);
   if (isVideo) {
-    try {
-      console.log(`🎬 [Upload] Transcodificando video a formato HLS exclusivo (.m3u8): ${originalName}...`);
-      const { transcodeVideoToHLS } = await import("../hlsTranscoder");
-      const hlsRes = await transcodeVideoToHLS(file.buffer, generateId(), bucket, bucketName);
-      return hlsRes.masterM3u8Url;
-    } catch (hlsErr: any) {
-      console.warn("⚠️ [Upload] Fallback a transcodificación HLS local directa:", hlsErr.message);
-      const { transcodeVideoToLocalHlsDirect } = await import("../hlsTranscoder");
-      return await transcodeVideoToLocalHlsDirect(file.buffer, generateId());
-    }
+    console.log(`🎬 [Upload] Transcodificando video a formato HLS exclusivo (.m3u8) para GCS: ${originalName}...`);
+    const { transcodeVideoToHLS } = await import("../hlsTranscoder");
+    const hlsRes = await transcodeVideoToHLS(file.buffer, generateId(), bucket, bucketName);
+    return hlsRes.masterM3u8Url;
   } else if (mimeType.startsWith("image/")) {
     const lowerName = originalName.toLowerCase();
     const validExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".heic", ".heif"];
@@ -53,12 +30,6 @@ export const uploadToGCS = async (file: Express.Multer.File, folder: string = "p
     }
   }
 
-  // Fast-path: Check GCS availability before attempting network write stream
-  const gcsReady = await isGcsAvailable();
-  if (!gcsReady) {
-    return await saveToLocalStorage(file.buffer, folder, originalName);
-  }
-
   return new Promise((resolve, reject) => {
     const uniqueName = `${Date.now()}-${generateId()}-${originalName}`;
     try {
@@ -72,14 +43,9 @@ export const uploadToGCS = async (file: Express.Multer.File, folder: string = "p
         },
       });
 
-      blobStream.on("error", async (err: any) => {
-        console.warn(`⚠️ [Upload] Error en GCS (${err.message}). Guardando en almacenamiento local...`);
-        try {
-          const localUrl = await saveToLocalStorage(file.buffer, folder, originalName);
-          resolve(localUrl);
-        } catch (saveErr) {
-          reject(err);
-        }
+      blobStream.on("error", (err: any) => {
+        console.error(`❌ [Upload] Error subiendo archivo a Google Cloud Storage (${bucketName}):`, err);
+        reject(new Error(`Fallo al subir a Google Cloud Storage: ${err?.message || "Error desconocido"}`));
       });
 
       blobStream.on("finish", () => {
@@ -89,15 +55,13 @@ export const uploadToGCS = async (file: Express.Multer.File, folder: string = "p
 
       blobStream.end(file.buffer);
     } catch (createErr: any) {
-      console.warn(`⚠️ [Upload] No se pudo inicializar stream de GCS (${createErr.message}). Guardando localmente...`);
-      saveToLocalStorage(file.buffer, folder, originalName)
-        .then(resolve)
-        .catch(reject);
+      console.error(`❌ [Upload] No se pudo inicializar stream de GCS (${createErr.message})`);
+      reject(createErr);
     }
   });
 };
 
-// Helper: Upload base64 data URL to GCS with local storage fallback
+// Helper: Upload base64 data URL exclusively to GCS. No local storage allowed.
 export async function uploadBase64ToGCS(base64Str: string, folder: string = "profiles"): Promise<string> {
   if (!base64Str || !base64Str.startsWith("data:")) return base64Str;
 
@@ -121,11 +85,6 @@ export async function uploadBase64ToGCS(base64Str: string, folder: string = "pro
 
   const filename = `${Date.now()}-${generateId()}.${extension}`;
 
-  const gcsReady = await isGcsAvailable();
-  if (!gcsReady) {
-    return await saveToLocalStorage(buffer, folder, filename);
-  }
-
   return new Promise<string>((resolve, reject) => {
     try {
       const blob = bucket.file(`${folder}/${filename}`);
@@ -135,14 +94,9 @@ export async function uploadBase64ToGCS(base64Str: string, folder: string = "pro
         metadata: { contentType: mimeType },
       });
 
-      blobStream.on("error", async (err: any) => {
-        console.warn(`⚠️ [Upload] Error base64 en GCS (${err.message}). Guardando en almacenamiento local...`);
-        try {
-          const localUrl = await saveToLocalStorage(buffer, folder, filename);
-          resolve(localUrl);
-        } catch (saveErr) {
-          reject(err);
-        }
+      blobStream.on("error", (err: any) => {
+        console.error(`❌ [Upload] Error base64 en GCS (${err.message})`);
+        reject(new Error(`Fallo al subir imagen de perfil a Google Cloud Storage: ${err?.message || "Error desconocido"}`));
       });
 
       blobStream.on("finish", () => {
@@ -152,28 +106,16 @@ export async function uploadBase64ToGCS(base64Str: string, folder: string = "pro
 
       blobStream.end(buffer);
     } catch (createErr: any) {
-      console.warn(`⚠️ [Upload] No se pudo inicializar stream base64 de GCS (${createErr.message}). Guardando localmente...`);
-      saveToLocalStorage(buffer, folder, filename)
-        .then(resolve)
-        .catch(reject);
+      console.error(`❌ [Upload] No se pudo inicializar stream base64 de GCS (${createErr.message})`);
+      reject(createErr);
     }
   });
 }
 
-// Helper: Delete file from GCS or local storage by URL
+// Helper: Delete file from GCS exclusively by URL
 export async function deleteFromGCS(fileUrl?: string): Promise<void> {
   try {
     if (!fileUrl || typeof fileUrl !== "string") return;
-
-    if (fileUrl.startsWith("/uploads/")) {
-      const localFilePath = path.join(process.cwd(), fileUrl);
-      if (fs.existsSync(localFilePath)) {
-        await fs.promises.unlink(localFilePath).catch(() => {});
-        console.log(`🗑️ Archivo local eliminado: ${localFilePath}`);
-      }
-      return;
-    }
-
     if (!fileUrl.includes(`storage.googleapis.com/${bucketName}/`)) return;
 
     const prefix = `storage.googleapis.com/${bucketName}/`;
@@ -192,12 +134,11 @@ export async function deleteFromGCS(fileUrl?: string): Promise<void> {
   }
 }
 
-// Helper: Complete multi-target publication cleanup across GCS and local storage
+// Helper: Complete multi-target publication cleanup in GCS exclusively
 export async function deleteFullPublicationMedia(
   mediaList: (string | undefined | null)[]
 ): Promise<{ gcsCleaned: number; localCleaned: number }> {
   let gcsCleaned = 0;
-  let localCleaned = 0;
   const uniqueUrls = Array.from(
     new Set(
       mediaList.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
@@ -207,18 +148,15 @@ export async function deleteFullPublicationMedia(
   for (const rawUrl of uniqueUrls) {
     const url = rawUrl.trim();
     try {
-      if (url.includes("hls/") || url.endsWith(".m3u8") || url.includes("/uploads/hls/")) {
+      if (url.includes("hls/") || url.endsWith(".m3u8")) {
         const { deleteHlsStreamBatch } = await import("../hlsTranscoder");
         const res = await deleteHlsStreamBatch(bucket, url);
         if (res.success) {
           gcsCleaned += res.deletedCount;
-          localCleaned++;
         }
       } else {
         await deleteFromGCS(url);
-        if (url.startsWith("/uploads/")) {
-          localCleaned++;
-        } else if (url.includes("storage.googleapis.com")) {
+        if (url.includes("storage.googleapis.com")) {
           gcsCleaned++;
         }
       }
@@ -227,5 +165,5 @@ export async function deleteFullPublicationMedia(
     }
   }
 
-  return { gcsCleaned, localCleaned };
+  return { gcsCleaned, localCleaned: 0 };
 }

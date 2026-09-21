@@ -83,10 +83,9 @@ export async function isGcsAvailable(): Promise<boolean> {
     lastGcsCheck = now;
     return true;
   } catch (err: any) {
-    // If GCS authentication is invalid or bucket unreachable, seamlessly activate local persistent storage
     gcsWorkingState = false;
     lastGcsCheck = now;
-    console.log(`💾 [Storage] Almacenamiento local persistente activo (/uploads). GCS offline o no configurado.`);
+    console.warn(`⚠️ [Storage] Google Cloud Storage no está disponible o las credenciales no son válidas (${err?.message || "error"}). No se permite almacenamiento local.`);
     return false;
   }
 }

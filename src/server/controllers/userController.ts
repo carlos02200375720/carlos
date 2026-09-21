@@ -844,8 +844,10 @@ export async function updateCurrentUser(req: Request, res: Response): Promise<vo
     if (avatar && avatar.startsWith("data:")) {
       try {
         console.log("📸 Base64 avatar detected in update, uploading to GCS...");
-        updateFields.avatar = await uploadBase64ToGCS(avatar, "avatars");
-        console.log(`✅ Base64 avatar uploaded to GCS: ${updateFields.avatar}`);
+        const savedAvatar = await uploadBase64ToGCS(avatar, "avatars");
+        console.log(`✅ Base64 avatar uploaded: ${savedAvatar}`);
+        // If GCS is offline and storage fell back to local ephemeral disk, retain the base64 in MongoDB for persistence
+        updateFields.avatar = savedAvatar.startsWith("http") ? savedAvatar : (avatar.length < 500000 ? avatar : savedAvatar);
       } catch (uploadErr) {
         console.error("❌ Failed to upload base64 avatar to GCS:", uploadErr);
         updateFields.avatar = avatar;
@@ -859,8 +861,9 @@ export async function updateCurrentUser(req: Request, res: Response): Promise<vo
     if (coverPhoto && coverPhoto.startsWith("data:")) {
       try {
         console.log("📸 Base64 cover photo detected in update, uploading to GCS...");
-        updateFields.coverPhoto = await uploadBase64ToGCS(coverPhoto, "covers");
-        console.log(`✅ Base64 cover photo uploaded to GCS: ${updateFields.coverPhoto}`);
+        const savedCover = await uploadBase64ToGCS(coverPhoto, "covers");
+        console.log(`✅ Base64 cover photo uploaded: ${savedCover}`);
+        updateFields.coverPhoto = savedCover.startsWith("http") ? savedCover : (coverPhoto.length < 800000 ? coverPhoto : savedCover);
       } catch (uploadErr) {
         console.error("❌ Failed to upload base64 cover photo to GCS:", uploadErr);
         updateFields.coverPhoto = coverPhoto;

@@ -1630,7 +1630,7 @@ export default function App() {
             <div className="my-6">
               <div className="flex flex-col items-center justify-center">
                 <div className="relative group">
-                  <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-800 bg-slate-950 flex items-center justify-center shadow-inner relative">
+                  <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-700 bg-white flex items-center justify-center shadow-inner relative">
                     {selectedForceAvatar && selectedForceAvatar.trim().length > 0 ? (
                       <img
                         src={selectedForceAvatar}
@@ -1639,7 +1639,7 @@ export default function App() {
                         referrerPolicy="no-referrer"
                       />
                     ) : (
-                      <UserIcon className="w-12 h-12 text-slate-700" />
+                      <UserIcon className="w-12 h-12 text-slate-400" />
                     )}
                   </div>
                   

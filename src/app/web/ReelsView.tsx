@@ -391,7 +391,16 @@ export default function ReelsView({
 
                     {/* Media element: Video or Image */}
                     {isMediaVideo ? (
-                      <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
+                      <div className="w-full h-full relative flex items-center justify-center bg-slate-950 overflow-hidden">
+                        {reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") && !reel.thumbnailUrl.includes("1618005182384") && (
+                          <img
+                            src={getMediaUrl(reel.thumbnailUrl)}
+                            alt=""
+                            aria-hidden="true"
+                            className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-35 scale-125 pointer-events-none"
+                            referrerPolicy="no-referrer"
+                          />
+                        )}
                         {isCurrent ? (
                           <ReelVideoItem
                             key={`${reel.id}_${index}_media_${currentMediaIdx}`}
@@ -411,7 +420,7 @@ export default function ReelsView({
                             onRegisterRef={handleRegisterRef}
                           />
                         ) : (
-                          <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
+                          <div className="w-full h-full relative flex items-center justify-center bg-slate-950 overflow-hidden">
                             {reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") && !reel.thumbnailUrl.includes("1618005182384") ? (
                               <img
                                 src={getMediaUrl(reel.thumbnailUrl)}
@@ -431,7 +440,16 @@ export default function ReelsView({
                         )}
                       </div>
                     ) : (
-                      <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black">
+                      <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-slate-950">
+                        {currentMedia?.url && (
+                          <img
+                            src={currentMedia.url}
+                            alt=""
+                            aria-hidden="true"
+                            className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-35 scale-125 pointer-events-none"
+                            referrerPolicy="no-referrer"
+                          />
+                        )}
                         {currentMedia?.url ? (
                           <img
                             src={currentMedia.url}
@@ -447,12 +465,12 @@ export default function ReelsView({
                               else if (ratio >= 0.85 && ratio <= 1.15) detected = 'square';
                               setMediaAspectRatios((prev) => ({ ...prev, [reel.id]: detected }));
                             }}
-                            className={`w-full h-full cursor-pointer select-none block touch-auto object-center ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`}
+                            className={`w-full h-full cursor-pointer select-none block touch-auto object-center relative z-10 ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`}
                             style={{ touchAction: "pan-y" }}
                             referrerPolicy="no-referrer"
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-black text-slate-600 text-xs">
+                          <div className="w-full h-full flex items-center justify-center bg-slate-950 text-slate-600 text-xs">
                             <span>Publicación</span>
                           </div>
                         )}
@@ -521,7 +539,10 @@ function ReelCarousel({ images, onDoubleClick, onIndexChange }: { images: string
   return (
     <div ref={containerRef} onScroll={handleScroll} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUpOrLeave} onMouseLeave={handleMouseUpOrLeave} onDoubleClick={() => { if (!hasMoved.current) onDoubleClick(); }} className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-none select-none bg-black cursor-grab active:cursor-grabbing touch-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-x pan-y" }}>
       {images.filter((img) => Boolean(img && typeof img === "string" && img.trim().length > 0)).map((img, idx) => (
-        <div key={idx} className="w-full h-full shrink-0 snap-center flex items-center justify-center relative overflow-hidden bg-black" style={{ touchAction: "pan-x pan-y" }}><img src={img} alt={`Carousel ${idx + 1}`} draggable={false} onLoad={(e) => { const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.05; setSlideAspectRatios((prev) => ({ ...prev, [idx]: isVert })); }} className={`w-full h-full pointer-events-none select-none block object-center ${slideAspectRatios[idx] !== false ? "object-cover md:object-contain" : "object-contain"}`} style={{ touchAction: "pan-x pan-y" }} referrerPolicy="no-referrer" /></div>
+        <div key={idx} className="w-full h-full shrink-0 snap-center flex items-center justify-center relative overflow-hidden bg-slate-950" style={{ touchAction: "pan-x pan-y" }}>
+          <img src={img} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-35 scale-125 pointer-events-none" referrerPolicy="no-referrer" />
+          <img src={img} alt={`Carousel ${idx + 1}`} draggable={false} onLoad={(e) => { const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.05; setSlideAspectRatios((prev) => ({ ...prev, [idx]: isVert })); }} className={`w-full h-full pointer-events-none select-none block object-center relative z-10 ${slideAspectRatios[idx] !== false ? "object-cover md:object-contain" : "object-contain"}`} style={{ touchAction: "pan-x pan-y" }} referrerPolicy="no-referrer" />
+        </div>
       ))}
     </div>
   );
