@@ -1,4 +1,4 @@
-import { safeStorage } from "./safeStorage";
+
 import { apiFetch } from "../config";
 
 export const FALLBACK_DEFAULT_AVATAR =
@@ -35,6 +35,9 @@ export const AVATAR_PRESETS = [
   }
 ];
 
+let runtimeAvatar: string | null = null;
+let runtimeCover: string | null = null;
+
 export const COVER_PRESETS = [
   {
     id: "cover_1",
@@ -65,28 +68,22 @@ export const COVER_PRESETS = [
 
 export function getDefaultAvatar(): string {
   try {
-    const cached = safeStorage.getItem("app_default_avatar");
-    if (cached && cached.trim().length > 0) return cached;
+    if (runtimeAvatar && runtimeAvatar.trim().length > 0) return runtimeAvatar;
   } catch {}
   return FALLBACK_DEFAULT_AVATAR;
 }
 
 export function getDefaultCoverPhoto(): string {
   try {
-    const cached = safeStorage.getItem("app_default_cover");
-    if (cached && cached.trim().length > 0) return cached;
+    if (runtimeCover && runtimeCover.trim().length > 0) return runtimeCover;
   } catch {}
   return FALLBACK_DEFAULT_COVER;
 }
 
 export function setDefaultAssetsCache(avatar?: string, cover?: string): void {
   try {
-    if (avatar && avatar.trim().length > 0) {
-      safeStorage.setItem("app_default_avatar", avatar.trim());
-    }
-    if (cover && cover.trim().length > 0) {
-      safeStorage.setItem("app_default_cover", cover.trim());
-    }
+    if (avatar && avatar.trim().length > 0) runtimeAvatar = avatar.trim();
+    if (cover && cover.trim().length > 0) runtimeCover = cover.trim();
     if (typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent("default-assets-changed", {
