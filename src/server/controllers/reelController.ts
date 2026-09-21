@@ -5,7 +5,7 @@ import { Comment } from "../../types";
 import { generateId } from "../utils/helpers";
 import { formatReelDTO } from "../utils/reelUtils";
 import { getCanonicalReelsFromMongo, saveCanonicalReelToMongo } from "../services/reelService";
-import { resolveAuthenticatedUser } from "./userController";
+import { resolveAuthenticatedUser, hasSellerPermission } from "./userController";
 import {
   reels,
   setReels,
@@ -239,6 +239,11 @@ export async function createReel(req: any, res: any): Promise<void> {
 
     if (!creator || creator.isGuest || creator.username === "invitado" || creator.username === "guest") {
       res.status(403).json({ error: "Debes iniciar sesión con una cuenta para poder realizar publicaciones." });
+      return;
+    }
+
+    if (!hasSellerPermission(creator)) {
+      res.status(403).json({ error: "Tu cuenta no tiene permiso para publicar. Solicita al superadministrador que active el permiso de vendedor." });
       return;
     }
 
