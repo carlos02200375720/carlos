@@ -1,4 +1,4 @@
-import { safeStorage } from "./utils/safeStorage";
+import { sessionState } from "./utils/sessionState";
 
 /// <reference types="vite/client" />
 
@@ -161,8 +161,8 @@ export const apiFetch = async (
 
   if (typeof window !== "undefined") {
     try {
-      const loggedInUsername = safeStorage.getItem("loggedInUsername");
-      const currentUserData = safeStorage.getItem("currentUserData");
+      const loggedInUsername = sessionState.getUsername();
+      const currentUserData = JSON.stringify(sessionState.getUser());
       if (loggedInUsername && loggedInUsername !== "invitado" && loggedInUsername !== "guest") {
         if (!headers.has("x-user-username")) {
           headers.set("x-user-username", loggedInUsername);
@@ -182,7 +182,7 @@ export const apiFetch = async (
         }
       }
     } catch (e) {
-      // Ignore localStorage parsing error
+      // Ignore runtime session parsing error
     }
   }
 
