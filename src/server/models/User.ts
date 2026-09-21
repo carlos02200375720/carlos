@@ -15,7 +15,8 @@ const UserSchema = new mongoose.Schema({
   isGuest: { type: Boolean, default: false },
   password: { type: String },
   email: { type: String, unique: true, sparse: true, lowercase: true, trim: true, index: true },
-  privacyPolicy: { type: String, default: "" }
+  privacyPolicy: { type: String, default: "" },
+  canSell: { type: Boolean, default: false }
 }, { timestamps: true });
 
 UserSchema.index({ username: 1 }, { unique: true });
