@@ -1,4 +1,4 @@
-import { safeStorage } from "../../utils/safeStorage";
+import { sessionState } from "../../utils/sessionState";
 import { User, Reel, Product, CartItem, Order, ChatMessage } from "../../types";
 import { BACKEND_URL } from "../../config";
 
@@ -94,8 +94,8 @@ export const androidApiFetch = async (
 
   if (typeof window !== "undefined") {
     try {
-      const loggedInUsername = safeStorage.getItem("loggedInUsername");
-      const currentUserData = safeStorage.getItem("currentUserData");
+      const loggedInUsername = sessionState.getUsername();
+      const currentUserData = JSON.stringify(sessionState.getUser());
       if (loggedInUsername && loggedInUsername !== "invitado" && loggedInUsername !== "guest") {
         headers.set("x-user-username", loggedInUsername);
       }
