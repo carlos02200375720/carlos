@@ -249,34 +249,38 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
   } else {
     // Direct MongoDB lookup
     if (mongoose.connection.readyState === 1) {
-      const found = await MongoUser.findOne({
-        $or: [
-          { id: rawParam },
-          { id: cleanParam },
-          { username: cleanParam },
-          { username: rawParam },
-          { name: rawParam }
-        ]
-      });
-      if (found) {
-        user = {
-          id: found.id,
-          originalId: found.id,
-          username: found.username,
-          name: found.name,
-          avatar: found.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-          bio: found.bio || "Creador en la plataforma",
-          isOnline: found.isOnline !== undefined ? found.isOnline : false,
-          followers: found.followers || 0,
-          following: found.following || 0,
-          followingUserIds: found.followingUserIds || [],
-          savedReelIds: found.savedReelIds || [],
-          coverPhoto: found.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-          isGuest: false,
-          password: found.password || "",
-          email: found.email || "",
-          privacyPolicy: found.privacyPolicy || ""
-        };
+      try {
+        const found = await MongoUser.findOne({
+          $or: [
+            { id: rawParam },
+            { id: cleanParam },
+            { username: cleanParam },
+            { username: rawParam },
+            { name: rawParam }
+          ]
+        });
+        if (found) {
+          user = {
+            id: found.id,
+            originalId: found.id,
+            username: found.username,
+            name: found.name,
+            avatar: found.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+            bio: found.bio || "Creador en la plataforma",
+            isOnline: found.isOnline !== undefined ? found.isOnline : false,
+            followers: found.followers || 0,
+            following: found.following || 0,
+            followingUserIds: found.followingUserIds || [],
+            savedReelIds: found.savedReelIds || [],
+            coverPhoto: found.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=120",
+            isGuest: false,
+            password: found.password || "",
+            email: found.email || "",
+            privacyPolicy: found.privacyPolicy || ""
+          };
+        }
+      } catch (dbErr: any) {
+        console.warn("⚠️ User profile lookup failed; continuing with cached/in-memory data:", dbErr?.message || dbErr);
       }
     }
 
