@@ -93,7 +93,9 @@ export default function App() {
     } catch {}
     return INITIAL_PRODUCTS;
   });
-  // Cart is hydrated from MongoDB; no browser persistence.\n  const [cart, setCart] = useState<CartItem[]>([]);\n  const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
+  // Cart is hydrated from MongoDB; no browser persistence.
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
 
   // Current User (Session source of truth)
 
