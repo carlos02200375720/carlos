@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X, Video, Globe, PackageCheck, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Check, Eye, Share2 } from "lucide-react";
+import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X, Video, Globe, PackageCheck, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Check, Eye, Share2, FileText } from "lucide-react";
 import { Product, CartItem, Order, User } from "../../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../../config";
@@ -1513,8 +1513,6 @@ export default function ShopView({
                       </div>
                     </div>
 
-                    <p className="text-sm text-slate-600 mt-4 leading-relaxed whitespace-pre-line">{selectedProduct.description}</p>
-
                     {/* Product Variants Selection */}
                     {((selectedProduct.variants && selectedProduct.variants.length > 0) || (selectedProduct.variantList && selectedProduct.variantList.length > 0)) && (() => {
                       // Extract unique swatches by color/image to avoid duplicate list
@@ -1856,6 +1854,24 @@ export default function ShopView({
                   </div>
                 </div>
               </motion.div>
+
+              {/* Product Description Section - Positioned below the main product container */}
+              {selectedProduct.description && (
+                <div 
+                  className="mt-6 md:mt-8 bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-7 shadow-2xs mx-0 md:mx-6"
+                  id="product-detail-description-container"
+                >
+                  <div className="flex items-center gap-2 pb-3 mb-4 border-b border-slate-100">
+                    <FileText className="w-4 h-4 text-amber-500" />
+                    <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
+                      Descripción del Producto
+                    </h2>
+                  </div>
+                  <div className="text-sm sm:text-base text-slate-700 leading-relaxed whitespace-pre-line">
+                    {selectedProduct.description}
+                  </div>
+                </div>
+              )}
             </>
           )}
 

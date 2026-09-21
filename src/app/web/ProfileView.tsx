@@ -8,6 +8,7 @@ import PublishView from "./PublishView";
 import { apiFetch } from "../../config";
 import { safeStorage } from "../../utils/safeStorage";
 import { getDefaultAvatar, getDefaultCoverPhoto } from "../../utils/defaultAssets";
+import { isSuperAdmin } from "../../superAdmin";
 
 const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -201,8 +202,9 @@ export default function ProfileView({
   const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
   const [savedReels, setSavedReels] = useState<Reel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeSubTab, setActiveSubTab] = useState<"publish" | "publications" | "products" | "saved" | "orders" | "performance" | "edit">(currentUser.canSell === true ? "publish" : "saved");
-  const canSell = isSelf && currentUser.canSell === true;
+  const isCurrentSuperAdmin = isSuperAdmin(currentUser);
+  const [activeSubTab, setActiveSubTab] = useState<"publish" | "publications" | "products" | "saved" | "orders" | "performance" | "edit">((currentUser.canSell === true || isCurrentSuperAdmin) ? "publish" : "saved");
+  const canSell = isSelf && (currentUser.canSell === true || isCurrentSuperAdmin);
   const [isPublishOpen, setIsPublishOpen] = useState(false);
   const [publicTab, setPublicTab] = useState<"publications" | "products" | "policies">("publications");
   // Dedicated user publications feed state
@@ -1005,9 +1007,14 @@ export default function ProfileView({
               </span>
             </div>
             <div className="pb-1">
-              <h2 className="font-display font-extrabold text-lg sm:text-xl text-slate-950 flex items-center space-x-2">
+              <h2 className="font-display font-extrabold text-lg sm:text-xl text-slate-950 flex items-center space-x-2 flex-wrap">
                 <span className="inline-block" style={{ paddingLeft: '18px' }}>{profileUser.name}</span>
-                {!isSelf && (
+                {isSuperAdmin(profileUser) ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 border border-amber-500/30 text-[11px] font-black tracking-wide" title="Superadministrador de la plataforma">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>SUPERADMIN</span>
+                  </span>
+                ) : !isSelf && (
                   <BadgeCheck className="w-5 h-5 fill-sky-500 text-white shrink-0" title="Verificado" />
                 )}
               </h2>

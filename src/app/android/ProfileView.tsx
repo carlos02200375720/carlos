@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { User, Reel, Product, Order } from "../../types";
-import { Play, ShoppingBag, Bookmark, Settings, LogOut, Edit3, Grid, Camera, Check, Sparkles, UserPlus, UserCheck, X, ExternalLink, Package, Plus, Trash2 } from "lucide-react";
+import { Play, ShoppingBag, Bookmark, Settings, LogOut, Edit3, Grid, Camera, Check, Sparkles, UserPlus, UserCheck, X, ExternalLink, Package, Plus, Trash2, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
 import AndroidUserPublicationsFeed from "./components/AndroidUserPublicationsFeed";
 import AndroidPublicationCover from "./components/AndroidPublicationCover";
 import AndroidPublishView from "./PublishView";
 import AndroidLoginView from "./LoginView";
+import { isSuperAdmin } from "../../superAdmin";
 
 export interface AndroidProfileViewProps {
   user?: User;
@@ -368,7 +369,7 @@ export default function AndroidProfileView({
                   <Edit3 className="w-3.5 h-3.5" />
                   <span>Editar</span>
                 </button>
-                {activeUser.canSell === true && (
+                {(activeUser.canSell === true || isSuperAdmin(activeUser)) && (
                   <button
                     onClick={() => (onOpenPublishModal ? onOpenPublishModal() : setIsPublishingOpen(true))}
                     className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm active:scale-95 transition-transform cursor-pointer"
@@ -405,7 +406,15 @@ export default function AndroidProfileView({
         </div>
 
         <div className="mt-3">
-          <h1 className="text-lg font-black text-slate-900">{activeUser.name}</h1>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <h1 className="text-lg font-black text-slate-900">{activeUser.name}</h1>
+            {isSuperAdmin(activeUser) && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 border border-amber-500/30 text-[10px] font-black tracking-wide">
+                <ShieldCheck className="w-3 h-3 text-amber-600" />
+                <span>SUPERADMIN</span>
+              </span>
+            )}
+          </div>
           <p className="text-xs text-amber-600 font-semibold">@{activeUser.username}</p>
           <p className="text-xs text-slate-600 mt-2 leading-relaxed">{activeUser.bio || "Creador en MallSocial Android"}</p>
         </div>

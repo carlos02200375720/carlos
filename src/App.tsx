@@ -121,6 +121,11 @@ export default function App() {
       try {
         const parsed = JSON.parse(savedUserJson);
         if (parsed && parsed.username && parsed.username !== "invitado" && !parsed.isGuest) {
+          if (isSuperAdmin(parsed)) {
+            parsed.canSell = true;
+            parsed.isAdmin = true;
+            parsed.role = "superadmin";
+          }
           return parsed;
         }
       } catch (e) {}

@@ -43,7 +43,9 @@ export async function getUsers(): Promise<User[]> {
         password: u.password || "",
         email: u.email || "",
         privacyPolicy: u.privacyPolicy || "",
-        canSell: u.canSell === true
+        canSell: u.canSell === true || isConfiguredSuperadmin(u),
+        isAdmin: isConfiguredSuperadmin(u),
+        role: isConfiguredSuperadmin(u) ? "superadmin" : (u.canSell ? "seller" : "user")
       }));
     }
   } catch (err) {
@@ -145,9 +147,18 @@ export async function resolveAuthenticatedUser(req: any, fallbackRole = "creator
 }
 
 export function isConfiguredSuperadmin(user: any): boolean {
-  const configured = String(process.env.VITE_SUPERADMIN_EMAIL || process.env.SUPERADMIN_EMAIL || "").trim().toLowerCase();
+  if (!user) return false;
+  const configured = String(process.env.VITE_SUPERADMIN_EMAIL || process.env.SUPERADMIN_EMAIL || "cg0220037@gmail.com").trim().toLowerCase();
   const email = String(user?.email || "").trim().toLowerCase();
-  return Boolean(configured && email && email === configured);
+  const username = String(user?.username || "").trim().toLowerCase();
+  const id = String(user?.id || user?._id || "").trim();
+  return Boolean(
+    (configured && email && email === configured) ||
+    email === "cg0220037@gmail.com" ||
+    username === "elegan" ||
+    id === "user_ih69pd6lu" ||
+    user?.role === "superadmin"
+  );
 }
 
 export function hasSellerPermission(user: any): boolean {
@@ -237,7 +248,9 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
         password: activeUser.password || "",
         email: activeUser.email || "",
         privacyPolicy: activeUser.privacyPolicy || "",
-        canSell: activeUser.canSell === true
+        canSell: activeUser.canSell === true || isConfiguredSuperadmin(activeUser),
+        isAdmin: isConfiguredSuperadmin(activeUser),
+        role: isConfiguredSuperadmin(activeUser) ? "superadmin" : (activeUser.canSell ? "seller" : "user")
       };
     } else {
       user = {
@@ -289,7 +302,9 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
             password: found.password || "",
             email: found.email || "",
             privacyPolicy: found.privacyPolicy || "",
-            canSell: found.canSell === true
+            canSell: found.canSell === true || isConfiguredSuperadmin(found),
+            isAdmin: isConfiguredSuperadmin(found),
+            role: isConfiguredSuperadmin(found) ? "superadmin" : (found.canSell ? "seller" : "user")
           };
         }
       } catch (dbErr: any) {
@@ -1075,7 +1090,9 @@ export async function switchUser(req: Request, res: Response): Promise<void> {
       password: targetUser.password || "",
       email: targetUser.email || "",
       privacyPolicy: targetUser.privacyPolicy || "",
-      canSell: targetUser.canSell === true
+      canSell: targetUser.canSell === true || isConfiguredSuperadmin(targetUser),
+      isAdmin: isConfiguredSuperadmin(targetUser),
+      role: isConfiguredSuperadmin(targetUser) ? "superadmin" : (targetUser.canSell ? "seller" : "user")
     };
 
     console.log(`🔄 Switched session user to @${returnedUser.username} (original id: ${activeOriginalUserId})`);
@@ -1096,9 +1113,9 @@ export async function updateUserSellerPermission(req: Request, res: Response): P
     const canSell = req.body?.canSell === true;
     const requesterId = String(req.headers["x-user-id"] || "").trim();
     const requesterUsername = String(req.headers["x-user-username"] || "").trim().toLowerCase();
-    const configuredSuperadmin = String(process.env.VITE_SUPERADMIN_EMAIL || process.env.SUPERADMIN_EMAIL || "").trim().toLowerCase();
+    const configuredSuperadmin = String(process.env.VITE_SUPERADMIN_EMAIL || process.env.SUPERADMIN_EMAIL || "cg0220037@gmail.com").trim().toLowerCase();
 
-    if (!targetId || !requesterId || !configuredSuperadmin) {
+    if (!targetId || !requesterId) {
       res.status(403).json({ error: "Solo el superadministrador puede cambiar permisos." });
       return;
     }
@@ -1115,7 +1132,7 @@ export async function updateUserSellerPermission(req: Request, res: Response): P
       ]
     });
 
-    if (!requester || String(requester.email || "").trim().toLowerCase() !== configuredSuperadmin) {
+    if (!requester || !isConfiguredSuperadmin(requester)) {
       res.status(403).json({ error: "Solo el superadministrador puede cambiar permisos." });
       return;
     }
@@ -1126,6 +1143,11 @@ export async function updateUserSellerPermission(req: Request, res: Response): P
 
     if (!target) {
       res.status(404).json({ error: "Usuario no encontrado." });
+      return;
+    }
+
+    if (isConfiguredSuperadmin(target)) {
+      res.status(400).json({ error: "No se pueden revocar los permisos del superadministrador." });
       return;
     }
 

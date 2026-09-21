@@ -11,6 +11,7 @@ import {
   saveCanonicalReelToMongo,
   getUserCanonicalReelsFromMongo,
 } from "./services/reelService";
+import { isConfiguredSuperadmin } from "./controllers/userController";
 
 export interface AndroidRouterDependencies {
   MongoUser: any;
@@ -254,7 +255,9 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         isGuest: false,
         isOnline: true,
         email: user.email || "",
-        canSell: user.canSell === true
+        canSell: user.canSell === true || isConfiguredSuperadmin(user),
+        isAdmin: isConfiguredSuperadmin(user),
+        role: isConfiguredSuperadmin(user) ? "superadmin" : (user.canSell ? "seller" : "user")
       };
 
       res.json({ success: true, user: formattedUser });
@@ -315,7 +318,9 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         isGuest: false,
         isOnline: true,
         email: targetUser.email || "",
-        canSell: targetUser.canSell === true
+        canSell: targetUser.canSell === true || isConfiguredSuperadmin(targetUser),
+        isAdmin: isConfiguredSuperadmin(targetUser),
+        role: isConfiguredSuperadmin(targetUser) ? "superadmin" : (targetUser.canSell ? "seller" : "user")
       };
 
       console.log(`📱 [Android Gateway] Usuario autenticado exitosamente en Atlas: @${androidUser.username}`);

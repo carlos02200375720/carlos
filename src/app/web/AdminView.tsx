@@ -41,6 +41,7 @@ import { User, Reel, Product, Order } from "../../types";
 import PublishView from "./PublishView";
 import { apiFetch } from "../../config";
 import { safeStorage } from "../../utils/safeStorage";
+import { isSuperAdmin } from "../../superAdmin";
 import {
   getDefaultAvatar,
   getDefaultCoverPhoto,
@@ -1061,17 +1062,27 @@ export default function AdminView({
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((user) => (
-                    <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
+                  filteredUsers.map((user) => {
+                    const userIsSuperAdmin = isSuperAdmin(user);
+                    return (
+                    <tr key={user.id} className={`hover:bg-slate-50/80 transition-colors ${userIsSuperAdmin ? "bg-amber-500/5" : ""}`}>
                       <td className="py-3.5 px-4">
                         <div className="flex items-center space-x-3">
                           <img
                             src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
                             alt={user.name}
-                            className="w-9 h-9 rounded-full object-cover border border-slate-200 shrink-0"
+                            className={`w-9 h-9 rounded-full object-cover border shrink-0 ${userIsSuperAdmin ? "border-amber-400 ring-2 ring-amber-400/30" : "border-slate-200"}`}
                           />
                           <div>
-                            <p className="font-bold text-slate-900">{user.name}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-bold text-slate-900">{user.name}</p>
+                              {userIsSuperAdmin && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-700 border border-amber-500/30 text-[9px] font-black uppercase tracking-wider">
+                                  <ShieldCheck className="w-3 h-3 text-amber-600" />
+                                  <span>Superadmin</span>
+                                </span>
+                              )}
+                            </div>
                             <p className="font-mono text-[11px] text-slate-400">@{user.username}</p>
                           </div>
                         </div>
@@ -1091,19 +1102,31 @@ export default function AdminView({
                         </span>
                       </td>
                       <td className="py-3.5 px-4">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleSellerPermission(user)}
-                          disabled={user.id === currentUser.id || updatingPermissionId === user.id}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${user.canSell ? "bg-emerald-500" : "bg-slate-300"}`}
-                          title={user.canSell ? "Permiso activo: publicar, productos y rendimiento" : "Activar permisos de vendedor"}
-                          aria-label={user.canSell ? "Desactivar permiso de vendedor" : "Activar permiso de vendedor"}
-                        >
-                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${user.canSell ? "translate-x-6" : "translate-x-1"}`} />
-                        </button>
-                        <p className={`mt-1 text-[9px] font-bold ${user.canSell ? "text-emerald-600" : "text-slate-400"}`}>
-                          {updatingPermissionId === user.id ? "Guardando..." : user.canSell ? "Vendedor" : "Normal"}
-                        </p>
+                        {userIsSuperAdmin ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-300 font-extrabold text-[11px] shadow-2xs">
+                              <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>Acceso Total</span>
+                            </span>
+                            <p className="mt-0.5 text-[9px] font-bold text-amber-700">Superadministrador</p>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSellerPermission(user)}
+                              disabled={updatingPermissionId === user.id}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${user.canSell ? "bg-emerald-500" : "bg-slate-300"}`}
+                              title={user.canSell ? "Permiso activo: publicar, productos y rendimiento" : "Activar permisos de vendedor"}
+                              aria-label={user.canSell ? "Desactivar permiso de vendedor" : "Activar permiso de vendedor"}
+                            >
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${user.canSell ? "translate-x-6" : "translate-x-1"}`} />
+                            </button>
+                            <p className={`mt-1 text-[9px] font-bold ${user.canSell ? "text-emerald-600" : "text-slate-400"}`}>
+                              {updatingPermissionId === user.id ? "Guardando..." : user.canSell ? "Vendedor" : "Normal"}
+                            </p>
+                          </>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="inline-flex items-center space-x-2">
@@ -1114,7 +1137,7 @@ export default function AdminView({
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                           </button>
-                          {user.id !== currentUser.id && (
+                          {user.id !== currentUser.id && !userIsSuperAdmin && (
                             <button
                               onClick={() => setDeletingTarget({ type: 'user', id: user.id, name: user.username })}
                               className="p-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer"
@@ -1126,7 +1149,8 @@ export default function AdminView({
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
