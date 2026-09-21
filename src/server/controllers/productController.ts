@@ -5,7 +5,7 @@ import { Product } from "../../types";
 import { generateId } from "../utils/helpers";
 import { createCompanionReelForProduct } from "../utils/reelUtils";
 import { saveCanonicalReelToMongo } from "../services/reelService";
-import { resolveAuthenticatedUser } from "./userController";
+import { resolveAuthenticatedUser, hasSellerPermission } from "./userController";
 import {
   products,
   setProducts,
@@ -181,6 +181,10 @@ export async function createProduct(req: any, res: any): Promise<void> {
       res.status(403).json({ error: "Debes iniciar sesión con una cuenta para poder registrar productos para la venta." });
       return;
     }
+    if (!hasSellerPermission(seller)) {
+      res.status(403).json({ error: "Tu cuenta no tiene permiso para gestionar productos. Solicita al superadministrador que active el permiso de vendedor." });
+      return;
+    }
 
     const newProduct: Product = {
       id: "prod_" + generateId(),
@@ -267,6 +271,12 @@ export async function updateProduct(req: any, res: any, next: any): Promise<void
       variantList,
       category,
     } = req.body;
+
+    const seller = await resolveAuthenticatedUser(req, "seller");
+    if (!seller || !hasSellerPermission(seller)) {
+      res.status(403).json({ error: "Tu cuenta no tiene permiso para gestionar productos." });
+      return;
+    }
 
     const updateFields: any = {};
     if (name !== undefined) updateFields.name = String(name).trim();
@@ -358,6 +368,12 @@ export async function deleteProduct(req: any, res: any, next: any): Promise<void
     const { id } = req.params;
     if (!id) {
       res.status(400).json({ error: "El ID del producto es obligatorio" });
+      return;
+    }
+
+    const seller = await resolveAuthenticatedUser(req, "seller");
+    if (!seller || !hasSellerPermission(seller)) {
+      res.status(403).json({ error: "Tu cuenta no tiene permiso para gestionar productos." });
       return;
     }
 
