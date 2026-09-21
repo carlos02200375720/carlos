@@ -93,24 +93,7 @@ export default function App() {
     } catch {}
     return INITIAL_PRODUCTS;
   });
-  const [cart, setCart] = useState<CartItem[]>(() => {
-    try {
-      const savedUsername = sessionState.getUsername();
-      const guestId = null;
-      const key = savedUsername && savedUsername !== "invitado" && savedUsername !== "guest"
-        ? `saved_cart_${savedUsername}`
-        : (guestId ? `saved_cart_${guestId}` : "saved_cart_guest");
-      const raw = sessionState.getItem(key);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error("Error reading initial cart from sessionState:", e);
-    }
-    return [];
-  });
-  const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
+  // Cart is hydrated from MongoDB; no browser persistence.\n  const [cart, setCart] = useState<CartItem[]>([]);\n  const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
 
   // Current User (Session source of truth)
 
@@ -958,7 +941,7 @@ export default function App() {
           if (data.success) {
             if (data.savedReelIds) {
               setSavedReelIds(data.savedReelIds);
-              sessionState.setItem("saved_publication_ids", JSON.stringify(data.savedReelIds));
+
               setCurrentUser((prev) => ({
                 ...prev,
                 savedReelIds: data.savedReelIds
@@ -1043,36 +1026,18 @@ export default function App() {
       .catch((err) => console.error("Error toggling follow:", err));
   };
 
-  // Get persistent Cart User ID for MongoDB storage
+  // Cart persistence is server-side only. Guest carts remain in React memory for this session.
   const getCartUserId = (userObj?: User) => {
     const target = userObj || currentUser;
-    const savedUsername = sessionState.getUsername();
-    if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
-      return savedUsername;
-    }
     if (target && target.username && target.username !== "invitado" && !target.isGuest && target.id !== "current_user") {
       return target.originalId || target.id || target.username;
     }
-    let guestId = null;
-    if (!guestId) {
-      guestId = "guest_cart_" + Math.random().toString(36).substring(2, 11);
-      sessionState.setItem("cartClientId", guestId);
-    }
-    return guestId;
+    return null;
   };
 
   const saveCartToMongo = (updatedCart: CartItem[], userObj: User = currentUser) => {
     const userId = getCartUserId(userObj);
     if (!userId) return;
-
-    // Save locally immediately
-    try {
-      sessionState.setItem(`saved_cart_${userId}`, JSON.stringify(updatedCart));
-    } catch (e) {
-      console.error("Error writing cart to sessionState:", e);
-    }
-
-    // Persist to MongoDB Atlas backend
     apiFetch(`/api/cart/${encodeURIComponent(userId)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1084,30 +1049,18 @@ export default function App() {
           console.log(`💾 Cart persisted to MongoDB Atlas for user ${userId} (${updatedCart.length} items)`);
         }
       })
-      .catch((err) => console.warn("Notice: Cart stored locally, background sync pending:", err?.message || err));
+      .catch((err) => console.warn("Notice: Cart sync to MongoDB failed:", err?.message || err));
   };
 
-  // Sync persistent shopping cart from MongoDB when user changes or app boots
+  // Sync the cart exclusively from MongoDB when the authenticated user is available.
   useEffect(() => {
     let isCancelled = false;
     const userId = getCartUserId(currentUser);
-    if (!userId) return;
-
-    // Load from local storage immediately for zero-latency UI
-    try {
-      const localKey = `saved_cart_${userId}`;
-      const rawLocal = sessionState.getItem(localKey);
-      if (rawLocal) {
-        const parsedLocal = JSON.parse(rawLocal);
-        if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
-          setCart(parsedLocal);
-        }
-      }
-    } catch (e) {
-      // Ignore sessionState parse errors
+    if (!userId) {
+      setCart([]);
+      return;
     }
 
-    // Resilient background sync with retry
     let retryTimer: any = null;
     const syncRemoteCart = (attemptsLeft: number = 3, delayMs: number = 1000) => {
       apiFetch(`/api/cart/${encodeURIComponent(userId)}`)
@@ -1117,49 +1070,25 @@ export default function App() {
         })
         .then((data) => {
           if (isCancelled) return;
-          if (data && Array.isArray(data.items)) {
-            if (data.items.length > 0) {
-              setCart(data.items);
-              try {
-                sessionState.setItem(`saved_cart_${userId}`, JSON.stringify(data.items));
-              } catch (e) {}
-            } else {
-              // If MongoDB returned 0 items, check if we have local items to sync UP to MongoDB
-              const localKey = `saved_cart_${userId}`;
-              const rawLocal = sessionState.getItem(localKey);
-              if (rawLocal) {
-                try {
-                  const parsedLocal = JSON.parse(rawLocal);
-                  if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
-                    setCart(parsedLocal);
-                    saveCartToMongo(parsedLocal, currentUser);
-                  }
-                } catch (e) {}
-              }
-            }
-          }
+          if (data && Array.isArray(data.items)) setCart(data.items);
         })
         .catch((err) => {
           if (isCancelled) return;
           if (attemptsLeft > 1) {
-            retryTimer = setTimeout(() => {
-              if (!isCancelled) syncRemoteCart(attemptsLeft - 1, delayMs * 2);
-            }, delayMs);
+            retryTimer = setTimeout(() => syncRemoteCart(attemptsLeft - 1, delayMs * 2), delayMs);
           } else {
-            console.info("Using local cart cache:", err?.message || err);
+            console.warn("Notice: Could not load cart from MongoDB:", err?.message || err);
           }
         });
     };
 
-    syncRemoteCart(3, 1000);
-
+    syncRemoteCart();
     return () => {
       isCancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [currentUser.id, currentUser.username, currentUser.originalId]);
+  }, [currentUser]);
 
-  // Cart operations
   const handleAddToCart = (product: Product) => {
     setCart((prev) => {
       const existingIndex = prev.findIndex(
