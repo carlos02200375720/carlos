@@ -3,7 +3,7 @@ import { Lock, UserPlus, LogIn, X, AlertCircle, Loader2, Sparkles, CheckCircle2 
 import { User } from "../../../types";
 import { androidApiFetch } from "../api";
 import { motion, AnimatePresence } from "motion/react";
-import { safeStorage } from "../../../utils/safeStorage";
+import { sessionState } from "../../../utils/sessionState";
 
 interface AndroidAuthModalProps {
   isOpen: boolean;
@@ -76,10 +76,10 @@ export function AndroidAuthModal({
         setRegError(data.error || "No se pudo crear la cuenta en Android.");
         setIsRegistering(false);
       } else if (data.success && data.user) {
-        safeStorage.setItem("isLoggedIn", "true");
-        safeStorage.setItem("loggedInUsername", data.user.username);
-        safeStorage.setItem("loggedInPassword", regPassword);
-        safeStorage.setItem("currentUserData", JSON.stringify(data.user));
+        sessionState.setAuthenticated(true);
+        sessionState.setUsername(data.user.username);
+        
+        sessionState.setUser(data.user);
         setSuccessMessage("¡Cuenta creada con éxito!");
         setTimeout(() => {
           onLoginSuccess(data.user);
@@ -117,10 +117,10 @@ export function AndroidAuthModal({
         setLoginError(data.error || "Credenciales incorrectas.");
         setIsLoggingIn(false);
       } else if (data.success && data.user) {
-        safeStorage.setItem("isLoggedIn", "true");
-        safeStorage.setItem("loggedInUsername", data.user.username);
-        if (loginPassword) safeStorage.setItem("loggedInPassword", loginPassword);
-        safeStorage.setItem("currentUserData", JSON.stringify(data.user));
+        sessionState.setAuthenticated(true);
+        sessionState.setUsername(data.user.username);
+        if (loginPassword) 
+        sessionState.setUser(data.user);
         setSuccessMessage("¡Bienvenido!");
         setTimeout(() => {
           onLoginSuccess(data.user);
