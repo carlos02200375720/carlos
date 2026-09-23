@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
-import { bucket, bucketName } from "../config/storage";
+import { bucket, bucketName, isGcsAvailable } from "../config/storage";
 import { uploadToGCS, deleteFullPublicationMedia } from "../services/mediaStorage";
 import { hlsQueue, transcodeVideoToLocalHlsDirect } from "../hlsTranscoder";
 import { generateId } from "../utils/helpers";
@@ -32,9 +32,24 @@ export async function processUploadHlsOnly(req: any, res: any): Promise<void> {
     if (!isVideo) {
       const publicUrl = await uploadToGCS(req.file, "publicaciones");
 
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoPublicacion.create({
+            id: pubId,
+            url: publicUrl,
+            title: title || originalName,
+            description: description || "Imagen subida a la nube",
+            creatorId: creatorId || req.body.creatorId || "current_user",
+            createdAt: new Date(),
+          });
+        } catch (dbErr) {
+          console.warn("⚠️ Error guardando publicación de imagen en MongoDB:", dbErr);
+        }
+      }
+
       res.json({
         success: true,
-        message: "Archivo subido exitosamente a Google Cloud Storage.",
+        message: "Archivo subido exitosamente a almacenamiento en la nube (sin almacenamiento local).",
         url: publicUrl,
         hlsUrl: undefined,
         jobId: undefined,
@@ -44,10 +59,10 @@ export async function processUploadHlsOnly(req: any, res: any): Promise<void> {
     }
 
     // ------------------------------------------------------------
-    // VIDEO (HLS ONLY - GCS EXCLUSIVO)
+    // VIDEO (HLS ONLY - GCS EXCLUSIVO CON FALLBACK NUBE MONGODB GRIDFS)
     // ------------------------------------------------------------
     const jobId = "hls_" + generateId();
-    console.log(`🎬 [HLS ONLY] Procesando video ${originalName} para Google Cloud Storage`);
+    console.log(`🎬 [Upload Video] Procesando video ${originalName}`);
 
     let hlsUrl = "";
     let latencyMs = 0;
@@ -55,45 +70,68 @@ export async function processUploadHlsOnly(req: any, res: any): Promise<void> {
     let durationSec: number | undefined = undefined;
     let posterUrl = "";
 
-    try {
-      const hlsResult = await hlsQueue.enqueueAndWait(
-        jobId,
-        req.file.buffer,
-        originalName,
-        bucket,
-        bucketName,
-        {
-          publicacionId: pubId
-        }
-      );
+    const gcsReady = await isGcsAvailable();
+    if (gcsReady) {
+      try {
+        const hlsResult = await hlsQueue.enqueueAndWait(
+          jobId,
+          req.file.buffer,
+          originalName,
+          bucket,
+          bucketName,
+          {
+            publicacionId: pubId
+          }
+        );
 
-      hlsUrl = hlsResult.masterM3u8Url;
-      posterUrl = hlsResult.posterUrl || "";
-      latencyMs = hlsResult.latencyMs;
-      totalSegments = hlsResult.totalSegments;
-      durationSec = hlsResult.durationSec;
-    } catch (queueErr: any) {
-      console.warn("⚠️ [HLS ONLY] Cola HLS falló, ejecutando transcodificación directa a GCS:", queueErr?.message);
-      hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);
+        hlsUrl = hlsResult.masterM3u8Url;
+        posterUrl = hlsResult.posterUrl || "";
+        latencyMs = hlsResult.latencyMs;
+        totalSegments = hlsResult.totalSegments;
+        durationSec = hlsResult.durationSec;
+      } catch (queueErr: any) {
+        console.warn("⚠️ [HLS] Cola HLS falló, intentando transcodificación directa a GCS:", queueErr?.message);
+        try {
+          hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);
+        } catch {}
+      }
     }
 
-    if (!hlsUrl) {
-      hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);
+    // If GCS was unavailable or upload to GCS failed, store video in MongoDB Atlas GridFS (persistent cloud storage, zero local disk)
+    if (!hlsUrl || !hlsUrl.startsWith("https://storage.googleapis.com/")) {
+      console.log(`☁️ [Video Cloud Storage] Almacenando video en la nube en MongoDB Atlas GridFS: ${originalName}`);
+      const { saveMediaToMongoGridFS } = await import("../services/mongoGridFs");
+      const gridVideo = await saveMediaToMongoGridFS(req.file.buffer, originalName, req.file.mimetype || "video/mp4");
+      hlsUrl = gridVideo.url;
+      posterUrl = gridVideo.url;
     }
 
-    if (!hlsUrl.startsWith("https://storage.googleapis.com/")) {
-      throw new Error("No se pudo obtener la URL de Google Cloud Storage para el video.");
-    }
-
-    console.log(`✅ [HLS ONLY] HLS generado y subido a GCS: ${hlsUrl}`);
+    console.log(`✅ [Upload Video] Video procesado y almacenado en la nube con éxito: ${hlsUrl}`);
 
     if (!posterUrl) {
       posterUrl = hlsUrl.replace(/\/(?:master|index)\.m3u8.*$/, "/poster.jpg");
     }
 
+    // Save publication in MongoDB
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await MongoPublicacion.create({
+          id: pubId,
+          url: hlsUrl,
+          hlsUrl,
+          title: originalName,
+          description: req.body.description || "Video subido a la nube",
+          creatorId: req.body.creatorId || "current_user",
+          createdAt: new Date(),
+        });
+      } catch (dbErr) {
+        console.warn("⚠️ Error guardando publicación en MongoDB:", dbErr);
+      }
+    }
+
     res.json({
       success: true,
-      message: "Video convertido a HLS y subido a Google Cloud Storage correctamente.",
+      message: "Video procesado y subido a almacenamiento en la nube correctamente.",
       url: hlsUrl,
       hlsUrl,
       thumbnailUrl: posterUrl,
@@ -106,7 +144,7 @@ export async function processUploadHlsOnly(req: any, res: any): Promise<void> {
       }
     });
   } catch (error: any) {
-    console.error("❌ [Upload GCS] Error en el proceso de upload:", error);
+    console.error("❌ [Upload Video] Error en el proceso de upload:", error);
     res.status(500).json({
       error: "Error al procesar y subir archivo a Google Cloud Storage",
       details: error?.message || "Error desconocido"

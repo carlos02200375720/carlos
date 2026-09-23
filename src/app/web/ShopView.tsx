@@ -1963,8 +1963,8 @@ export default function ShopView({
                             onChange={(e) => setCountry(e.target.value)}
                             className="w-full bg-slate-50/70 border border-slate-200 text-xs rounded-xl p-3 font-semibold text-slate-800 focus:outline-none focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 appearance-none cursor-pointer pr-8 transition-all"
                           >
-                            {CJ_DEST_COUNTRIES.map((c) => (
-                              <option key={c.code} value={c.name}>
+                            {CJ_DEST_COUNTRIES.map((c, cIdx) => (
+                              <option key={`${c.code}-${cIdx}`} value={c.name}>
                                 {c.name}
                               </option>
                             ))}
@@ -2571,8 +2571,8 @@ export default function ShopView({
                       className="w-full bg-slate-50 border-2 border-slate-200 focus:border-amber-500 rounded-2xl p-3.5 pr-10 text-xs sm:text-sm font-extrabold text-slate-800 appearance-none outline-none transition-all cursor-pointer shadow-xs"
                       id="shipping-country-select"
                     >
-                      {CJ_DEST_COUNTRIES.map((c) => (
-                        <option key={c.code} value={c.code}>
+                      {CJ_DEST_COUNTRIES.map((c, cIdx) => (
+                        <option key={`${c.code}-${cIdx}`} value={c.code}>
                           {c.name} ({c.code})
                         </option>
                       ))}

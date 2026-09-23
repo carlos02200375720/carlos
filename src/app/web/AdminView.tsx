@@ -830,8 +830,8 @@ export default function AdminView({
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-100">
-                    {allOrders.slice(0, 5).map((order) => (
-                      <div key={order.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/60 rounded-xl px-2 -mx-2 transition-colors">
+                    {allOrders.slice(0, 5).map((order, oIdx) => (
+                      <div key={`${order.id || 'order'}-${oIdx}`} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/60 rounded-xl px-2 -mx-2 transition-colors">
                         <div className="flex items-center space-x-3">
                           <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden">
                             {order.items && order.items[0]?.imageUrl ? (
@@ -897,9 +897,9 @@ export default function AdminView({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {users.slice(0, 6).map((u) => (
+                  {users.slice(0, 6).map((u, uIdx) => (
                     <div
-                      key={u.id}
+                      key={`${u.id}-${uIdx}`}
                       onClick={() => onCreatorClick(u.id)}
                       className="p-3 rounded-2xl border border-slate-200 hover:border-amber-400 bg-slate-50/50 hover:bg-amber-50/30 transition-all flex items-center space-x-3 cursor-pointer group"
                     >
@@ -1062,10 +1062,10 @@ export default function AdminView({
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((user) => {
+                  filteredUsers.map((user, uIdx) => {
                     const userIsSuperAdmin = isSuperAdmin(user);
                     return (
-                    <tr key={user.id} className={`hover:bg-slate-50/80 transition-colors ${userIsSuperAdmin ? "bg-amber-500/5" : ""}`}>
+                    <tr key={`${user.id}-${uIdx}`} className={`hover:bg-slate-50/80 transition-colors ${userIsSuperAdmin ? "bg-amber-500/5" : ""}`}>
                       <td className="py-3.5 px-4">
                         <div className="flex items-center space-x-3">
                           <img
@@ -1185,9 +1185,9 @@ export default function AdminView({
                 No hay reels que coincidan con la búsqueda.
               </div>
             ) : (
-              filteredReels.map((reel) => (
+              filteredReels.map((reel, rIdx) => (
                 <div
-                  key={reel.id}
+                  key={`${reel.id}-${rIdx}`}
                   className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/60 hover:border-slate-300 transition-all flex flex-col justify-between"
                 >
                   <div className="p-4 space-y-3">
@@ -1280,9 +1280,9 @@ export default function AdminView({
                 No hay productos que coincidan con la búsqueda.
               </div>
             ) : (
-              filteredProducts.map((prod) => (
+              filteredProducts.map((prod, pIdx) => (
                 <div
-                  key={prod.id}
+                  key={`${prod.id}-${pIdx}`}
                   className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/50 hover:border-slate-300 transition-all flex flex-col justify-between"
                 >
                   <div className="p-4 flex space-x-3">
@@ -1336,9 +1336,9 @@ export default function AdminView({
 
             {/* Status Filter Chips */}
             <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl">
-              {['all', 'pending', 'processing', 'shipped', 'delivered'].map((st) => (
+              {['all', 'pending', 'processing', 'shipped', 'delivered'].map((st, sIdx) => (
                 <button
-                  key={st}
+                  key={`${st}-${sIdx}`}
                   onClick={() => setOrderStatusFilter(st)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                     orderStatusFilter === st
@@ -1358,9 +1358,9 @@ export default function AdminView({
                 No hay pedidos en la categoría seleccionada.
               </div>
             ) : (
-              filteredOrders.map((order) => (
+              filteredOrders.map((order, oIdx) => (
                 <div
-                  key={order.id}
+                  key={`${order.id || 'order'}-${oIdx}`}
                   className="border border-slate-200 rounded-2xl p-4 sm:p-5 bg-white hover:border-slate-300 transition-all flex flex-col space-y-4"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
@@ -1639,11 +1639,11 @@ export default function AdminView({
                           Elige uno de nuestros diseños predefinidos:
                         </span>
                         <div className="grid grid-cols-5 gap-2">
-                          {AVATAR_PRESETS.map((p) => {
+                          {AVATAR_PRESETS.map((p, pIdx) => {
                             const isSelected = defaultAvatar === p.url;
                             return (
                               <button
-                                key={p.id}
+                                key={`${p.id}-${pIdx}`}
                                 type="button"
                                 onClick={() => setDefaultAvatar(p.url)}
                                 className={`relative rounded-full aspect-square overflow-hidden border-2 transition-all cursor-pointer ${
@@ -1808,11 +1808,11 @@ export default function AdminView({
                           Elige una portada de nuestra colección:
                         </span>
                         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                          {COVER_PRESETS.map((c) => {
+                          {COVER_PRESETS.map((c, cIdx) => {
                             const isSelected = defaultCoverPhoto === c.url;
                             return (
                               <button
-                                key={c.id}
+                                key={`${c.id}-${cIdx}`}
                                 type="button"
                                 onClick={() => setDefaultCoverPhoto(c.url)}
                                 className={`relative h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${

@@ -768,9 +768,9 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerHandle, NativeVideo
 
                   {showSpeedMenu && (
                     <div className="absolute bottom-9 right-0 bg-neutral-900/95 backdrop-blur-md border border-white/15 rounded-lg py-1 shadow-2xl z-40 min-w-[80px]">
-                      {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) => (
+                      {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s, sIdx) => (
                         <button
-                          key={s}
+                          key={`${s}-${sIdx}`}
                           type="button"
                           onClick={() => handleSpeedSelect(s)}
                           className={`w-full px-3 py-1 text-left text-xs flex items-center justify-between hover:bg-white/15 transition-colors ${

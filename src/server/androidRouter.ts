@@ -976,11 +976,17 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       }
 
       if (!hlsUrl) {
-        hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);
+        try {
+          hlsUrl = await transcodeVideoToLocalHlsDirect(req.file.buffer, pubId, originalName);
+        } catch {}
       }
 
-      if (!hlsUrl.startsWith("https://storage.googleapis.com/")) {
-        throw new Error("No se pudo obtener URL pública de GCS para el video en Android");
+      // If GCS is unavailable or failed, store in MongoDB Atlas GridFS (persistent cloud database, zero local disk)
+      if (!hlsUrl || !hlsUrl.startsWith("https://storage.googleapis.com/")) {
+        console.log(`📱 [Android Gateway] Almacenando video en la nube en MongoDB Atlas GridFS: ${originalName}`);
+        const { saveMediaToMongoGridFS } = await import("./services/mongoGridFs");
+        const gridVideo = await saveMediaToMongoGridFS(req.file.buffer, originalName, req.file.mimetype || "video/mp4");
+        hlsUrl = gridVideo.url;
       }
 
       return res.json({

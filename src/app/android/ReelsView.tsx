@@ -982,8 +982,8 @@ export default function AndroidReelsView({
                     Aún no hay comentarios. ¡Sé el primero!
                   </div>
                 ) : (
-                  currentReel.comments.map((c) => (
-                    <div key={c.id} className="flex space-x-3 text-xs">
+                  currentReel.comments.map((c, cIdx) => (
+                    <div key={`${c.id || 'comment'}-${cIdx}`} className="flex space-x-3 text-xs">
                       <img src={c.avatar} alt={c.username} className="w-8 h-8 rounded-full object-cover shrink-0" />
                       <div>
                         <span className="font-bold text-amber-600">@{c.username}</span>

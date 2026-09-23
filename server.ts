@@ -146,6 +146,17 @@ async function startServer() {
   // Main Modular API Router
   app.use("/api", createApiRouter());
 
+  // Cloud Media Streaming from MongoDB Atlas GridFS (persistent cloud database, zero local files)
+  app.get(["/api/media/:fileId", "/api/media/:fileId/:filename", "/media/:fileId", "/media/:fileId/:filename"], async (req, res) => {
+    try {
+      const { streamMediaFromMongoGridFS } = await import("./src/server/services/mongoGridFs");
+      await streamMediaFromMongoGridFS(req.params.fileId, req, res);
+    } catch (err: any) {
+      console.error("❌ Error en streaming de MongoDB GridFS:", err);
+      res.status(500).type("text/plain").send("Error streaming cloud media");
+    }
+  });
+
   // Root-level aliases for legacy clients & Android compatibility
   app.get("/health", (req, res) => {
     res.json({ status: "ok", server: "mall-social-cloudrun", timestamp: new Date().toISOString() });

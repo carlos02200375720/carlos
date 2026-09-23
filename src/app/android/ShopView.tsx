@@ -2159,11 +2159,11 @@ export default function AndroidShopView({
             )}
           </div>
         ) : (
-          displayedProducts.map((p) => {
+          displayedProducts.map((p, pIdx) => {
             const isSaved = (savedReelIds || []).includes(p.id);
             return (
               <div
-                key={p._renderKey || p.id}
+                key={`${p._renderKey || p.id}-${pIdx}`}
                 onClick={() => {
                   setSelectedProduct(p);
                   onSelectProduct?.(p);

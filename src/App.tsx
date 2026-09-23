@@ -536,7 +536,7 @@ export default function App() {
         savedUsername = "david";
         sessionState.setUsername("david");
       }
-      const savedPassword = null || "";
+      const savedPassword = "";
       if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
         apiFetch("/api/users/current/switch", {
           method: "POST",

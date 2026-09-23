@@ -496,9 +496,9 @@ export default function AndroidProfileView({
                 {isMe ? "Aún no tienes publicaciones ni reels." : "Este usuario aún no tiene publicaciones."}
               </div>
             ) : (
-              userReels.map((reel) => (
+              userReels.map((reel, rIdx) => (
                 <div
-                  key={reel.id}
+                  key={`${reel.id}-${rIdx}`}
                   id={`android-profile-pub-${reel.id}`}
                   onClick={() => {
                     if (onSelectReel) onSelectReel(reel);
@@ -542,9 +542,9 @@ export default function AndroidProfileView({
                 No hay productos en esta tienda.
               </div>
             ) : (
-              userProducts.map((p) => (
+              userProducts.map((p, pIdx) => (
                 <div
-                  key={p.id}
+                  key={`${p.id}-${pIdx}`}
                   onClick={() => onSelectProduct?.(p)}
                   className="p-3 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between cursor-pointer hover:border-amber-300 transition-colors"
                 >
@@ -623,9 +623,9 @@ export default function AndroidProfileView({
                       </div>
                     )}
                     <div className="grid grid-cols-2 gap-2.5">
-                      {savedProducts.map((p) => (
+                      {savedProducts.map((p, pIdx) => (
                         <div
-                          key={p.id}
+                          key={`${p.id}-${pIdx}`}
                           id={`android-saved-product-card-${p.id}`}
                           onClick={() => onSelectProduct?.(p)}
                           className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between active:scale-[0.98] transition-transform cursor-pointer shadow-xs hover:border-amber-300"
@@ -675,9 +675,9 @@ export default function AndroidProfileView({
                       </div>
                     )}
                     <div className="grid grid-cols-3 gap-2">
-                      {savedReels.map((reel) => (
+                      {savedReels.map((reel, rIdx) => (
                         <div
-                          key={reel.id}
+                          key={`${reel.id}-${rIdx}`}
                           id={`android-saved-reel-card-${reel.id}`}
                           onClick={() => {
                             if (onSelectReel) onSelectReel(reel);
@@ -733,8 +733,8 @@ export default function AndroidProfileView({
                 No has realizado ningún pedido todavía.
               </div>
             ) : (
-              userOrders.map((ord) => (
-                <div key={ord.id} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+              userOrders.map((ord, oIdx) => (
+                <div key={`${ord.id || 'order'}-${oIdx}`} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-slate-900">Pedido #{ord.id?.slice(0, 8)}</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">

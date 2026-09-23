@@ -370,8 +370,8 @@ export default function AndroidPublishView({
                   className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition-colors"
                 >
                   <option value="">Sin producto etiquetado</option>
-                  {userProducts.map((p) => (
-                    <option key={p.id} value={p.id}>
+                  {userProducts.map((p, pIdx) => (
+                    <option key={`${p.id}-${pIdx}`} value={p.id}>
                       {p.name} (${p.price?.toFixed(2) || "0.00"})
                     </option>
                   ))}

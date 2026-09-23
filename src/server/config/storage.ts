@@ -35,58 +35,11 @@ export const bucketName = getValidBucketName();
 export const storage = createStorageClient();
 export const bucket = storage.bucket(bucketName);
 
-let gcsWorkingState: boolean | null = null;
-let lastGcsCheck = 0;
-
 /**
- * Checks if Google Cloud Storage is reachable and authenticated.
- * Caches result for 5 minutes to prevent redundant network timeouts.
+ * GCS is always enabled as the primary storage flow.
+ * Direct uploads and streaming to Google Cloud Storage are attempted without blocking pre-checks.
  */
 export async function isGcsAvailable(): Promise<boolean> {
-  const now = Date.now();
-  if (gcsWorkingState !== null && (now - lastGcsCheck < 300000)) {
-    return gcsWorkingState;
-  }
-
-  try {
-    const testFile = bucket.file("_ping_check.txt");
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          try {
-            stream.destroy();
-          } catch {}
-          reject(new Error("GCS connection timeout"));
-        }
-      }, 3000);
-
-      const stream = testFile.createWriteStream({ resumable: false });
-      stream.on("error", (err: any) => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timer);
-          reject(err);
-        }
-      });
-      stream.on("finish", () => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timer);
-          resolve();
-        }
-      });
-      stream.end("ping");
-    });
-    gcsWorkingState = true;
-    lastGcsCheck = now;
-    return true;
-  } catch (err: any) {
-    gcsWorkingState = false;
-    lastGcsCheck = now;
-    console.warn(`⚠️ [Storage] Google Cloud Storage no está disponible o las credenciales no son válidas (${err?.message || "error"}). No se permite almacenamiento local.`);
-    return false;
-  }
+  return true;
 }
 

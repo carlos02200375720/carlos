@@ -233,9 +233,9 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
               <div className="pt-4 border-t border-slate-100">
                 <p className="text-xs font-semibold text-slate-600 mb-3">Cuentas disponibles en este servidor:</p>
                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {registeredUsers.map((u) => (
+                  {registeredUsers.map((u, uIdx) => (
                     <div
-                      key={u.id}
+                      key={`${u.id}-${uIdx}`}
                       onClick={() => handleLogin(null as any, u.username, "")}
                       className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 cursor-pointer active:scale-[0.99] transition-transform"
                     >

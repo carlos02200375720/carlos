@@ -101,11 +101,11 @@ export default function AndroidSocialPanel({
                 <p className="text-[11px] text-slate-600 mt-1">Envía un saludo para iniciar la conversación en Android.</p>
               </div>
             ) : (
-              messages.map((m) => {
+              messages.map((m, mIdx) => {
                 const isMe = m.senderId === currentUser.id || m.senderId === currentUser.originalId;
                 return (
                   <div
-                    key={m.id || Math.random()}
+                    key={`${m.id || 'msg'}-${mIdx}`}
                     className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
                   >
                     <div
@@ -179,11 +179,11 @@ export default function AndroidSocialPanel({
                 No se encontraron contactos en la red.
               </div>
             ) : (
-              filteredUsers.map((u) => {
+              filteredUsers.map((u, uIdx) => {
                 const unreads = unreadCounts[u.id] || 0;
                 return (
                   <div
-                    key={u.id}
+                    key={`${u.id}-${uIdx}`}
                     onClick={() => {
                       onSelectChatUser(u);
                       clearUnreads(u.id);
