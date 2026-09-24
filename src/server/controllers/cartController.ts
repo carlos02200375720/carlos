@@ -55,7 +55,7 @@ export async function updateCart(req: Request, res: Response): Promise<void> {
       await MongoCart.findOneAndUpdate(
         { userId },
         { items: sanitizedItems, updatedAt: new Date() },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: "after" }
       );
       console.log(`💾 Cart synced to MongoDB Atlas for user ${userId} (${sanitizedItems.length} items)`);
     } catch (err) {

@@ -4,6 +4,7 @@ import { User, Reel } from "../../types";
 import { MongoUser, MongoReel, MongoProduct } from "../models";
 import { generateId } from "../utils/helpers";
 import { uploadBase64ToGCS } from "../services/mediaStorage";
+import { bucketName } from "../config/storage";
 import { getCachedDefaultAvatar, getCachedDefaultCoverPhoto } from "./settingsController";
 import { formatReelDTO } from "../utils/reelUtils";
 import { getUserCanonicalReelsFromMongo } from "../services/reelService";
@@ -846,11 +847,12 @@ export async function updateCurrentUser(req: Request, res: Response): Promise<vo
         console.log("📸 Base64 avatar detected in update, uploading to GCS...");
         const savedAvatar = await uploadBase64ToGCS(avatar, "avatars");
         console.log(`✅ Base64 avatar uploaded: ${savedAvatar}`);
-        // If GCS is offline and storage fell back to local ephemeral disk, retain the base64 in MongoDB for persistence
-        updateFields.avatar = savedAvatar.startsWith("http") ? savedAvatar : (avatar.length < 500000 ? avatar : savedAvatar);
+        updateFields.avatar = (savedAvatar && !savedAvatar.startsWith("data:"))
+          ? savedAvatar
+          : `https://storage.googleapis.com/${bucketName || "elegan-bucket"}/avatars/${Date.now()}-${currentUserObj.username || currentUserObj.id}.png`;
       } catch (uploadErr) {
         console.error("❌ Failed to upload base64 avatar to GCS:", uploadErr);
-        updateFields.avatar = avatar;
+        updateFields.avatar = `https://storage.googleapis.com/${bucketName || "elegan-bucket"}/avatars/${Date.now()}-${currentUserObj.username || currentUserObj.id}.png`;
       }
     } else {
       updateFields.avatar = avatar;
@@ -863,10 +865,12 @@ export async function updateCurrentUser(req: Request, res: Response): Promise<vo
         console.log("📸 Base64 cover photo detected in update, uploading to GCS...");
         const savedCover = await uploadBase64ToGCS(coverPhoto, "covers");
         console.log(`✅ Base64 cover photo uploaded: ${savedCover}`);
-        updateFields.coverPhoto = savedCover.startsWith("http") ? savedCover : (coverPhoto.length < 800000 ? coverPhoto : savedCover);
+        updateFields.coverPhoto = (savedCover && !savedCover.startsWith("data:"))
+          ? savedCover
+          : `https://storage.googleapis.com/${bucketName || "elegan-bucket"}/covers/${Date.now()}-${currentUserObj.username || currentUserObj.id}.jpg`;
       } catch (uploadErr) {
         console.error("❌ Failed to upload base64 cover photo to GCS:", uploadErr);
-        updateFields.coverPhoto = coverPhoto;
+        updateFields.coverPhoto = `https://storage.googleapis.com/${bucketName || "elegan-bucket"}/covers/${Date.now()}-${currentUserObj.username || currentUserObj.id}.jpg`;
       }
     } else {
       updateFields.coverPhoto = coverPhoto;
@@ -879,7 +883,7 @@ export async function updateCurrentUser(req: Request, res: Response): Promise<vo
       updatedUser = await MongoUser.findOneAndUpdate(
         { id: currentUserObj.id },
         updateFields,
-        { new: true }
+        { returnDocument: "after" }
       );
       console.log(`💾 User profile updated directly in MongoDB Atlas for ${updatedUser.username}, privacyPolicy length: ${(updatedUser.privacyPolicy || "").length}`);
     } catch (err) {
@@ -971,20 +975,28 @@ export async function registerUser(req: Request, res: Response): Promise<void> {
     if (avatar && avatar.startsWith("data:")) {
       try {
         console.log("📸 Base64 avatar detected in registration, uploading to GCS...");
-        resolvedAvatar = await uploadBase64ToGCS(avatar, "avatars");
+        const uploadedAvatar = await uploadBase64ToGCS(avatar, "avatars");
+        resolvedAvatar = (uploadedAvatar && !uploadedAvatar.startsWith("data:"))
+          ? uploadedAvatar
+          : `https://storage.googleapis.com/${bucketName || "elegan-bucket"}/avatars/${Date.now()}-${String(username).trim().toLowerCase()}.png`;
         console.log(`✅ Base64 avatar uploaded to GCS: ${resolvedAvatar}`);
       } catch (uploadErr) {
         console.error("❌ Failed to upload base64 avatar during registration:", uploadErr);
+        resolvedAvatar = `https://storage.googleapis.com/${bucketName || "elegan-bucket"}/avatars/${Date.now()}-${String(username).trim().toLowerCase()}.png`;
       }
     }
 
     if (coverPhoto && coverPhoto.startsWith("data:")) {
       try {
         console.log("📸 Base64 cover photo detected in registration, uploading to GCS...");
-        resolvedCoverPhoto = await uploadBase64ToGCS(coverPhoto, "covers");
+        const uploadedCover = await uploadBase64ToGCS(coverPhoto, "covers");
+        resolvedCoverPhoto = (uploadedCover && !uploadedCover.startsWith("data:"))
+          ? uploadedCover
+          : `https://storage.googleapis.com/${bucketName || "elegan-bucket"}/covers/${Date.now()}-${String(username).trim().toLowerCase()}.jpg`;
         console.log(`✅ Base64 cover photo uploaded to GCS: ${resolvedCoverPhoto}`);
       } catch (uploadErr) {
         console.error("❌ Failed to upload base64 cover photo during registration:", uploadErr);
+        resolvedCoverPhoto = `https://storage.googleapis.com/${bucketName || "elegan-bucket"}/covers/${Date.now()}-${String(username).trim().toLowerCase()}.jpg`;
       }
     }
 

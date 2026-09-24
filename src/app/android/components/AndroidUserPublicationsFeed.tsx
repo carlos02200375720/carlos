@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, memo } from "react";
+import Hls from "hls.js";
 import { ArrowLeft, X, Heart, MessageCircle, Share2, Bookmark, Volume2, VolumeX, Play, Pause, Trash2, Send, Check } from "lucide-react";
 import { Reel, Product, Comment, User } from "../../../types";
 import { motion, AnimatePresence } from "motion/react";
+import { getMediaUrl } from "../../../config";
 import { androidApiFetch } from "../api";
 import { AndroidProgressBar } from "./AndroidProgressBar";
 
@@ -44,6 +46,7 @@ export default function AndroidUserPublicationsFeed({
   const [activeReels, setActiveReels] = useState<Reel[]>(reels);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const hlsRef = useRef<Hls | null>(null);
 
   const currentReel = activeReels[activeIndex] || activeReels[0];
 
@@ -54,17 +57,89 @@ export default function AndroidUserPublicationsFeed({
   useEffect(() => {
     const el = videoRefs.current[activeIndex] || null;
     setActiveVideoEl(el);
-    if (el) {
-      el.muted = isMuted;
-      el.defaultMuted = isMuted;
-      el.volume = isMuted ? 0 : 1.0;
-      el.play().catch(() => {});
-    }
-  }, [activeIndex, isMuted]);
 
-  useEffect(() => {
-    setActiveVideoEl(videoRefs.current[activeIndex] || null);
-  }, [activeIndex]);
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    if (!el || !currentReel) return;
+
+    el.muted = isMuted;
+    el.defaultMuted = isMuted;
+    el.volume = isMuted ? 0 : 1.0;
+
+    const rawCandidate = (
+      currentReel.hlsUrl ||
+      currentReel.videoUrl ||
+      (currentReel as any).url ||
+      (currentReel.media && currentReel.media.find((m: any) => m.type === "video")?.hlsUrl) ||
+      (currentReel.media && currentReel.media.find((m: any) => m.type === "video")?.url) ||
+      (currentReel.media && currentReel.media[0]?.hlsUrl) ||
+      (currentReel.media && currentReel.media[0]?.url) ||
+      ""
+    ).trim();
+
+    const rawSrc = getMediaUrl(rawCandidate);
+    if (!rawSrc) return;
+
+    const isHls = rawSrc.includes(".m3u8") || rawSrc.includes("/hls/");
+    if (isHls && Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        maxBufferLength: 20,
+        maxMaxBufferLength: 40,
+        backBufferLength: 10,
+        capLevelToPlayerSize: true,
+      });
+      hlsRef.current = hls;
+      hls.loadSource(rawSrc);
+      hls.attachMedia(el);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        el.play().catch((err) => {
+          if (err?.name === "NotAllowedError") {
+            el.muted = true;
+            el.play().catch(() => {});
+          }
+        });
+        setIsPlaying(true);
+      });
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR || data.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL) {
+          return;
+        }
+        if (data.fatal) {
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+          else {
+            hls.destroy();
+            hlsRef.current = null;
+            el.src = rawSrc;
+            el.load();
+            el.play().catch(() => {});
+          }
+        }
+      });
+    } else {
+      el.src = rawSrc;
+      el.load();
+      el.play().catch((err) => {
+        if (err?.name === "NotAllowedError") {
+          el.muted = true;
+          el.play().catch(() => {});
+        }
+      });
+      setIsPlaying(true);
+    }
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [activeIndex, isMuted, currentReel]);
 
   const handleLike = async (reelId: string) => {
     try {
@@ -125,10 +200,8 @@ export default function AndroidUserPublicationsFeed({
       <div className="relative flex-1 w-full h-full flex items-center justify-center overflow-hidden bg-slate-950">
         <video
           ref={(el) => { videoRefs.current[activeIndex] = el; }}
-          src={currentReel.hlsUrl && currentReel.hlsUrl.includes(".m3u8") ? currentReel.hlsUrl : (currentReel.videoUrl || undefined)}
           playsInline
           loop
-          autoPlay
           muted={isMuted}
           className="w-full h-full object-cover"
           onClick={() => {

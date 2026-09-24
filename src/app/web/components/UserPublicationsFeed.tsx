@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from "react";
+import Hls from "hls.js";
 import {
   ArrowLeft,
   X,
@@ -62,18 +63,140 @@ const UserReelVideo = memo(function UserReelVideo({
   onRegisterRef,
 }: UserReelVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const lastTapRef = useRef<number>(0);
   const isPlayingRef = useRef(isPlaying);
   isPlayingRef.current = isPlaying;
+  const isCurrentRef = useRef(isCurrent);
+  isCurrentRef.current = isCurrent;
+
+  const rawVid = (
+    reel.hlsUrl ||
+    reel.videoUrl ||
+    (reel as any).url ||
+    (reel.media && (reel.media.find((m) => m.type === "video") as any)?.hlsUrl) ||
+    (reel.media && reel.media.find((m) => m.type === "video")?.url) ||
+    (reel.media && (reel.media[0] as any)?.hlsUrl) ||
+    (reel.media && reel.media[0]?.url) ||
+    ""
+  ).trim();
+
+  const isExplicitVideo = reel.type === "video" || /\.(m3u8|mp4|webm|mov|m4v|ts)($|\?)/i.test(rawVid);
+  const videoSrc = (isExplicitVideo || (!reel.type && rawVid)) && rawVid.length > 0 ? getMediaUrl(rawVid) : undefined;
+  const isHls = Boolean(videoSrc && (videoSrc.includes(".m3u8") || videoSrc.includes("/hls/")));
+
+  const posterUrl =
+    reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8")
+      ? getMediaUrl(reel.thumbnailUrl)
+      : (reel.media && (reel.media[0] as any)?.thumbnailUrl ? getMediaUrl((reel.media[0] as any).thumbnailUrl) : undefined);
+
+  const fallbackImageSrc =
+    posterUrl ||
+    (reel.images && reel.images.length > 0 ? getMediaUrl(reel.images[0]) : undefined) ||
+    (reel.media && reel.media.find((m: any) => m.type === "image")?.url ? getMediaUrl(reel.media.find((m: any) => m.type === "image")!.url) : undefined) ||
+    ((reel as any).imageUrl ? getMediaUrl((reel as any).imageUrl) : undefined) ||
+    (!isExplicitVideo && rawVid ? getMediaUrl(rawVid) : undefined);
+
+  // Initialize and attach HLS stream if applicable, or native source
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !videoSrc) return;
+
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    video.muted = isMuted;
+    video.defaultMuted = isMuted;
+
+    const safeStartPlay = () => {
+      if (isCurrentRef.current && isPlayingRef.current) {
+        const p = video.play();
+        if (p !== undefined) {
+          p.catch((err) => {
+            if (err?.name === "NotAllowedError") {
+              video.muted = true;
+              video.play().catch(() => {});
+            }
+          });
+        }
+      }
+    };
+
+    if (isHls) {
+      if (Hls.isSupported()) {
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          maxBufferLength: 20,
+          maxMaxBufferLength: 40,
+          backBufferLength: 10,
+          maxBufferHole: 0.8,
+          capLevelToPlayerSize: true,
+          manifestLoadingMaxRetry: 4,
+          levelLoadingMaxRetry: 4,
+          fragLoadingMaxRetry: 6,
+        });
+        hlsRef.current = hls;
+        hls.loadSource(videoSrc);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          safeStartPlay();
+        });
+
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR || data.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL) {
+            return;
+          }
+          if (data.fatal) {
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              hls.startLoad();
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              hls.recoverMediaError();
+            } else {
+              hls.destroy();
+              hlsRef.current = null;
+              video.src = videoSrc;
+              video.load();
+              safeStartPlay();
+            }
+          }
+        });
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = videoSrc;
+        video.load();
+        safeStartPlay();
+      } else {
+        video.src = videoSrc;
+        video.load();
+        safeStartPlay();
+      }
+    } else {
+      video.src = videoSrc;
+      video.load();
+      safeStartPlay();
+    }
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [videoSrc, isHls]);
 
   // Synchronize playback with active focus
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
+    video.muted = isMuted;
+    video.defaultMuted = isMuted;
+    video.volume = isMuted ? 0 : 1.0;
+
     if (isCurrent && isPlaying) {
-      video.muted = isMuted;
-      video.volume = isMuted ? 0 : 1.0;
       const p = video.play();
       if (p !== undefined) {
         p.catch((err) => {
@@ -98,14 +221,13 @@ const UserReelVideo = memo(function UserReelVideo({
           video.pause();
         } catch {}
       }
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
       onRegisterRef(index, null);
     };
   }, [index, onRegisterRef]);
-
-  const rawVid = (reel.hlsUrl || reel.videoUrl || "").trim();
-  const videoSrc = rawVid && rawVid.length > 0 ? getMediaUrl(rawVid) : undefined;
-  const posterUrl =
-    reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") ? getMediaUrl(reel.thumbnailUrl) : undefined;
 
   const handlePointerDown = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -126,10 +248,10 @@ const UserReelVideo = memo(function UserReelVideo({
       onClick={handlePointerDown}
     >
       {/* Ambient blurred backdrop to eliminate black empty letterbox space */}
-      {posterUrl && (
+      {(posterUrl || fallbackImageSrc) && (
         <div className="absolute inset-0 pointer-events-none select-none overflow-hidden z-0" aria-hidden="true">
           <img
-            src={posterUrl}
+            src={posterUrl || fallbackImageSrc}
             alt=""
             className="w-full h-full object-cover blur-3xl opacity-35 scale-125"
             referrerPolicy="no-referrer"
@@ -144,8 +266,9 @@ const UserReelVideo = memo(function UserReelVideo({
             videoRef.current = el;
             onRegisterRef(index, el);
           }}
-          src={videoSrc}
           poster={posterUrl}
+          muted={isMuted}
+          defaultMuted={isMuted}
           playsInline
           webkit-playsinline="true"
           x5-playsinline="true"
@@ -155,9 +278,9 @@ const UserReelVideo = memo(function UserReelVideo({
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center relative z-10">
-          {posterUrl ? (
+          {fallbackImageSrc ? (
             <img
-              src={posterUrl}
+              src={fallbackImageSrc}
               alt={reel.description || "Publicación"}
               className="w-full h-full object-contain"
               referrerPolicy="no-referrer"

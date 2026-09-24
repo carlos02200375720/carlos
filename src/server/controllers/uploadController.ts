@@ -4,7 +4,7 @@ import { bucket, bucketName, isGcsAvailable } from "../config/storage";
 import { uploadToGCS, deleteFullPublicationMedia } from "../services/mediaStorage";
 import { hlsQueue, transcodeVideoToLocalHlsDirect } from "../hlsTranscoder";
 import { generateId } from "../utils/helpers";
-import { MongoUser, MongoReel, MongoPublicacion } from "../models";
+import { MongoUser, MongoReel, MongoPublicacion, MongoProduct } from "../models";
 import { reels, setReels, broadcastToAll } from "../services/state";
 
 /**
@@ -30,13 +30,16 @@ export async function processUploadHlsOnly(req: any, res: any): Promise<void> {
     // IMÁGENES / ARCHIVOS NO-VIDEO (GCS EXCLUSIVO)
     // ------------------------------------------------------------
     if (!isVideo) {
-      const publicUrl = await uploadToGCS(req.file, "publicaciones");
+      const targetFolder = (req.body?.folder as string)?.trim() || "publicaciones";
+      const publicUrl = await uploadToGCS(req.file, targetFolder);
 
+      let createdPub: any = null;
       if (mongoose.connection.readyState === 1) {
         try {
-          await MongoPublicacion.create({
+          createdPub = await MongoPublicacion.create({
             id: pubId,
             url: publicUrl,
+            imageUrl: publicUrl,
             title: title || originalName,
             description: description || "Imagen subida a la nube",
             creatorId: creatorId || req.body.creatorId || "current_user",
@@ -49,11 +52,12 @@ export async function processUploadHlsOnly(req: any, res: any): Promise<void> {
 
       res.json({
         success: true,
-        message: "Archivo subido exitosamente a almacenamiento en la nube (sin almacenamiento local).",
+        message: "Archivo subido exitosamente a Google Cloud Storage y registrado en MongoDB Atlas.",
         url: publicUrl,
+        imageUrl: publicUrl,
         hlsUrl: undefined,
         jobId: undefined,
-        publicacion: { id: pubId, url: publicUrl }
+        publicacion: createdPub || { id: pubId, url: publicUrl, imageUrl: publicUrl }
       });
       return;
     }
@@ -327,5 +331,294 @@ export async function uploadCover(req: any, res: any): Promise<void> {
   } catch (err: any) {
     console.error("❌ Error al subir portada:", err);
     res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * POST /api/products/upload-image & /upload-product-image
+ * Upload product media directly to Google Cloud Storage (elegan-bucket) under 'productos/'
+ * and register/update in MongoDB Atlas.
+ */
+export async function uploadProductImage(req: any, res: any): Promise<void> {
+  try {
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "No se proporcionó ningún archivo de imagen para el producto." });
+      return;
+    }
+
+    console.log(`🛍️ [Product Upload] Subiendo foto de producto a GCS (elegan-bucket/productos)...`);
+    const publicUrl = await uploadToGCS(file, "productos");
+    console.log(`✅ [Product Upload] Foto subida exitosamente: ${publicUrl}`);
+
+    const productId = req.body?.productId;
+    let updatedProduct: any = null;
+
+    if (productId && mongoose.connection.readyState === 1) {
+      try {
+        const isObjectId = mongoose.Types.ObjectId.isValid(productId) && String(productId).length === 24;
+        const query = isObjectId ? { $or: [{ id: productId }, { _id: productId }] } : { id: productId };
+        updatedProduct = await MongoProduct.findOneAndUpdate(
+          query,
+          { $set: { imageUrl: publicUrl } },
+          { returnDocument: "after" }
+        );
+      } catch (dbErr: any) {
+        console.warn("⚠️ Aviso al actualizar imagen de producto en MongoDB:", dbErr.message);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Imagen de producto almacenada con éxito en Google Cloud Storage.",
+      imageUrl: publicUrl,
+      url: publicUrl,
+      product: updatedProduct || undefined,
+    });
+  } catch (err: any) {
+    console.error("❌ Error al subir imagen de producto:", err);
+    res.status(500).json({ error: "Error al subir la imagen del producto", details: err.message });
+  }
+}
+
+/**
+ * GET /api/v1/media/upload-url & /api/media/upload-url
+ * Generates a V4 PUT signed URL for Google Cloud Storage so the client can upload directly to GCS.
+ */
+export async function generateUploadSignedUrl(req: Request, res: Response): Promise<void> {
+  try {
+    const folder = (req.query.folder as string)?.trim() || "publicaciones";
+    const fileType = (req.query.file_type as string)?.trim() || (req.query.contentType as string)?.trim() || "image/jpeg";
+    const fileNameParam = (req.query.file_name as string)?.trim() || (req.query.filename as string)?.trim();
+
+    // Determine extension
+    let extension = "";
+    if (fileNameParam && fileNameParam.includes(".")) {
+      extension = fileNameParam.split(".").pop() || "";
+    }
+    if (!extension) {
+      extension = fileType.split("/").pop()?.split(";")[0]?.trim() || "bin";
+    }
+    if (extension === "jpeg") extension = "jpg";
+
+    const uniqueKey = `${folder}/${Date.now()}-${generateId()}.${extension}`;
+    const fileBlob = bucket.file(uniqueKey);
+
+    const [signedUrl] = await fileBlob.getSignedUrl({
+      version: "v4",
+      action: "write",
+      expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+      contentType: fileType,
+    });
+
+    const publicUrl = `https://storage.googleapis.com/${bucketName}/${uniqueKey}`;
+
+    res.json({
+      upload_url: signedUrl,
+      public_url: publicUrl,
+      file_key: uniqueKey,
+      bucket: bucketName,
+      expiresInMinutes: 15,
+      method: "PUT",
+    });
+  } catch (err: any) {
+    console.error("❌ Error generating GCS signed URL:", err);
+    res.status(500).json({
+      error: "Error al generar URL firmada de Google Cloud Storage",
+      details: err.message || "Error desconocido",
+    });
+  }
+}
+
+/**
+ * POST /api/v1/posts & /api/posts & /api/v1/publicaciones & /api/publicaciones
+ * Saves a new post to MongoDB and registers in the feed after direct GCS upload.
+ */
+export async function createPost(req: Request, res: Response): Promise<void> {
+  try {
+    const {
+      caption,
+      media_url,
+      media_type,
+      title,
+      description,
+      creatorId,
+      creatorUsername,
+      creatorName,
+      creatorAvatar,
+      thumbnailUrl,
+      hlsUrl
+    } = req.body || {};
+
+    if (!media_url) {
+      res.status(400).json({ error: "media_url es requerido para crear una publicación" });
+      return;
+    }
+
+    const resolvedCaption = caption || description || title || "";
+    const resolvedType = media_type || (media_url.endsWith(".m3u8") || media_url.includes("video") ? "video" : "image");
+    const postId = "pub_" + generateId();
+    const createdAt = new Date();
+
+    let resolvedCreatorId = creatorId || (req.headers["x-user-id"] as string) || "current_user";
+    let resolvedCreatorUsername = creatorUsername || (req.headers["x-user-username"] as string) || "usuario";
+    let resolvedCreatorName = creatorName || resolvedCreatorUsername;
+    let resolvedCreatorAvatar = creatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
+
+    // Attempt to lookup creator in Mongo if possible
+    if (mongoose.connection.readyState === 1 && resolvedCreatorId) {
+      try {
+        const foundUser = await MongoUser.findOne({
+          $or: [{ id: resolvedCreatorId }, { username: resolvedCreatorUsername }],
+        });
+        if (foundUser) {
+          resolvedCreatorId = foundUser.id;
+          resolvedCreatorUsername = foundUser.username;
+          resolvedCreatorName = foundUser.name || foundUser.username;
+          if (foundUser.avatar) resolvedCreatorAvatar = foundUser.avatar;
+        }
+      } catch {}
+    }
+
+    let insertedMongoId = postId;
+
+    // 1. Save in MongoPublicacion
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const pubDoc = await MongoPublicacion.create({
+          id: postId,
+          url: media_url,
+          hlsUrl: hlsUrl || (resolvedType === "video" ? media_url : undefined),
+          title: title || resolvedCaption,
+          description: resolvedCaption,
+          creatorId: resolvedCreatorId,
+          createdAt: createdAt,
+          caption: resolvedCaption,
+          media_url: media_url,
+          media_type: resolvedType,
+        });
+        if (pubDoc?._id) {
+          insertedMongoId = pubDoc._id.toString();
+        }
+      } catch (dbErr) {
+        console.warn("⚠️ Error saving post to MongoPublicacion:", dbErr);
+      }
+    }
+
+    // 2. Also register in MongoReel so that it integrates seamlessly into reels, home feeds, and profile
+    const reelData = {
+      id: postId,
+      title: title || resolvedCaption,
+      description: resolvedCaption,
+      videoUrl: resolvedType === "video" ? media_url : "",
+      thumbnailUrl: thumbnailUrl || (resolvedType === "image" ? media_url : ""),
+      creatorId: resolvedCreatorId,
+      creatorUsername: resolvedCreatorUsername,
+      creatorName: resolvedCreatorName,
+      creatorAvatar: resolvedCreatorAvatar,
+      type: resolvedType,
+      images: resolvedType === "image" ? [media_url] : [],
+      media: [{
+        type: resolvedType,
+        url: media_url,
+        hlsUrl: hlsUrl || (resolvedType === "video" ? media_url : undefined),
+        thumbnailUrl: thumbnailUrl || (resolvedType === "image" ? media_url : undefined),
+      }],
+      hlsUrl: hlsUrl || (resolvedType === "video" ? media_url : undefined),
+      likes: 0,
+      likedBy: [],
+      views: 0,
+      shares: 0,
+      saves: 0,
+      comments: [],
+    };
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await MongoReel.findOneAndUpdate({ id: postId }, reelData, { upsert: true, returnDocument: "after" });
+      } catch (reelErr) {
+        console.warn("⚠️ Error registering post in MongoReel:", reelErr);
+      }
+    }
+
+    // Update in-memory state & broadcast to all connected clients
+    const currentReels = [reelData as any, ...reels];
+    const uniqueReels = currentReels.filter((r, idx, arr) => arr.findIndex((x) => x.id === r.id) === idx);
+    setReels(uniqueReels);
+
+    broadcastToAll({
+      type: "reel_created",
+      reel: reelData,
+    });
+
+    res.status(201).json({
+      id: insertedMongoId,
+      status: "success",
+      post: {
+        id: postId,
+        _id: insertedMongoId,
+        caption: resolvedCaption,
+        media_url: media_url,
+        media_type: resolvedType,
+        created_at: createdAt.toISOString(),
+      },
+    });
+  } catch (err: any) {
+    console.error("❌ Error creating post:", err);
+    res.status(500).json({ error: "Error al guardar publicación en la base de datos", details: err.message });
+  }
+}
+
+/**
+ * GET /api/v1/feed & /api/feed
+ * Retrieves published posts sorted chronologically by creation date descending.
+ */
+export async function getFeed(req: Request, res: Response): Promise<void> {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+    let posts: any[] = [];
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const docs = await MongoPublicacion.find().sort({ createdAt: -1 }).limit(limit).lean();
+        if (docs && docs.length > 0) {
+          posts = docs.map((doc: any) => ({
+            _id: doc._id?.toString() || doc.id,
+            id: doc.id || doc._id?.toString(),
+            caption: doc.description || doc.title || doc.caption || "",
+            media_url: doc.url || doc.media_url || doc.hlsUrl || "",
+            media_type: doc.media_type || (doc.url?.endsWith(".m3u8") || doc.url?.includes("video") ? "video" : "image"),
+            created_at: doc.createdAt || new Date(),
+            creatorId: doc.creatorId,
+            thumbnailUrl: doc.thumbnailUrl,
+            hlsUrl: doc.hlsUrl,
+          }));
+        }
+      } catch (err) {
+        console.warn("⚠️ Error fetching from MongoPublicacion:", err);
+      }
+    }
+
+    // Blend with in-memory reels if posts is empty
+    if (posts.length === 0) {
+      posts = reels.slice(0, limit).map((r) => ({
+        _id: r.id,
+        id: r.id,
+        caption: r.description || r.title || "",
+        media_url: r.videoUrl || r.hlsUrl || (r.images && r.images[0]) || r.thumbnailUrl || "",
+        media_type: r.type === "image" || r.type === "carousel" ? "image" : "video",
+        created_at: (r as any).createdAt || new Date(),
+        creatorId: r.creatorId,
+        creatorUsername: r.creatorUsername,
+        creatorAvatar: r.creatorAvatar,
+        thumbnailUrl: r.thumbnailUrl,
+        hlsUrl: r.hlsUrl,
+      }));
+    }
+
+    res.json({ posts });
+  } catch (err: any) {
+    console.error("❌ Error fetching feed:", err);
+    res.status(500).json({ error: "Error al obtener feed", details: err.message });
   }
 }

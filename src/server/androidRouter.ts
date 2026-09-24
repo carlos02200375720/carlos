@@ -438,7 +438,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         updated = await MongoUser.findOneAndUpdate(
           { $or: [{ id: targetId }, { _id: mongoose.isValidObjectId(targetId) ? targetId : undefined }] },
           { $set: updateFields },
-          { new: true }
+          { returnDocument: "after" }
         );
       }
 
@@ -999,6 +999,137 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
     } catch (err: any) {
       console.error("❌ [Android Gateway] Error en upload a GCS:", err);
       res.status(500).json({ error: "Error al procesar y subir archivo a Google Cloud Storage en Android", details: err?.message || "Error desconocido" });
+    }
+  });
+
+  // Android: GCS Signed URL generation (Direct GCS upload pattern)
+  router.get(["/v1/media/upload-url", "/media/upload-url"], async (req: Request, res: Response) => {
+    try {
+      if (!bucket) {
+        res.status(503).json({ error: "Google Cloud Storage bucket not configured" });
+        return;
+      }
+      const folder = (req.query.folder as string)?.trim() || "publicaciones";
+      const fileType = (req.query.file_type as string)?.trim() || (req.query.contentType as string)?.trim() || "image/jpeg";
+      const fileNameParam = (req.query.file_name as string)?.trim() || (req.query.filename as string)?.trim();
+
+      let extension = "";
+      if (fileNameParam && fileNameParam.includes(".")) {
+        extension = fileNameParam.split(".").pop() || "";
+      }
+      if (!extension) {
+        extension = fileType.split("/").pop()?.split(";")[0]?.trim() || "bin";
+      }
+      if (extension === "jpeg") extension = "jpg";
+
+      const uniqueKey = `${folder}/${Date.now()}-${generateId()}.${extension}`;
+      const fileBlob = bucket.file(uniqueKey);
+
+      const [signedUrl] = await fileBlob.getSignedUrl({
+        version: "v4",
+        action: "write",
+        expires: Date.now() + 15 * 60 * 1000,
+        contentType: fileType,
+      });
+
+      const effectiveBucket = bucketName || "elegan-bucket";
+      const publicUrl = `https://storage.googleapis.com/${effectiveBucket}/${uniqueKey}`;
+
+      res.json({
+        upload_url: signedUrl,
+        public_url: publicUrl,
+        file_key: uniqueKey,
+        bucket: effectiveBucket,
+        expiresInMinutes: 15,
+        method: "PUT",
+      });
+    } catch (err: any) {
+      console.error("❌ [Android Gateway] Error generating GCS signed URL:", err);
+      res.status(500).json({ error: "Error generating GCS signed URL", details: err.message });
+    }
+  });
+
+  // Android: Direct Post creation
+  router.post(["/v1/posts", "/posts", "/v1/publicaciones", "/publicaciones"], async (req: Request, res: Response) => {
+    try {
+      const { caption, media_url, media_type, title, description, creatorId, creatorUsername } = req.body || {};
+      if (!media_url) {
+        res.status(400).json({ error: "media_url is required" });
+        return;
+      }
+      const pubId = "pub_" + generateId();
+      const resolvedCaption = caption || description || title || "";
+      const resolvedType = media_type || (media_url.endsWith(".m3u8") || media_url.includes("video") ? "video" : "image");
+      const createdAt = new Date();
+
+      if (mongoose.connection.readyState === 1) {
+        try {
+          await MongoPublicacion.create({
+            id: pubId,
+            url: media_url,
+            hlsUrl: resolvedType === "video" ? media_url : undefined,
+            title: title || resolvedCaption,
+            description: resolvedCaption,
+            creatorId: creatorId || (req.headers["x-user-id"] as string) || "current_user",
+            createdAt,
+            caption: resolvedCaption,
+            media_url,
+            media_type: resolvedType,
+          });
+        } catch (dbErr) {
+          console.warn("⚠️ [Android Gateway] Error saving post to MongoPublicacion:", dbErr);
+        }
+      }
+
+      res.status(201).json({
+        id: pubId,
+        status: "success",
+        post: {
+          id: pubId,
+          caption: resolvedCaption,
+          media_url,
+          media_type: resolvedType,
+          created_at: createdAt.toISOString(),
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Error saving post in Android Gateway", details: err.message });
+    }
+  });
+
+  // Android: Feed retrieval
+  router.get(["/v1/feed", "/feed"], async (req: Request, res: Response) => {
+    try {
+      const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+      let posts: any[] = [];
+      if (mongoose.connection.readyState === 1) {
+        const docs = await MongoPublicacion.find().sort({ createdAt: -1 }).limit(limit).lean();
+        if (docs && docs.length > 0) {
+          posts = docs.map((doc: any) => ({
+            _id: doc._id?.toString() || doc.id,
+            id: doc.id || doc._id?.toString(),
+            caption: doc.description || doc.title || doc.caption || "",
+            media_url: doc.url || doc.media_url || doc.hlsUrl || "",
+            media_type: doc.media_type || (doc.url?.endsWith(".m3u8") || doc.url?.includes("video") ? "video" : "image"),
+            created_at: doc.createdAt || new Date(),
+            creatorId: doc.creatorId,
+          }));
+        }
+      }
+      if (posts.length === 0) {
+        posts = getReels().slice(0, limit).map((r) => ({
+          _id: r.id,
+          id: r.id,
+          caption: r.description || r.title || "",
+          media_url: r.videoUrl || r.hlsUrl || (r.images && r.images[0]) || r.thumbnailUrl || "",
+          media_type: r.type === "image" || r.type === "carousel" ? "image" : "video",
+          created_at: (r as any).createdAt || new Date(),
+          creatorId: r.creatorId,
+        }));
+      }
+      res.json({ posts });
+    } catch (err: any) {
+      res.status(500).json({ error: "Error fetching feed in Android Gateway", details: err.message });
     }
   });
 

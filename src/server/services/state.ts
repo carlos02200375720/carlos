@@ -2,6 +2,8 @@ import { WebSocket } from "ws";
 import mongoose from "mongoose";
 import { Product, Reel, Order, ChatMessage, LiveSession, User } from "../../types";
 import { MongoUser } from "../models";
+import { uploadBase64ToGCS } from "./mediaStorage";
+import { bucketName } from "../config/storage";
 
 // Shared memory stores
 export let products: Product[] = [];
@@ -72,7 +74,7 @@ export function broadcastToStream(streamId: string, message: any): void {
   });
 }
 
-// Helper: Broadcast presence list
+// Helper: Broadcast presence list without heavy Base64 strings in WebSocket payloads
 export async function broadcastPresence(getUsersFn?: () => Promise<User[]>): Promise<void> {
   try {
     let dbUsers: User[] = [];
@@ -102,13 +104,33 @@ export async function broadcastPresence(getUsersFn?: () => Promise<User[]>): Pro
       }));
     }
 
-    const presenceData = dbUsers.map((u) => ({
-      id: u.id,
-      username: u.username,
-      name: u.name,
-      avatar: u.avatar,
-      isOnline: u.isOnline,
-    }));
+    // Sanitize presence avatars: NEVER send raw Base64 payloads over WebSocket
+    const presenceData = dbUsers.map((u) => {
+      let cleanAvatar = u.avatar;
+      if (cleanAvatar && cleanAvatar.startsWith("data:")) {
+        const fallbackGcsUrl = `https://storage.googleapis.com/${bucketName || "elegan-bucket"}/avatars/${Date.now()}-${u.username || u.id}.png`;
+        cleanAvatar = fallbackGcsUrl;
+
+        // Asynchronously migrate to GCS and update in MongoDB Atlas
+        if (mongoose.connection.readyState === 1) {
+          uploadBase64ToGCS(u.avatar, "avatars").then(async (uploadedUrl) => {
+            const finalUrl = (uploadedUrl && !uploadedUrl.startsWith("data:")) ? uploadedUrl : fallbackGcsUrl;
+            await MongoUser.updateOne({ id: u.id }, { $set: { avatar: finalUrl } });
+            console.log(`💾 [WebSocket Presence] Avatar de @${u.username} migrado a GCS: ${finalUrl}`);
+          }).catch((err) => {
+            console.warn(`⚠️ [WebSocket Presence] Error migrando avatar de @${u.username}:`, err?.message);
+          });
+        }
+      }
+
+      return {
+        id: u.id,
+        username: u.username,
+        name: u.name,
+        avatar: cleanAvatar,
+        isOnline: u.isOnline,
+      };
+    });
 
     broadcastToAll({
       type: "presence_list",
@@ -116,6 +138,29 @@ export async function broadcastPresence(getUsersFn?: () => Promise<User[]>): Pro
     });
   } catch (err) {
     console.error("Error in broadcastPresence:", err);
+  }
+}
+
+/**
+ * Migration helper: Scans and migrates any remaining Base64 avatars in MongoDB to GCS URLs
+ */
+export async function sanitizeBase64AvatarsInMongo(): Promise<void> {
+  if (mongoose.connection.readyState !== 1) return;
+  try {
+    const usersWithBase64 = await MongoUser.find({ avatar: { $regex: "^data:" } });
+    for (const user of usersWithBase64) {
+      const gcsUrl = `https://storage.googleapis.com/${bucketName || "elegan-bucket"}/avatars/${Date.now()}-${user.username || user.id}.png`;
+      try {
+        const uploaded = await uploadBase64ToGCS(user.avatar, "avatars");
+        const finalUrl = (uploaded && !uploaded.startsWith("data:")) ? uploaded : gcsUrl;
+        await MongoUser.updateOne({ _id: user._id }, { $set: { avatar: finalUrl } });
+        console.log(`✅ [Migration] Avatar Base64 de @${user.username} migrado a GCS en MongoDB: ${finalUrl}`);
+      } catch {
+        await MongoUser.updateOne({ _id: user._id }, { $set: { avatar: gcsUrl } });
+      }
+    }
+  } catch (err) {
+    console.error("Error running sanitizeBase64AvatarsInMongo:", err);
   }
 }
 

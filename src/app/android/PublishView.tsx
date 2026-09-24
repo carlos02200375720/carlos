@@ -66,6 +66,32 @@ export default function AndroidPublishView({
   };
 
   const upload = async (file: File) => {
+    // 1. Direct GCS Signed URL upload attempt
+    try {
+      const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts|m3u8)$/i.test(file.name);
+      const folder = isVideo ? "videos" : "publicaciones";
+      const mime = file.type || (isVideo ? "video/mp4" : "image/jpeg");
+      const signedRes = await fetch(
+        `/api/v1/media/upload-url?folder=${folder}&file_type=${encodeURIComponent(mime)}&file_name=${encodeURIComponent(file.name)}`
+      );
+      if (signedRes.ok) {
+        const { upload_url, public_url } = await signedRes.json();
+        if (upload_url && public_url) {
+          const putRes = await fetch(upload_url, {
+            method: "PUT",
+            headers: { "Content-Type": mime },
+            body: file,
+          });
+          if (putRes.ok) {
+            console.log("⚡ [Android Direct GCS] Subido exitoso vía Signed URL:", public_url);
+            return { success: true, url: public_url, hlsUrl: isVideo ? public_url : undefined };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("⚠️ [Android Direct GCS] Falló subida directa, usando pipeline del servidor:", e);
+    }
+
     const createFormData = () => {
       const fd = new FormData();
       fd.append("file", file, file.name);

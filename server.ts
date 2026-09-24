@@ -67,53 +67,152 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // User media is stored exclusively in Google Cloud Storage.
-  // The /uploads/* routes remain only as compatibility aliases for legacy Mongo URLs.
-  app.use("/uploads", async (req, res) => {
+  // High-performance streaming proxy for HLS streams and GCS media.
+  // Directly pipes .m3u8 playlists and .ts chunks to the client with full CORS headers
+  // so Hls.js / MSE in Chrome, Firefox, Edge and Android can decode segments smoothly.
+  const streamGcsFile = async (req: express.Request, res: express.Response, gcsRelativePath: string) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "*");
     if (req.method === "OPTIONS") return res.sendStatus(204);
 
-    const requestedPath = String(req.path || "").replace(/^\/+/, "");
-    if (!requestedPath || requestedPath.includes("..")) {
+    const cleanPath = String(gcsRelativePath || "").replace(/^\/+/, "");
+    if (!cleanPath || cleanPath.includes("..")) {
       return res.status(404).type("text/plain").send("Media resource not found");
     }
 
-    // Keep the default poster as a packaged application asset, not user storage.
-    if (requestedPath === "poster.jpg") {
-      const posterPath = path.join(process.cwd(), "public", "default-poster.jpg");
-      if (fs.existsSync(posterPath)) {
-        res.setHeader("Content-Type", "image/jpeg");
+    // Check if the file exists on local disk (under uploads or public)
+    const localUploadPath = path.join(process.cwd(), "uploads", cleanPath);
+    const localPublicPath = path.join(process.cwd(), "public", cleanPath);
+    const resolvedLocal = fs.existsSync(localUploadPath)
+      ? localUploadPath
+      : fs.existsSync(localPublicPath)
+      ? localPublicPath
+      : null;
+
+    if (resolvedLocal) {
+      const ext = path.extname(resolvedLocal).toLowerCase();
+      if (ext === ".m3u8") {
+        res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      } else if (ext === ".ts") {
+        res.setHeader("Content-Type", "video/mp2t");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else if (ext === ".mp4") {
+        res.setHeader("Content-Type", "video/mp4");
         res.setHeader("Cache-Control", "public, max-age=86400");
-        return res.sendFile(posterPath);
+      } else if (ext === ".webm") {
+        res.setHeader("Content-Type", "video/webm");
+        res.setHeader("Cache-Control", "public, max-age=86400");
       }
-      return res.status(404).end();
+      res.setHeader("Accept-Ranges", "bytes");
+      if (req.method === "HEAD") return res.status(200).end();
+      return res.sendFile(resolvedLocal);
     }
 
     try {
-      const gcsFile = bucket.file(requestedPath);
+      const gcsFile = bucket.file(cleanPath);
       const [exists] = await gcsFile.exists();
       if (!exists) {
-        return res.status(404).type("text/plain").send("Media resource not found in Google Cloud Storage");
+        if (cleanPath.endsWith("poster.jpg")) {
+          const posterPath = path.join(process.cwd(), "public", "default-poster.jpg");
+          if (fs.existsSync(posterPath)) {
+            res.setHeader("Content-Type", "image/jpeg");
+            res.setHeader("Cache-Control", "public, max-age=86400");
+            if (req.method === "HEAD") return res.status(200).end();
+            return res.sendFile(posterPath);
+          }
+        }
+        return res.status(404).type("text/plain").send(`Media resource not found in Google Cloud Storage: ${cleanPath}`);
       }
 
       const [metadata] = await gcsFile.getMetadata();
-      if (metadata.contentType) res.setHeader("Content-Type", metadata.contentType);
-      if (requestedPath.endsWith(".m3u8")) {
+      const fileSize = Number(metadata.size) || 0;
+
+      if (cleanPath.endsWith(".m3u8")) {
         res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
         res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      } else if (requestedPath.endsWith(".ts")) {
+      } else if (cleanPath.endsWith(".ts")) {
         res.setHeader("Content-Type", "video/mp2t");
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else if (cleanPath.endsWith(".mp4") || cleanPath.endsWith(".m4v")) {
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+      } else if (cleanPath.endsWith(".webm")) {
+        res.setHeader("Content-Type", "video/webm");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+      } else if (cleanPath.endsWith(".mov")) {
+        res.setHeader("Content-Type", "video/quicktime");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+      } else if (cleanPath.endsWith(".jpg") || cleanPath.endsWith(".jpeg")) {
+        res.setHeader("Content-Type", "image/jpeg");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+      } else if (cleanPath.endsWith(".png")) {
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+      } else if (cleanPath.endsWith(".webp")) {
+        res.setHeader("Content-Type", "image/webp");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+      } else if (metadata.contentType) {
+        res.setHeader("Content-Type", metadata.contentType);
+        res.setHeader("Cache-Control", "public, max-age=86400");
       } else {
+        res.setHeader("Content-Type", "application/octet-stream");
         res.setHeader("Cache-Control", "public, max-age=86400");
       }
 
-      return res.redirect(302, `https://storage.googleapis.com/${bucketName}/${requestedPath}`);
+      res.setHeader("Accept-Ranges", "bytes");
+
+      if (req.method === "HEAD") {
+        if (fileSize > 0) res.setHeader("Content-Length", fileSize);
+        return res.status(200).end();
+      }
+
+      const range = req.headers.range;
+      if (range && fileSize > 0) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = end - start + 1;
+
+        res.status(206);
+        res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+        res.setHeader("Content-Length", chunkSize);
+
+        const stream = gcsFile.createReadStream({ start, end });
+        stream.on("error", (err) => {
+          if (!res.headersSent) res.status(500).end();
+        });
+        stream.pipe(res);
+      } else {
+        if (fileSize > 0) {
+          res.setHeader("Content-Length", fileSize);
+        }
+        const stream = gcsFile.createReadStream();
+        stream.on("error", (err) => {
+          if (!res.headersSent) res.status(500).end();
+        });
+        stream.pipe(res);
+      }
     } catch (err) {
-      console.error("GCS media lookup failed:", err);
-      return res.status(500).type("text/plain").send("Google Cloud Storage unavailable");
+      console.error(`Error streaming GCS resource (${cleanPath}):`, err);
+      if (!res.headersSent) {
+        res.status(500).type("text/plain").send("Google Cloud Storage unavailable");
+      }
     }
+  };
+
+  // Dedicated HLS streaming route: /api/hls/*
+  app.use("/api/hls", (req, res) => {
+    const subPath = String(req.path || "").replace(/^\/+/, "");
+    return streamGcsFile(req, res, `hls/${subPath}`);
+  });
+
+  // User media is stored in Google Cloud Storage.
+  // Pipes directly to client with CORS headers to eliminate browser blocking
+  app.use("/uploads", (req, res) => {
+    const subPath = String(req.path || "").replace(/^\/+/, "");
+    return streamGcsFile(req, res, subPath);
   });
 
   // Dedicated Android API Router
@@ -145,6 +244,7 @@ async function startServer() {
 
   // Main Modular API Router
   app.use("/api", createApiRouter());
+  app.use("/v1", createApiRouter());
 
   // Cloud Media Streaming from MongoDB Atlas GridFS (persistent cloud database, zero local files)
   app.get(["/api/media/:fileId", "/api/media/:fileId/:filename", "/media/:fileId", "/media/:fileId/:filename"], async (req, res) => {

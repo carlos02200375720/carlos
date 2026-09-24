@@ -349,7 +349,7 @@ export async function updateTracking(req: Request, res: Response): Promise<void>
             updatedAt: nowIso,
           },
         },
-        { new: true, upsert: true }
+        { returnDocument: "after", upsert: true }
       );
       console.log(`💾 Order ${id} tracking updated in MongoDB Atlas (Tracking: ${newTracking}, Status: ${newStatus})`);
     } catch (dbErr) {

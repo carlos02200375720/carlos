@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import LoginView from "./LoginView";
 import UserPublicationsFeed from "./components/UserPublicationsFeed";
 import PublishView from "./PublishView";
-import { apiFetch } from "../../config";
+import { apiFetch, getMediaUrl } from "../../config";
 import { sessionState } from "../../utils/sessionState";
 import { getDefaultAvatar, getDefaultCoverPhoto } from "../../utils/defaultAssets";
 import { isSuperAdmin } from "../../superAdmin";
@@ -22,15 +22,15 @@ const deduplicateById = <T extends { id: string }>(items: T[]): T[] => {
 function PublicationCover({ reel }: { reel: Reel }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(() => {
     if (reel.thumbnailUrl && !reel.thumbnailUrl.toLowerCase().endsWith(".m3u8") && !reel.thumbnailUrl.includes("photo-1618005182384")) {
-      return reel.thumbnailUrl;
+      return getMediaUrl(reel.thumbnailUrl);
     }
     if (reel.images && reel.images.length > 0 && !reel.images[0].toLowerCase().endsWith(".m3u8")) {
-      return reel.images[0];
+      return getMediaUrl(reel.images[0]);
     }
-    const targetUrl = reel.hlsUrl || reel.videoUrl || "";
-    const hlsMatch = targetUrl.match(/\/uploads\/hls\/([a-zA-Z0-9_-]+)\//);
+    const targetUrl = reel.hlsUrl || reel.videoUrl || (reel.media && (reel.media[0] as any)?.hlsUrl) || (reel.media && reel.media[0]?.url) || "";
+    const hlsMatch = targetUrl.match(/(?:\/uploads\/hls\/|\/api\/hls\/|\/hls\/)([a-zA-Z0-9_-]+)\//);
     if (hlsMatch) {
-      return `/uploads/hls/${hlsMatch[1]}/poster.jpg`;
+      return `/api/hls/${hlsMatch[1]}/poster.jpg`;
     }
     return null;
   });
@@ -40,12 +40,12 @@ function PublicationCover({ reel }: { reel: Reel }) {
   useEffect(() => {
     if (thumbUrl && !hasError) return;
 
-    const rawUrl = reel.videoUrl || reel.hlsUrl;
+    const rawUrl = reel.videoUrl || reel.hlsUrl || (reel.media && reel.media[0]?.url) || (reel.media && (reel.media[0] as any)?.hlsUrl);
     if (!rawUrl) return;
 
-    const hlsMatch = rawUrl.match(/\/uploads\/hls\/([a-zA-Z0-9_-]+)\//);
+    const hlsMatch = rawUrl.match(/(?:\/uploads\/hls\/|\/api\/hls\/|\/hls\/)([a-zA-Z0-9_-]+)\//);
     if (hlsMatch && !thumbUrl) {
-      setThumbUrl(`/uploads/hls/${hlsMatch[1]}/poster.jpg`);
+      setThumbUrl(`/api/hls/${hlsMatch[1]}/poster.jpg`);
       setHasError(false);
       return;
     }
@@ -58,7 +58,7 @@ function PublicationCover({ reel }: { reel: Reel }) {
       video.volume = 0;
       video.playsInline = true;
       video.preload = "metadata";
-      video.src = reel.videoUrl;
+      video.src = getMediaUrl(reel.videoUrl);
 
       const captureFrame = () => {
         if (isCancelled) return;
@@ -108,7 +108,7 @@ function PublicationCover({ reel }: { reel: Reel }) {
   if (thumbUrl && !hasError) {
     return (
       <img
-        src={thumbUrl}
+        src={getMediaUrl(thumbUrl)}
         alt={reel.description || "Publicación"}
         onError={() => setHasError(true)}
         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none bg-slate-900"
@@ -4561,7 +4561,18 @@ export default function ProfileView({
         {activeFeedReelId && (
           <UserPublicationsFeed
             user={profileUser || currentUser}
-            reels={activeSubTab === "saved" ? savedReels : userReels}
+            reels={
+              (isSelf && activeSubTab === "saved" ? savedReels : userReels).some((r) => r.id === activeFeedReelId)
+                ? (isSelf && activeSubTab === "saved" ? savedReels : userReels)
+                : userReels.some((r) => r.id === activeFeedReelId)
+                ? userReels
+                : savedReels.some((r) => r.id === activeFeedReelId)
+                ? savedReels
+                : [
+                    ...userReels,
+                    ...savedReels.filter((sr) => !userReels.some((ur) => ur.id === sr.id)),
+                  ]
+            }
             products={userProducts}
             initialReelId={activeFeedReelId}
             currentUser={currentUser}

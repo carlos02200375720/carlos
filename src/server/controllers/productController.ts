@@ -306,7 +306,7 @@ export async function updateProduct(req: any, res: any, next: any): Promise<void
         const dbProd = await MongoProduct.findOneAndUpdate(
           { id },
           { $set: updateFields },
-          { new: true }
+          { returnDocument: "after" }
         );
         if (dbProd) {
           const parsedDbProd = dbProd.toObject ? dbProd.toObject() : dbProd;

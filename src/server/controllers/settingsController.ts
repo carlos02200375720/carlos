@@ -121,7 +121,7 @@ export async function updateDefaultAssets(req: Request, res: Response): Promise<
           defaultCoverPhoto: resolvedCover,
           updatedAt: new Date()
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: "after" }
       );
       console.log("💾 [Settings] Default assets saved to MongoDB Atlas:", {
         avatar: resolvedAvatar,
@@ -158,7 +158,7 @@ export async function resetDefaultAssets(req: Request, res: Response): Promise<v
           defaultCoverPhoto: FACTORY_DEFAULT_COVER,
           updatedAt: new Date()
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: "after" }
       );
       console.log("🔄 [Settings] Default assets reset to factory defaults in MongoDB Atlas");
     }

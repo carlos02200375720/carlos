@@ -47,14 +47,16 @@ export const uploadToGCS = async (file: Express.Multer.File, folder: string = "p
   if (gcsReady) {
     try {
       const gcsUrl = await new Promise<string>((resolve, reject) => {
-        const uniqueName = `${Date.now()}-${generateId()}-${originalName}`;
+        const extMatch = originalName.match(/\.[a-zA-Z0-9]+$/);
+        const ext = extMatch ? extMatch[0].toLowerCase() : ".jpg";
+        const uniqueName = `${Date.now()}_${generateId()}${ext}`;
         const blob = bucket.file(`${folder}/${uniqueName}`);
 
         const blobStream = blob.createWriteStream({
           resumable: false,
           metadata: {
             contentType: file.mimetype || "application/octet-stream",
-            cacheControl: "public, max-age=86400",
+            cacheControl: "public, max-age=31536000",
           },
         });
 
@@ -99,7 +101,7 @@ export async function uploadBase64ToGCS(base64Str: string, folder: string = "pro
   else if (lowerMime.includes("heif")) extension = "heif";
   else if (lowerMime.includes("jpeg") || lowerMime.includes("jpg")) extension = "jpeg";
 
-  const filename = `${Date.now()}-${generateId()}.${extension}`;
+  const filename = `${Date.now()}_${generateId()}.${extension}`;
 
   const gcsReady = await isGcsAvailable();
   if (gcsReady) {
@@ -108,7 +110,10 @@ export async function uploadBase64ToGCS(base64Str: string, folder: string = "pro
         const blob = bucket.file(`${folder}/${filename}`);
         const blobStream = blob.createWriteStream({
           resumable: false,
-          metadata: { contentType: mimeType },
+          metadata: {
+            contentType: mimeType,
+            cacheControl: "public, max-age=31536000",
+          },
         });
 
         blobStream.on("error", (err: any) => reject(err));

@@ -108,7 +108,7 @@ export async function syncLegacyPublicacionesToMongoReel(userMap?: Map<string, a
       await MongoReel.findOneAndUpdate(
         { id: canonicalReel.id },
         { $set: canonicalReel },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
+        { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
       );
 
       migratedCount++;
@@ -169,7 +169,7 @@ export async function saveCanonicalReelToMongo(reelData: any, userMap?: Map<stri
   await MongoReel.findOneAndUpdate(
     { id: formattedReel.id },
     { $set: formattedReel },
-    { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true }
   );
 
   console.log(`💾 [reelService] Transaccionalmente guardado Reel ${formattedReel.id} en MongoReel`);

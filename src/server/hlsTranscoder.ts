@@ -503,9 +503,9 @@ export async function transcodeVideoToHLS(
       const gcsFile = bucket.file(destination);
 
       const contentType = isPlaylist
-        ? "application/x-mpegURL"
+        ? "application/vnd.apple.mpegurl"
         : isSegment
-        ? "video/MP2T"
+        ? "video/mp2t"
         : isPoster
         ? "image/jpeg"
         : "application/octet-stream";

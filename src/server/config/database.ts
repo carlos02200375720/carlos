@@ -144,11 +144,12 @@ export async function connectToMongoDB(): Promise<void> {
       }
     }
 
+    // Migrate and sanitize any remaining base64 avatars in MongoDB Atlas to GCS URLs
     try {
-      await MongoUser.collection.createIndex({ username: 1 }, { unique: true });
-      await MongoUser.collection.createIndex({ email: 1 }, { unique: true, sparse: true });
-    } catch (idxErr) {
-      console.warn("Notice: MongoDB index setup message:", idxErr);
+      const { sanitizeBase64AvatarsInMongo } = await import("../services/state");
+      await sanitizeBase64AvatarsInMongo();
+    } catch (migrErr) {
+      console.warn("Notice: Base64 avatar migration check:", migrErr);
     }
 
     console.log("📦 Loading existing users from MongoDB...");

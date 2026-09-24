@@ -215,6 +215,39 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts|m3u8)$/i.test(file.name);
     const fileToUpload = file;
 
+    // 1. PATRÓN DE SUBIDA DIRECTA A GOOGLE CLOUD STORAGE (Signed URLs)
+    // Permite subir directamente al bucket sin saturar la memoria o CPU del backend
+    try {
+      const folder = isVideo ? "videos" : "publicaciones";
+      const mime = fileToUpload.type || (isVideo ? "video/mp4" : "image/jpeg");
+      const signedUrlRes = await fetch(
+        getApiUrl(`/api/v1/media/upload-url?folder=${folder}&file_type=${encodeURIComponent(mime)}&file_name=${encodeURIComponent(fileToUpload.name)}`)
+      );
+
+      if (signedUrlRes.ok) {
+        const { upload_url, public_url } = await signedUrlRes.json();
+        if (upload_url && public_url) {
+          console.log(`⚡ [Direct GCS] Subiendo ${fileToUpload.name} directo a Google Cloud Storage...`);
+          const putRes = await fetch(upload_url, {
+            method: "PUT",
+            headers: {
+              "Content-Type": mime,
+            },
+            body: fileToUpload,
+          });
+
+          if (putRes.ok) {
+            console.log(`✅ [Direct GCS] Subida directa exitosa a GCS: ${public_url}`);
+            return { url: public_url, hlsUrl: isVideo ? public_url : undefined };
+          } else {
+            console.warn(`⚠️ [Direct GCS] PUT directo a GCS retornó HTTP ${putRes.status}. Usando fallback vía servidor.`);
+          }
+        }
+      }
+    } catch (directErr) {
+      console.warn("⚠️ [Direct GCS] Subida directa no disponible o bloqueada por CORS en navegador. Usando fallback al servidor:", directErr);
+    }
+
     const createFormData = () => {
       const fd = new FormData();
       fd.append("file", fileToUpload, fileToUpload.name);
@@ -235,14 +268,22 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         body: createFormData(),
       }, timeoutMs);
     } catch (primaryErr: any) {
+      console.warn("⚠️ [PublishView] Fallo inicial con apiFetch(/api/upload), intentando fetch relativo directo...", primaryErr);
       // Direct relative fallback if primary fetch failed
       try {
-        response = await fetch(getApiUrl("/api/upload"), {
+        response = await fetch("/api/upload", {
           method: "POST",
           body: createFormData(),
         });
-      } catch {
-        throw new Error(`No se pudo conectar con el servidor de subida: ${primaryErr?.message || "error de red"}`);
+      } catch (localErr) {
+        try {
+          response = await fetch("/api/android/upload", {
+            method: "POST",
+            body: createFormData(),
+          });
+        } catch {
+          throw new Error(`No se pudo conectar con el servidor de subida: ${primaryErr?.message || "error de red"}`);
+        }
       }
     }
 
@@ -251,7 +292,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     // If the server returned 5xx or HTML, attempt direct local fallback
     if (!response.ok || !rawText.trim().startsWith("{")) {
       try {
-        const directRes = await fetch(getApiUrl("/api/upload"), {
+        const directRes = await fetch("/api/upload", {
           method: "POST",
           body: createFormData(),
         });
@@ -266,7 +307,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     // Second fallback to android upload endpoint if standard failed
     if (!response.ok || !rawText.trim().startsWith("{")) {
       try {
-        const androidRes = await fetch(getApiUrl("/api/android/upload"), {
+        const androidRes = await fetch("/api/android/upload", {
           method: "POST",
           body: createFormData(),
         });

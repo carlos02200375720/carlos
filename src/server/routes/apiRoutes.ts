@@ -29,10 +29,15 @@ export function createApiRouter(): Router {
   // HLS telemetry
   router.get("/hls/telemetry", uploadController.getHlsTelemetry);
 
-  // Upload routes
+  // Upload & Media Signed URL routes (Direct GCS upload architecture)
+  router.get(["/v1/media/upload-url", "/media/upload-url"], uploadController.generateUploadSignedUrl);
+  router.post(["/v1/posts", "/posts", "/v1/publicaciones", "/publicaciones"], uploadController.createPost);
+  router.get(["/v1/feed", "/feed"], uploadController.getFeed);
+
   router.post("/upload", uploadSingleSafe("file"), uploadController.processUploadHlsOnly);
   router.post("/upload-avatar", uploadSingleSafe("avatar"), uploadController.uploadAvatar);
   router.post("/upload-cover", uploadSingleSafe("cover"), uploadController.uploadCover);
+  router.post(["/products/upload-image", "/upload-product-image"], uploadSingleSafe("image"), uploadController.uploadProductImage);
   router.delete("/publicaciones/:id", uploadController.deletePublicationMedia);
   router.delete("/reels/:id", uploadController.deletePublicationMedia);
 

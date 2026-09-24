@@ -31,8 +31,11 @@ export default function AndroidPublicationCover({ reel, className = "" }: Androi
       return reel.images[0];
     }
 
-    // 3. Infer HLS poster image from upload path
+    // 3. Infer HLS poster image from upload path or GCS bucket
     const targetUrl = reel.hlsUrl || reel.videoUrl || "";
+    if (targetUrl.includes(".m3u8") || targetUrl.includes("/hls/")) {
+      return targetUrl.replace(/\/(?:master|index)\.m3u8.*$/, "/poster.jpg");
+    }
     const hlsMatch = targetUrl.match(/\/uploads\/hls\/([a-zA-Z0-9_-]+)\//);
     if (hlsMatch) {
       return `/uploads/hls/${hlsMatch[1]}/poster.jpg`;
