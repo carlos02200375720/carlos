@@ -1,10 +1,10 @@
 # Usar la imagen oficial de Node.js
-FROM node:18-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm install --include=optional
 
 COPY . .
 RUN npm run build
