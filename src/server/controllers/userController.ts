@@ -48,10 +48,13 @@ export async function getUsers(): Promise<User[]> {
         isAdmin: isConfiguredSuperadmin(u),
         role: isConfiguredSuperadmin(u) ? "superadmin" : (u.canSell ? "seller" : "user")
       }));
+    } else {
+      console.warn("⚠️ Cannot fetch users: MongoDB connection readyState is", mongoose.connection.readyState);
     }
   } catch (err) {
     console.error("Error fetching users from MongoDB:", err);
   }
+
   return [];
 }
 
@@ -1018,12 +1021,19 @@ export async function registerUser(req: Request, res: Response): Promise<void> {
       canSell: false
     };
 
-    if (mongoose.connection.readyState === 1) {
-      const mongoUser = new MongoUser(newUser);
-      await mongoUser.save();
-      console.log(`💾 Successfully registered exactly 1 user @${newUser.username} (${newUser.email}) with id=${newUser.id} in MongoDB Atlas!`);
-      setActiveOriginalUserId(newUser.id);
+    if (mongoose.connection.readyState !== 1) {
+      console.error("❌ MongoDB Atlas is not connected (readyState !== 1). Registration blocked.");
+      res.status(503).json({
+        error: "La base de datos MongoDB no está conectada. No se pueden registrar cuentas sin conexión activa a MongoDB Atlas.",
+        code: "DATABASE_NOT_CONNECTED"
+      });
+      return;
     }
+
+    const mongoUser = new MongoUser(newUser);
+    await mongoUser.save();
+    console.log(`💾 Successfully registered exactly 1 user @${newUser.username} (${newUser.email}) with id=${newUser.id} in MongoDB Atlas!`);
+    setActiveOriginalUserId(newUser.id);
 
     const returnedUser = {
       ...newUser,
@@ -1061,23 +1071,32 @@ export async function switchUser(req: Request, res: Response): Promise<void> {
 
     const cleanUsername = String(targetUsername).trim().toLowerCase().replace("@", "");
 
-    let targetUser: any = null;
-    if (mongoose.connection.readyState === 1) {
-      targetUser = await MongoUser.findOne({
-        $or: [
-          { username: cleanUsername },
-          { username: targetUsername },
-          { username: { $regex: new RegExp(`^${cleanUsername}$`, "i") } },
-          { email: cleanUsername },
-          { email: String(targetUsername).trim().toLowerCase() },
-          { id: targetUsername },
-          { id: cleanUsername }
-        ],
-        id: { $ne: "current_user" }
+    if (mongoose.connection.readyState !== 1) {
+      res.status(503).json({
+        error: "La base de datos MongoDB no está conectada.",
+        code: "DATABASE_NOT_CONNECTED"
       });
+      return;
     }
+
+    const targetUser = await MongoUser.findOne({
+      $or: [
+        { username: cleanUsername },
+        { username: targetUsername },
+        { username: { $regex: new RegExp(`^${cleanUsername}$`, "i") } },
+        { email: cleanUsername },
+        { email: String(targetUsername).trim().toLowerCase() },
+        { id: targetUsername },
+        { id: cleanUsername }
+      ],
+      id: { $ne: "current_user" }
+    });
+
     if (!targetUser) {
-      res.status(404).json({ error: "User not found" });
+      res.status(404).json({
+        error: "Usuario no encontrado en la base de datos.",
+        code: "USER_NOT_FOUND"
+      });
       return;
     }
 

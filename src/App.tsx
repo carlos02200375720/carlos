@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { User as UserIcon, Camera, Upload, AlertTriangle } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession, NavigationTab } from "./types";
 import { WebApp, SplashScreen, AuthModal } from "./app/web";
@@ -216,10 +215,6 @@ export default function App() {
     return [];
   });
 
-  // Force upload profile photo state
-  const [selectedForceAvatar, setSelectedForceAvatar] = useState<string | null>(null);
-  const [forceAvatarSaving, setForceAvatarSaving] = useState(false);
-  const [forceAvatarError, setForceAvatarError] = useState("");
   const [guestInteractionAlert, setGuestInteractionAlert] = useState<string | null>(null);
   const [isLiveViewerOpen, setIsLiveViewerOpen] = useState(false);
 
@@ -1336,40 +1331,6 @@ export default function App() {
       });
   };
 
-  const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
-
-  const handleSaveForceAvatar = async () => {
-    if (!selectedForceAvatar) {
-      setForceAvatarError("Por favor, selecciona o sube una foto de perfil.");
-      return;
-    }
-    setForceAvatarSaving(true);
-    setForceAvatarError("");
-    try {
-      const response = await apiFetch("/api/users/current/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avatar: selectedForceAvatar }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        setForceAvatarError(data.error || "No se pudo guardar la imagen.");
-      } else {
-        setCurrentUser(data.user);
-        // Refresh global users list to sync
-        apiFetch("/api/users")
-          .then((res) => res.json())
-          .then((usersData) => setUsers(usersData))
-          .catch((err) => console.error("Error refreshing users:", err));
-      }
-    } catch (err) {
-      console.error("Error saving profile picture:", err);
-      setForceAvatarError("Error de conexión al guardar.");
-    } finally {
-      setForceAvatarSaving(false);
-    }
-  };
-
   const totalUnreads: number = Object.values(unreadCounts).reduce<number>((acc, val) => acc + (val as number), 0);
   const isDarkNavActive = activeTab === 'reels';
 
@@ -1537,99 +1498,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Forced Avatar Upload Modal */}
-      {isLoggedIn && currentUser.username && currentUser.avatar === DEFAULT_AVATAR && currentUser.username !== "invitado" && (
-        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl relative overflow-hidden text-center">
-            
-            {/* Ambient gold glow decoration */}
-            <div className="absolute -top-12 -left-12 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
-            <div className="absolute -bottom-12 -right-12 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
-
-            <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-4 border border-amber-500/20">
-              <Camera className="w-6 h-6 text-amber-500" />
-            </div>
-
-            <h2 className="text-xl font-bold text-white tracking-tight">¡Sube tu foto de perfil!</h2>
-            <p className="text-slate-400 text-xs mt-2 leading-relaxed">
-              Para disfrutar de la plataforma y empezar a compartir contenido o interactuar en el mercado, es requisito obligatorio configurar tu foto de perfil real.
-            </p>
-
-            <div className="my-6">
-              <div className="flex flex-col items-center justify-center">
-                <div className="relative group">
-                  <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-700 bg-white flex items-center justify-center shadow-inner relative">
-                    {selectedForceAvatar && selectedForceAvatar.trim().length > 0 ? (
-                      <img
-                        src={selectedForceAvatar}
-                        alt="Previsualización"
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <UserIcon className="w-12 h-12 text-slate-400" />
-                    )}
-                  </div>
-                  
-                  {/* File Upload Selector */}
-                  <input
-                    type="file"
-                    id="force-avatar-file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          if (typeof reader.result === "string") {
-                            setSelectedForceAvatar(reader.result);
-                          }
-                        };
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                  />
-                  <label
-                    htmlFor="force-avatar-file"
-                    className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center hover:bg-amber-400 transition-colors cursor-pointer border-2 border-slate-900 shadow-md animate-pulse"
-                  >
-                    <Upload className="w-4 h-4" />
-                  </label>
-                </div>
-                <p className="text-[10px] text-slate-500 mt-2 font-mono">JPG, PNG o GIF (Máx 5MB)</p>
-              </div>
-            </div>
-
-            {forceAvatarError && (
-              <div className="text-[11px] text-rose-500 bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-xl font-medium mb-4 flex items-center justify-center space-x-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                <span>{forceAvatarError}</span>
-              </div>
-            )}
-
-            <div className="space-y-2.5">
-              <button
-                type="button"
-                onClick={handleSaveForceAvatar}
-                disabled={forceAvatarSaving || !selectedForceAvatar}
-                className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-bold rounded-2xl text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-amber-500/10"
-              >
-                {forceAvatarSaving ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
-                    <span>Guardando foto...</span>
-                  </>
-                ) : (
-                  <span>Guardar foto de perfil</span>
-                )}
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-
       {/* Elegant Guest Notification Modal */}
       {/* Forced Registration Auth Modal for Guest Interactions */}
       <AuthModal
@@ -1639,6 +1507,9 @@ export default function App() {
         onLoginSuccess={(loggedUser) => {
           setCurrentUser(loggedUser);
           setIsLoggedIn(true);
+          sessionState.setAuthenticated(true);
+          sessionState.setUsername(loggedUser.username);
+          sessionState.setUser(loggedUser);
           setUsers((prev) => {
             const idx = prev.findIndex((u) => u.id === loggedUser.id || u.username === loggedUser.username);
             if (idx >= 0) {
@@ -1649,6 +1520,7 @@ export default function App() {
             return [...prev, loggedUser];
           });
           setGuestInteractionAlert(null);
+          setActiveTab('profile');
         }}
       />
 

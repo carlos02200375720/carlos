@@ -214,6 +214,7 @@ export default function AndroidApp({
                 savedReelIds={savedReelIds}
                 onToggleSaveReel={handleToggleSaveReel}
                 onToggleFollowUser={handleToggleFollowUser}
+                onNavigateToProfile={() => setActiveTab('profile')}
                 onGuestInteraction={(action) => {
                   setGuestInteractionAlert(`Para ${action} en este reel, por favor inicia sesión.`);
                 }}

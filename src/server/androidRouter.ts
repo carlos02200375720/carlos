@@ -236,7 +236,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       }
 
       if (!user) {
-        res.status(404).json({ error: "Usuario no encontrado en Atlas" });
+        res.status(404).json({ error: "Usuario no encontrado en MongoDB Atlas" });
         return;
       }
 

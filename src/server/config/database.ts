@@ -14,15 +14,37 @@ import {
   syncLegacyPublicacionesToMongoReel,
 } from "../services/reelService";
 
+export let lastMongoError: string | null = null;
+export let isMongoConfigured: boolean = false;
+
+export function getMongoStatus() {
+  return {
+    configured: isMongoConfigured,
+    connected: mongoose.connection.readyState === 1,
+    readyState: mongoose.connection.readyState,
+    error: lastMongoError,
+  };
+}
+
 /**
  * Connect to MongoDB Atlas and load/seed users, products, reels, and orders.
  */
 export async function connectToMongoDB(): Promise<void> {
-  let mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  let mongoUri =
+    process.env.MONGODB_URI ||
+    process.env.MONGO_URI ||
+    process.env.MONGODB_URL ||
+    process.env.MONGO_URL ||
+    process.env.DATABASE_URL;
+
   if (!mongoUri) {
-    console.log("⚠️ MONGO_URI / MONGODB_URI environment variable is missing. Running with in-memory database fallback.");
+    isMongoConfigured = false;
+    lastMongoError = "Variable de entorno MONGODB_URI no encontrada en el contenedor.";
+    console.error("❌ MONGODB_URI / MONGO_URI environment variable is missing! MongoDB Atlas is required for data persistence.");
     return;
   }
+
+  isMongoConfigured = true;
 
   // Strip outer quotes if present
   mongoUri = mongoUri.trim();
@@ -365,7 +387,9 @@ export async function connectToMongoDB(): Promise<void> {
       setOrders(loadedOrders);
       console.log(`📦 Loaded ${loadedOrders.length} orders successfully from MongoDB Atlas!`);
     }
-  } catch (error) {
+    lastMongoError = null;
+  } catch (error: any) {
+    lastMongoError = error?.message || String(error);
     console.error("❌ Failed to connect to MongoDB Atlas:", error);
   }
 }

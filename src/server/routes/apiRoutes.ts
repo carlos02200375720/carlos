@@ -11,19 +11,40 @@ import * as chatController from "../controllers/chatController";
 import * as liveController from "../controllers/liveController";
 import * as uploadController from "../controllers/uploadController";
 import * as settingsController from "../controllers/settingsController";
+import { getMongoStatus, connectToMongoDB } from "../config/database";
 
 export function createApiRouter(): Router {
   const router = Router();
 
-  // Health check
+  // Health check with detailed MongoDB diagnostic status
   router.get("/health", (req, res) => {
+    const mongoStatus = getMongoStatus();
     res.json({
       status: "ok",
       server: "mall-social-cloudrun",
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       mongoConnected: mongoose.connection.readyState === 1,
+      mongoConfigured: mongoStatus.configured,
+      mongoError: mongoStatus.error,
     });
+  });
+
+  // Reconnect MongoDB trigger endpoint
+  router.post(["/reconnect-mongo", "/db/reconnect"], async (req, res) => {
+    try {
+      await connectToMongoDB();
+      const status = getMongoStatus();
+      res.json({
+        success: status.connected,
+        status,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message,
+      });
+    }
   });
 
   // HLS telemetry

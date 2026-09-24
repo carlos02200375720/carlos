@@ -38,6 +38,7 @@ export interface AndroidReelsViewProps {
   onUpdateCartQuantity?: (productId: string, qty: number, idx?: number) => void;
   onNavigateToShop?: () => void;
   onNavigateToCheckout?: (selectedIndices?: number[]) => void;
+  onNavigateToProfile?: () => void;
 }
 
 export default function AndroidReelsView({
@@ -66,6 +67,7 @@ export default function AndroidReelsView({
   cart = [],
   onNavigateToShop,
   onNavigateToCheckout,
+  onNavigateToProfile,
   onRemoveFromCart,
   onUpdateCartQuantity,
 }: AndroidReelsViewProps) {
@@ -1019,7 +1021,12 @@ export default function AndroidReelsView({
         isOpen={showAuthModal}
         actionDescription={authDescription}
         onClose={() => setShowAuthModal(false)}
-        onLoginSuccess={() => setShowAuthModal(false)}
+        onLoginSuccess={() => {
+          setShowAuthModal(false);
+          if (onNavigateToProfile) {
+            onNavigateToProfile();
+          }
+        }}
       />
     </div>
   );
