@@ -257,7 +257,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             maxBufferHole: 0.1,
             nudgeMaxRetry: 3,
             nudgeOffset: 0.1,
-            startFragPrefetch: false,
+            startFragPrefetch: true,
             capLevelToPlayerSize: true,
             fragLoadingMaxRetry: 4,
             fragLoadingRetryDelay: 500,
