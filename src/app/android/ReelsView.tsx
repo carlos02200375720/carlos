@@ -513,20 +513,6 @@ export default function AndroidReelsView({
             onVideoReady={handleVideoReady}
             className="w-full h-full"
           />
-          {nextMedia && nextReel && (
-            <AndroidVideoPlayer
-              key={nextReel.id}
-              src={getMediaUrl(nextMedia.url)}
-              hlsUrl={getMediaUrl(nextMedia.hlsUrl || (nextMedia.url?.includes(".m3u8") ? nextMedia.url : nextReel.hlsUrl))}
-              poster={nextReel.thumbnailUrl ? getMediaUrl(nextReel.thumbnailUrl) : undefined}
-              autoPlay={false}
-              loop={true}
-              muted={true}
-              isCurrent={false}
-              aspectRatio={nextReel.aspectRatio}
-              className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
-            />
-          )}
         </>
       ) : (
         /* Image / Carousel publication */
@@ -566,6 +552,21 @@ export default function AndroidReelsView({
             />
           </div>
         </div>
+      )}
+
+      {nextMedia && nextReel && (
+        <AndroidVideoPlayer
+          key={nextReel.id}
+          src={getMediaUrl(nextMedia.url)}
+          hlsUrl={getMediaUrl(nextMedia.hlsUrl || (nextMedia.url?.includes(".m3u8") ? nextMedia.url : nextReel.hlsUrl))}
+          poster={nextReel.thumbnailUrl ? getMediaUrl(nextReel.thumbnailUrl) : undefined}
+          autoPlay={false}
+          loop={true}
+          muted={true}
+          isCurrent={false}
+          aspectRatio={nextReel.aspectRatio}
+          className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
+        />
       )}
 
       {/* Progress Bar for video publications: receives the live video element from AndroidVideoPlayer and tracks its accurate playback */}
