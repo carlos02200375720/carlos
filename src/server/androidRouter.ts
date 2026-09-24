@@ -1044,6 +1044,22 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         method: "PUT",
       });
     } catch (err: any) {
+      const isSignBlobError =
+        err?.message?.includes("signBlob") ||
+        err?.message?.includes("iam.serviceAccounts") ||
+        err?.message?.includes("denied on resource");
+
+      if (isSignBlobError) {
+        console.warn("⚠️ [Android Gateway] 'signBlob' permission missing. Instructing client to fallback to server upload.");
+        res.json({
+          direct_upload_available: false,
+          upload_url: null,
+          fallback_to_server: true,
+          message: "Signed URLs require 'Service Account Token Creator' role. Falling back to server upload.",
+        });
+        return;
+      }
+
       console.error("❌ [Android Gateway] Error generating GCS signed URL:", err);
       res.status(500).json({ error: "Error generating GCS signed URL", details: err.message });
     }
