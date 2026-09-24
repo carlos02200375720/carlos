@@ -3,7 +3,7 @@ import { sessionState } from "./utils/sessionState";
 /// <reference types="vite/client" />
 
 // Centralized Backend & API Configuration
-export const CLOUD_RUN_BACKEND_URL = "https://carlos02200375720mall-113642516090.europe-west1.run.app";
+export const CLOUD_RUN_BACKEND_URL = "https://elegan-backend-587849039182.us-east1.run.app";
 
 export const BACKEND_URL: string =
   (import.meta as any).env?.VITE_BACKEND_URL || CLOUD_RUN_BACKEND_URL;
@@ -162,7 +162,7 @@ export const getWebSocketUrl = (): string => {
     }
   }
 
-  return "wss://carlos02200375720mall-113642516090.europe-west1.run.app";
+  return "wss://elegan-backend-587849039182.us-east1.run.app";
 };
 
 export const apiFetch = async (

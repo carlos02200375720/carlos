@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VITE_APP_TARGET: android
-      VITE_BACKEND_URL: https://carlos02200375720mall-113642516090.europe-west1.run.app
+      VITE_BACKEND_URL: https://elegan-backend-587849039182.us-east1.run.app
 
     steps:
       - name: Descargar código actual
@@ -33,7 +33,7 @@ jobs:
       - name: Compilar frontend Android desde cero
         env:
           VITE_APP_TARGET: android
-          VITE_BACKEND_URL: https://carlos02200375720mall-113642516090.europe-west1.run.app
+          VITE_BACKEND_URL: https://elegan-backend-587849039182.us-east1.run.app
         run: |
           npm install @tailwindcss/oxide-linux-x64-gnu --save-optional --force
           rm -rf dist
