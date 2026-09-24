@@ -201,6 +201,21 @@ export default function AndroidReelsView({
   const currentMedia = mediaItems[activeMediaIndex] || mediaItems[0];
   const isVideo = currentMedia?.type === "video" && !!currentMedia.url;
 
+  const nextReel = reels.length > 1 ? reels[(currentIndex + 1) % reels.length] : null;
+  const nextMediaItems: ReelMedia[] =
+    Array.isArray(nextReel?.media) && nextReel.media.length > 0
+      ? nextReel.media.map((item) =>
+          item.type === "video"
+            ? { ...item, url: nextReel.hlsUrl || nextReel.videoUrl || item.url, hlsUrl: nextReel.hlsUrl || item.hlsUrl, thumbnailUrl: item.thumbnailUrl || nextReel.thumbnailUrl || undefined }
+            : item
+        )
+      : nextReel?.videoUrl && nextReel.videoUrl.trim() !== ""
+        ? [{ type: "video", url: nextReel.hlsUrl || nextReel.videoUrl, hlsUrl: nextReel.hlsUrl, thumbnailUrl: nextReel.thumbnailUrl || undefined }]
+        : nextReel?.images && nextReel.images.length > 0
+          ? nextReel.images.map((img, i) => ({ type: "image", url: img, order: i }))
+          : [];
+  const nextMedia = nextMediaItems.find((item) => item.type === "video" && !!item.url);
+
   const handleTouchStart = (e: React.TouchEvent) => {
     if (showComments || showCartPanel) return;
     touchStartX.current = e.touches[0].clientX;
@@ -481,22 +496,38 @@ export default function AndroidReelsView({
 
       {/* Media Player Container: Dynamic Aspect Architecture (Vertical 100%, Horizontal 16:9, Square 1:1) */}
       {isVideo ? (
-        <AndroidVideoPlayer
-          key={`${currentReel.id}_media_${activeMediaIndex}`}
-          ref={playerRef}
-          src={getMediaUrl(currentMedia.url)}
-          hlsUrl={getMediaUrl(currentMedia.hlsUrl || (currentMedia.url?.includes(".m3u8") ? currentMedia.url : currentReel.hlsUrl))}
-          poster={currentReel.thumbnailUrl ? getMediaUrl(currentReel.thumbnailUrl) : undefined}
-          autoPlay={true}
-          loop={true}
-          muted={isMuted}
-          isCurrent={isFeedActive}
-          aspectRatio={currentReel.aspectRatio}
-          onDoubleTap={handleDoubleTap}
-          onMuteChange={handleMuteChange}
-          onVideoReady={handleVideoReady}
-          className="w-full h-full"
-        />
+        <>
+          <AndroidVideoPlayer
+            key={currentReel.id}
+            ref={playerRef}
+            src={getMediaUrl(currentMedia.url)}
+            hlsUrl={getMediaUrl(currentMedia.hlsUrl || (currentMedia.url?.includes(".m3u8") ? currentMedia.url : currentReel.hlsUrl))}
+            poster={currentReel.thumbnailUrl ? getMediaUrl(currentReel.thumbnailUrl) : undefined}
+            autoPlay={true}
+            loop={true}
+            muted={isMuted}
+            isCurrent={isFeedActive}
+            aspectRatio={currentReel.aspectRatio}
+            onDoubleTap={handleDoubleTap}
+            onMuteChange={handleMuteChange}
+            onVideoReady={handleVideoReady}
+            className="w-full h-full"
+          />
+          {nextMedia && nextReel && (
+            <AndroidVideoPlayer
+              key={nextReel.id}
+              src={getMediaUrl(nextMedia.url)}
+              hlsUrl={getMediaUrl(nextMedia.hlsUrl || (nextMedia.url?.includes(".m3u8") ? nextMedia.url : nextReel.hlsUrl))}
+              poster={nextReel.thumbnailUrl ? getMediaUrl(nextReel.thumbnailUrl) : undefined}
+              autoPlay={false}
+              loop={true}
+              muted={true}
+              isCurrent={false}
+              aspectRatio={nextReel.aspectRatio}
+              className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
+            />
+          )}
+        </>
       ) : (
         /* Image / Carousel publication */
         <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden bg-black">
