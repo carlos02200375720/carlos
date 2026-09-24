@@ -592,188 +592,59 @@ export default function AndroidReelsView({
         )}
       </AnimatePresence>
 
-      {/* Top Header: Keep the transparent reel feel but separate from the phone status bar and safe area */}
-      <div
-        className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 pb-2 pointer-events-none bg-gradient-to-b from-black/80 via-black/35 to-transparent"
-        style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}
+      <header
+        className="absolute top-0 inset-x-0 z-40 flex items-center justify-between px-4 pointer-events-none"
+        style={{ paddingTop: "max(12px, calc(env(safe-area-inset-top, 0px) + 0.75rem))", paddingBottom: "0.75rem" }}
+        id="android-reels-fixed-header"
       >
-        {/* Left: Cart Button */}
-        <button
-          onClick={() => setShowCartPanel(true)}
-          className="pointer-events-auto relative p-1.5 text-white hover:text-amber-400 active:scale-90 transition-transform cursor-pointer"
-          title="Ver Carrito"
-          id="android-reels-cart-btn"
-        >
-          <ShoppingBag className="w-5 h-5 scale-x-120 stroke-[1.8] text-white hover:text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
-          {totalCartCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-black text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center shadow-lg border border-slate-900">
-              {totalCartCount > 99 ? "99+" : totalCartCount}
-            </span>
-          )}
+        <button onClick={() => setShowCartPanel(true)} className="relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto" id="android-reels-cart-btn" title="Ver carrito de compras">
+          <ShoppingBag className="w-5 h-5 text-amber-400 drop-shadow-md" />
+          {totalCartCount > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-mono text-[10px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center border border-slate-950 shadow-md animate-pulse">{totalCartCount}</span>}
         </button>
-
-        {/* Right: Audio Toggle */}
-        {isVideo && (
-          <button
-            onClick={toggleMute}
-            className="pointer-events-auto p-1 text-white hover:text-amber-400 active:scale-90 transition-transform cursor-pointer"
-            title={isMuted ? "Activar audio" : "Silenciar audio"}
-            id="android-mute-toggle"
-          >
-            {isMuted ? (
-              <VolumeX className="w-7 h-7 scale-x-120 stroke-[1.7] text-amber-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
-            ) : (
-              <Volume2 className="w-7 h-7 scale-x-120 stroke-[1.7] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]" />
-            )}
-          </button>
-        )}
-      </div>
-
-      {/* Right Actions: Keep 10px gap above the bottom navigation bar */}
-      <div className="absolute right-2.5 bottom-[10px] z-30 flex flex-col items-center space-y-4 text-white pointer-events-auto">
-        <div className="relative mb-3 -translate-y-1">
-          <img
-            src={displayAvatar}
-            alt={displayUsername}
-            onClick={handleCreatorNav}
-            className="w-11 h-11 rounded-full object-cover shadow-xl cursor-pointer active:scale-95 transition-transform"
-          />
-          {!isFollowing && currentUser?.id !== currentReel.creatorId && onToggleFollowUser && (
-            <button
-              onClick={() => onToggleFollowUser(currentReel.creatorId)}
-              className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-4 bg-amber-500 text-slate-950 rounded-full flex items-center justify-center shadow-lg hover:scale-110 active:scale-90 transition-transform"
-            >
-              <Plus className="w-3 h-3 stroke-[3]" />
-            </button>
-          )}
+        <div className="flex items-center space-x-2 pointer-events-auto">
+          {mediaItems.length > 1 && <div className="inline-flex items-center space-x-1 px-1.5 py-1 bg-transparent text-xs font-extrabold text-white drop-shadow-md"><span className="text-amber-400 font-mono font-black">{activeMediaIndex + 1}</span><span className="text-white/70 font-mono">/</span><span className="text-white font-mono font-bold">{mediaItems.length}</span></div>}
+          {isVideo && <button onClick={toggleMute} className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto" title={isMuted ? "Activar sonido" : "Silenciar video"} id="android-mute-toggle">{isMuted ? <VolumeX className="w-5 h-5 drop-shadow-md" /> : <Volume2 className="w-5 h-5 drop-shadow-md" />}</button>}
         </div>
+      </header>
 
-        <button
-          onClick={() => {
-            if (isGuest) {
-              if (onGuestInteraction) onGuestInteraction("dar Me Gusta");
-              setAuthDescription("dar 'Me gusta'");
-              setShowAuthModal(true);
-            } else {
-              onLikeReel(currentReel.id);
-            }
-          }}
-          className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
-          id="android-reel-like-btn"
-        >
-          <Heart
-            className={`w-7 h-7 scale-x-120 stroke-[1.8] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
-              isLiked ? "fill-rose-500 text-rose-500 filter drop-shadow-[0_0_12px_rgba(244,63,94,0.85)]" : "text-white group-hover:text-rose-400"
-            }`}
-          />
-          <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{currentReel.likes || 0}</span>
-        </button>
-
-        <button
-          onClick={() => setShowComments(true)}
-          className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
-          id="android-reel-comment-btn"
-        >
-          <MessageCircle className="w-7 h-7 scale-x-120 stroke-[1.8] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
-          <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{currentReel.comments?.length || 0}</span>
-        </button>
-
-        <button
-          onClick={() => {
-            if (isGuest) {
-              if (onGuestInteraction) onGuestInteraction("guardar");
-              setAuthDescription("guardar este Reel");
-              setShowAuthModal(true);
-            } else {
-              onToggleSaveReel(currentReel.id);
-            }
-          }}
-          className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
-          id="android-reel-save-btn"
-        >
-          <Bookmark
-            className={`w-7 h-7 scale-x-120 stroke-[1.8] transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] ${
-              isSaved ? "fill-amber-400 text-amber-400 filter drop-shadow-[0_0_12px_rgba(245,158,11,0.85)]" : "text-white group-hover:text-amber-400"
-            }`}
-          />
-          <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Guardar</span>
-        </button>
-
-        <button
-          onClick={handleShare}
-          className="flex flex-col items-center group cursor-pointer active:scale-85 transition-transform"
-          id="android-reel-share-btn"
-        >
-          <Share2 className="w-7 h-7 scale-x-120 stroke-[1.8] text-white group-hover:text-slate-200 transition-all drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]" />
-          <span className="text-[11px] font-black mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Compartir</span>
-        </button>
+      <div className="absolute right-2.5 sm:right-3.5 bottom-6 sm:bottom-8 z-30 flex flex-col items-center space-y-3.5 select-none p-0" id={`android-reel-interaction-bar-${currentReel.id}`}>
+        <div className="flex flex-col items-center"><button onClick={handleCreatorNav} className="relative rounded-full transform hover:scale-110 active:scale-95 transition-transform cursor-pointer drop-shadow-sm" id="android-mobile-creator-avatar-btn"><img src={displayAvatar} alt={displayUsername} className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover" /></button></div>
+        <div className="flex flex-col items-center">
+          <button onClick={() => { if (isGuest) { onGuestInteraction?.("dar me gusta"); setAuthDescription("dar 'Me gusta'"); setShowAuthModal(true); } else { onLikeReel(currentReel.id); } }} className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${isLiked ? "text-rose-500" : "text-white hover:text-rose-400"}`} id="android-reel-like-btn">
+            <Heart strokeWidth={2.2} className={`w-8 h-7 sm:w-9 sm:h-8 scale-x-110 ${isLiked ? "fill-rose-500 text-rose-500 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]" : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"}`} />
+          </button><span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">{currentReel.likes || 0}</span>
+        </div>
+        <div className="flex flex-col items-center">
+          <button onClick={() => { if (isGuest) { onGuestInteraction?.("comentar"); setAuthDescription("comentar en los Reels"); setShowAuthModal(true); } else { setShowComments(true); } }} className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center text-white hover:text-amber-400 hover:scale-115 active:scale-95 transition-all cursor-pointer" id="android-reel-comment-btn">
+            <MessageCircle strokeWidth={2.2} className="w-8 h-7 sm:w-9 sm:h-8 scale-x-110 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]" />
+          </button><span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">{currentReel.comments?.length || 0}</span>
+        </div>
+        <div className="flex flex-col items-center">
+          <button onClick={() => { if (isGuest) { onGuestInteraction?.("guardar publicaciones"); setAuthDescription("guardar este Reel"); setShowAuthModal(true); } else { onToggleSaveReel(currentReel.id); } }} className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${isSaved ? "text-amber-400" : "text-white hover:text-amber-300"}`} id="android-reel-save-btn">
+            <Bookmark strokeWidth={2.2} className={`w-8 h-7 sm:w-9 sm:h-8 scale-x-110 ${isSaved ? "fill-amber-400 text-amber-400 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]" : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"}`} />
+          </button><span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">{currentReel.saves ?? 0}</span>
+        </div>
+        <div className="flex flex-col items-center">
+          <button onClick={handleShare} className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center text-white hover:text-cyan-400 hover:scale-115 active:scale-95 transition-all cursor-pointer" id="android-reel-share-btn">
+            <Share2 strokeWidth={2.2} className="w-8 h-7 sm:w-9 sm:h-8 scale-x-110 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]" />
+          </button><span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">{currentReel.shares || 0}</span>
+        </div>
       </div>
-
-      {/* Bottom Info: Clean, transparent overlay without dark shadow. Only displays username and caption */}
-      <div className="absolute bottom-2 left-0 right-0 z-20 pointer-events-none pb-2 px-4">
-        <div className="max-w-[calc(100%-72px)]">
-          {/* Author Username ONLY */}
-          <div className="flex items-center space-x-2 mb-1 pointer-events-auto">
-            <span
-              onClick={handleCreatorNav}
-              className="text-sm font-black text-white hover:text-amber-400 cursor-pointer flex items-center space-x-1 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight"
-            >
-              <span>@{displayUsername}</span>
-            </span>
+      <div className="absolute left-4 right-20 bottom-4 sm:bottom-6 z-20 pointer-events-none">
+        <div className="max-w-[calc(100%-10px)]">
+          <div className="text-white bg-transparent p-3 rounded-xl drop-shadow-md">
+            <h3 className="font-display font-bold text-base tracking-wide flex items-center space-x-2.5">
+              <span onClick={handleCreatorNav} className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm pointer-events-auto">@{displayUsername}</span>
+              {currentUser?.id !== currentReel.creatorId && onToggleFollowUser && <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (isGuest) onGuestInteraction?.("seguir a creadores"); else onToggleFollowUser(currentReel.creatorId); }} className={`text-xs font-bold px-3 py-1 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-sm pointer-events-auto ${isFollowing ? "text-white/80 border-white/60" : "text-white border-white"}`}>{isFollowing ? "Siguiendo" : "+ Seguir"}</button>}
+            </h3>
+            {currentReel.description && <p className="text-sm text-white/95 font-medium mt-1.5 line-clamp-3 leading-relaxed drop-shadow-sm">{currentReel.description}</p>}
+            {taggedProduct && handleProductSelect && <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} onClick={() => handleProductSelect(taggedProduct)} className="bg-black/10 backdrop-blur-md border border-white/15 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/20 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg overflow-hidden pointer-events-auto select-none mt-2" id={`tagged-product-${currentReel.id}`} style={{ marginLeft: "-4px", width: "285.606px", maxWidth: "100%", height: "68.3438px" }}>
+              <div className="w-20 shrink-0 h-full relative overflow-hidden bg-black/10 border-r border-white/10">{taggedProduct.imageUrl || taggedProduct.images?.[0] ? <img src={taggedProduct.imageUrl || taggedProduct.images?.[0]} alt={taggedProduct.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-800 text-amber-400"><ShoppingBag className="w-5 h-5" /></div>}</div>
+              <div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-black/10"><span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center"><ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado</span><h4 className="text-xs font-bold truncate text-slate-100">{taggedProduct.name}</h4><div className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-400 font-mono">${(Number(taggedProduct.price) || 0).toFixed(2)}</span><span className="text-[9px] text-amber-400 font-semibold">Ver detalles →</span></div></div>
+            </motion.div>}
           </div>
-
-          {/* Description */}
-          {currentReel.description && (
-            <p className="text-xs text-white/95 font-medium line-clamp-2 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] leading-relaxed">
-              {currentReel.description}
-            </p>
-          )}
-
-          {taggedProduct && handleProductSelect && (
-            <motion.div
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.2 }}
-              onClick={() => handleProductSelect(taggedProduct)}
-              className="mt-2 bg-black/60 border border-white/20 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/75 hover:border-amber-500/50 active:scale-[0.98] transition-all shadow-lg overflow-hidden pointer-events-auto select-none"
-              id={`tagged-product-${currentReel.id}`}
-              style={{
-                width: "285.606px",
-                maxWidth: "100%",
-                height: "68.3438px"
-              }}
-            >
-              <div className="w-20 shrink-0 h-full relative overflow-hidden bg-black/20 border-r border-white/10">
-                {taggedProduct.imageUrl || (taggedProduct.images && taggedProduct.images[0]) ? (
-                  <img
-                    src={taggedProduct.imageUrl || (taggedProduct.images && taggedProduct.images[0])}
-                    alt={taggedProduct.name}
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-slate-800 text-amber-400">
-                    <ShoppingBag className="w-5 h-5" />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-transparent">
-                <span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center">
-                  <ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado
-                </span>
-                <h4 className="text-xs font-bold truncate text-slate-100">{taggedProduct.name}</h4>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-emerald-400 font-mono">
-                    ${(Number(taggedProduct.price) || 0).toFixed(2)}
-                  </span>
-                  <span className="text-[9px] text-amber-400 font-semibold">Ver detalles →</span>
-                </div>
-              </div>
-            </motion.div>
-          )}
         </div>
       </div>
-
       {/* Left Cart Side Panel */}
       <AnimatePresence>
         {showCartPanel && (
