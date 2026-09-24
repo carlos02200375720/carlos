@@ -401,7 +401,7 @@ export default function ReelsView({
                             referrerPolicy="no-referrer"
                           />
                         )}
-                        {isCurrent ? (
+                        {isCurrent || index === activeReelIndex + 1 ? (
                           <ReelVideoItem
                             key={`${reel.id}_${index}_media_${currentMediaIdx}`}
                             reel={{
@@ -410,7 +410,8 @@ export default function ReelsView({
                               hlsUrl: currentMedia.hlsUrl || (currentMedia.url.includes(".m3u8") ? currentMedia.url : reel.hlsUrl),
                             }}
                             index={index}
-                            isCurrent={true}
+                            isCurrent={isCurrent}
+                            shouldPreload={isCurrent || index === activeReelIndex + 1}
                             isPlaying={isPlaying}
                             isMuted={isMuted}
                             mediaAspectRatio={mediaAspectRatios[reel.id]}
@@ -552,6 +553,7 @@ interface ReelVideoItemProps {
   reel: Reel;
   index: number;
   isCurrent: boolean;
+  shouldPreload: boolean;
   isPlaying: boolean;
   isMuted: boolean;
   mediaAspectRatio?: 'vertical' | 'square' | 'horizontal' | 'horizontal_or_square';
@@ -561,7 +563,7 @@ interface ReelVideoItemProps {
   onRegisterRef: (index: number, el: HTMLVideoElement | null) => void;
 }
 
-const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPlaying, isMuted, mediaAspectRatio, onVideoClick, onDoubleTap, onAspectRatioDetected, onRegisterRef }: ReelVideoItemProps) {
+const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, shouldPreload, isPlaying, isMuted, mediaAspectRatio, onVideoClick, onDoubleTap, onAspectRatioDetected, onRegisterRef }: ReelVideoItemProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const rawSource = (reel.hlsUrl || reel.videoUrl)?.trim();
@@ -608,7 +610,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
     video.removeAttribute("src");
     video.load();
 
-    if (!isCurrent) return;
+    if (!isCurrent && !shouldPreload) return;
 
     if (hlsSource && Hls.isSupported() && hlsSource.includes(".m3u8")) {
       const hls = new Hls({
@@ -621,7 +623,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
         maxBufferHole: 0.1,
         nudgeMaxRetry: 3,
         nudgeOffset: 0.1,
-        startFragPrefetch: false,
+        startFragPrefetch: true,
         capLevelToPlayerSize: true,
         manifestLoadingMaxRetry: 4,
         levelLoadingMaxRetry: 4,
@@ -676,7 +678,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
       video.removeAttribute("src");
       video.load();
     };
-  }, [hlsSource, isCurrent]);
+  }, [hlsSource, shouldPreload]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -701,14 +703,14 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
       el.defaultMuted = isMuted;
       el.volume = isMuted ? 0 : 1;
     }
-    onRegisterRef(index, el);
+    if (isCurrent) onRegisterRef(index, el);
   }, [index, isMuted, onRegisterRef]);
 
   useEffect(() => () => {
     clearStallTimer();
     hlsRef.current?.destroy();
     hlsRef.current = null;
-    onRegisterRef(index, null);
+    if (isCurrent) onRegisterRef(index, null);
   }, [index, onRegisterRef]);
 
   const rawPoster = reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".m3u8") ? reel.thumbnailUrl : undefined;
