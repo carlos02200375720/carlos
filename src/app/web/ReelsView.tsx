@@ -578,15 +578,9 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
   };
 
   const handleWaitingOrStalled = () => {
+    // HLS.js owns buffering/recovery. Calling play() after a fixed timeout
+    // does not refill an empty buffer and can create playback churn.
     clearStallTimer();
-    if (!isCurrent || !isPlaying) return;
-    stallTimerRef.current = setTimeout(() => {
-      const v = videoRef.current;
-      if (!v || !isCurrent || !isPlaying) return;
-      if (v.paused) {
-        v.play().catch(() => {});
-      }
-    }, 1500);
   };
 
   const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -620,18 +614,18 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, isPl
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        backBufferLength: 30,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        maxBufferSize: 60 * 1000 * 1000,
-        maxBufferHole: 0.5,
-        nudgeMaxRetry: 10,
+        backBufferLength: 6,
+        maxBufferLength: 12,
+        maxMaxBufferLength: 24,
+        maxBufferSize: 24 * 1000 * 1000,
+        maxBufferHole: 0.1,
+        nudgeMaxRetry: 3,
         nudgeOffset: 0.1,
-        startFragPrefetch: true,
+        startFragPrefetch: false,
         capLevelToPlayerSize: true,
         manifestLoadingMaxRetry: 4,
         levelLoadingMaxRetry: 4,
-        fragLoadingMaxRetry: 6,
+        fragLoadingMaxRetry: 4,
         fragLoadingRetryDelay: 500,
       });
       hlsRef.current = hls;
