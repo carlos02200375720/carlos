@@ -112,38 +112,19 @@ async function startServer() {
 
     try {
       const gcsFile = bucket.file(cleanPath);
-      const [exists] = await gcsFile.exists();
-      if (!exists) {
-        if (cleanPath.endsWith("poster.jpg")) {
-          const posterPath = path.join(process.cwd(), "public", "default-poster.jpg");
-          if (fs.existsSync(posterPath)) {
-            res.setHeader("Content-Type", "image/jpeg");
-            res.setHeader("Cache-Control", "public, max-age=86400");
-            if (req.method === "HEAD") return res.status(200).end();
-            return res.sendFile(posterPath);
-          }
-        }
-        return res.status(404).type("text/plain").send(`Media resource not found in Google Cloud Storage: ${cleanPath}`);
-      }
+      const isHlsPlaylist = cleanPath.endsWith(".m3u8");
+      const isHlsSegment = cleanPath.endsWith(".ts");
 
-      const [metadata] = await gcsFile.getMetadata();
-      const fileSize = Number(metadata.size) || 0;
-
-      if (cleanPath.endsWith(".m3u8")) {
+      // HLS resources have immutable, known content types. Avoid an
+      // exists() + getMetadata() RPC before every playlist/segment request;
+      // those extra GCS round trips were becoming the bottleneck as the
+      // feed generated more segment requests.
+      if (isHlsPlaylist) {
         res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      } else if (cleanPath.endsWith(".ts")) {
+        res.setHeader("Cache-Control", "no-cache, must-revalidate");
+      } else if (isHlsSegment) {
         res.setHeader("Content-Type", "video/mp2t");
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      } else if (cleanPath.endsWith(".mp4") || cleanPath.endsWith(".m4v")) {
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Cache-Control", "public, max-age=86400");
-      } else if (cleanPath.endsWith(".webm")) {
-        res.setHeader("Content-Type", "video/webm");
-        res.setHeader("Cache-Control", "public, max-age=86400");
-      } else if (cleanPath.endsWith(".mov")) {
-        res.setHeader("Content-Type", "video/quicktime");
-        res.setHeader("Cache-Control", "public, max-age=86400");
       } else if (cleanPath.endsWith(".jpg") || cleanPath.endsWith(".jpeg")) {
         res.setHeader("Content-Type", "image/jpeg");
         res.setHeader("Cache-Control", "public, max-age=86400");
@@ -153,47 +134,36 @@ async function startServer() {
       } else if (cleanPath.endsWith(".webp")) {
         res.setHeader("Content-Type", "image/webp");
         res.setHeader("Cache-Control", "public, max-age=86400");
-      } else if (metadata.contentType) {
-        res.setHeader("Content-Type", metadata.contentType);
+      } else if (cleanPath.endsWith(".mp4") || cleanPath.endsWith(".m4v")) {
+        res.setHeader("Content-Type", "video/mp4");
         res.setHeader("Cache-Control", "public, max-age=86400");
-      } else {
-        res.setHeader("Content-Type", "application/octet-stream");
+      } else if (cleanPath.endsWith(".webm")) {
+        res.setHeader("Content-Type", "video/webm");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+      } else if (cleanPath.endsWith(".mov")) {
+        res.setHeader("Content-Type", "video/quicktime");
         res.setHeader("Cache-Control", "public, max-age=86400");
       }
 
       res.setHeader("Accept-Ranges", "bytes");
+      if (req.method === "HEAD") return res.status(200).end();
 
-      if (req.method === "HEAD") {
-        if (fileSize > 0) res.setHeader("Content-Length", fileSize);
-        return res.status(200).end();
-      }
-
-      const range = req.headers.range;
-      if (range && fileSize > 0) {
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-        const chunkSize = end - start + 1;
-
-        res.status(206);
-        res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
-        res.setHeader("Content-Length", chunkSize);
-
-        const stream = gcsFile.createReadStream({ start, end });
-        stream.on("error", (err) => {
-          if (!res.headersSent) res.status(500).end();
-        });
-        stream.pipe(res);
-      } else {
-        if (fileSize > 0) {
-          res.setHeader("Content-Length", fileSize);
+      // HLS playlists/segments are streamed directly. No metadata lookup is
+      // needed, and the storage stream reports missing objects as errors.
+      const stream = gcsFile.createReadStream();
+      stream.on("error", (err: any) => {
+        console.error(`Error streaming GCS resource (${cleanPath}):`, err?.message || err);
+        if (!res.headersSent) {
+          const status = err?.code === 404 ? 404 : 502;
+          res.status(status).type("text/plain").send(
+            status === 404 ? "Media resource not found" : "Google Cloud Storage unavailable"
+          );
+        } else {
+          res.destroy(err);
         }
-        const stream = gcsFile.createReadStream();
-        stream.on("error", (err) => {
-          if (!res.headersSent) res.status(500).end();
-        });
-        stream.pipe(res);
-      }
+      });
+      stream.pipe(res);
+    }
     } catch (err) {
       console.error(`Error streaming GCS resource (${cleanPath}):`, err);
       if (!res.headersSent) {
