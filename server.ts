@@ -163,7 +163,6 @@ async function startServer() {
         }
       });
       stream.pipe(res);
-    }
     } catch (err) {
       console.error(`Error streaming GCS resource (${cleanPath}):`, err);
       if (!res.headersSent) {
