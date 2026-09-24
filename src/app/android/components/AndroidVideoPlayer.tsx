@@ -78,15 +78,9 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
     };
 
     const handleWaitingOrStalled = () => {
+      // A network buffer stall is not a paused video. Do not repeatedly call
+      // play() while HLS.js is waiting for the next segment.
       clearStallTimer();
-      if (!isCurrentRef.current) return;
-      stallTimerRef.current = setTimeout(() => {
-        const v = videoRef.current;
-        if (!v || !isCurrentRef.current) return;
-        if (v.paused) {
-          v.play().catch(() => {});
-        }
-      }, 1500);
     };
 
     // Keep callback refs stable to prevent unneeded re-renders or effect re-runs
@@ -256,15 +250,16 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
           const hls = new Hls({
             enableWorker: true,
             lowLatencyMode: false,
-            backBufferLength: 30,
-            maxBufferLength: 30,
-            maxMaxBufferLength: 60,
-            maxBufferSize: 60 * 1000 * 1000,
-            maxBufferHole: 0.5,
-            nudgeMaxRetry: 10,
+            backBufferLength: 6,
+            maxBufferLength: 12,
+            maxMaxBufferLength: 24,
+            maxBufferSize: 24 * 1000 * 1000,
+            maxBufferHole: 0.1,
+            nudgeMaxRetry: 3,
             nudgeOffset: 0.1,
-            startFragPrefetch: true,
-            fragLoadingMaxRetry: 6,
+            startFragPrefetch: false,
+            capLevelToPlayerSize: true,
+            fragLoadingMaxRetry: 4,
             fragLoadingRetryDelay: 500,
           });
           hlsRef.current = hls;
@@ -416,7 +411,7 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             playsInline
             disablePictureInPicture
             webkit-playsinline="true"
-            preload="auto"
+            preload="metadata"
             className={
               effectiveAspect === 'vertical'
                 ? 'w-full h-full object-cover'
