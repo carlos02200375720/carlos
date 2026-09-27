@@ -70,6 +70,7 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
     const lastTapTimeRef = useRef<number>(0);
     const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const playInProgressRef = useRef(false);
+    const pendingPlayRef = useRef(false);
     const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastProgressTimeRef = useRef<number>(0);
     const stallCountRef = useRef<number>(0);
@@ -79,12 +80,6 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
         clearTimeout(stallTimerRef.current);
         stallTimerRef.current = null;
       }
-    };
-
-    const handleWaitingOrStalled = () => {
-      // A network buffer stall is not a paused video. Do not repeatedly call
-      // play() while HLS.js is waiting for the next segment.
-      clearStallTimer();
     };
 
     // Keep callback refs stable to prevent unneeded re-renders or effect re-runs
@@ -125,14 +120,18 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
         setIsPlaying(true);
         return;
       }
-      if (playInProgressRef.current) return;
+      if (playInProgressRef.current) {
+        pendingPlayRef.current = true;
+        return;
+      }
       playInProgressRef.current = true;
+      pendingPlayRef.current = false;
 
       try {
         await video.play();
         setIsPlaying(true);
       } catch (err: any) {
-        // If autoplay with sound was blocked by browser, mute and retry silently
+        // If autoplay with sound was blocked by browser or initial play failed while unmuted, mute and retry silently
         if (err?.name === "NotAllowedError" || !video.muted) {
           video.muted = true;
           video.defaultMuted = true;
@@ -141,12 +140,38 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
           try {
             await video.play();
             setIsPlaying(true);
-          } catch {}
+          } catch {
+            pendingPlayRef.current = true;
+          }
+        } else if (err?.name === "AbortError") {
+          pendingPlayRef.current = true;
         }
       } finally {
         playInProgressRef.current = false;
+        if (pendingPlayRef.current && isCurrentRef.current && autoPlayRef.current && videoRef.current?.paused) {
+          pendingPlayRef.current = false;
+          if ((videoRef.current?.readyState ?? 0) >= 2) {
+            setTimeout(() => {
+              if (isCurrentRef.current && autoPlayRef.current && videoRef.current?.paused) {
+                safePlay();
+              }
+            }, 30);
+          }
+        }
       }
     }, []);
+
+    const handleWaitingOrStalled = () => {
+      clearStallTimer();
+      if (!isCurrentRef.current || !autoPlayRef.current) return;
+      stallTimerRef.current = setTimeout(() => {
+        const v = videoRef.current;
+        if (!v || !isCurrentRef.current || !autoPlayRef.current) return;
+        if (v.paused && v.readyState >= 2) {
+          safePlay();
+        }
+      }, 800);
+    };
 
     const checkVideoDimensions = useCallback(() => {
       const video = videoRef.current;
@@ -256,8 +281,8 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
             enableWorker: true,
             lowLatencyMode: false,
             backBufferLength: 6,
-            maxBufferLength: 12,
-            maxMaxBufferLength: 24,
+            maxBufferLength: isCurrentRef.current ? 12 : 4,
+            maxMaxBufferLength: isCurrentRef.current ? 24 : 8,
             maxBufferSize: 24 * 1000 * 1000,
             maxBufferHole: 0.1,
             nudgeMaxRetry: 3,
@@ -304,11 +329,13 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
           hls.attachMedia(video);
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = targetSource;
+          video.load();
           if (isCurrentRef.current && autoPlayRef.current) {
             safePlay();
           }
         } else {
           video.src = targetSource;
+          video.load();
           if (isCurrentRef.current && autoPlayRef.current) {
             safePlay();
           }
@@ -411,17 +438,23 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
             playsInline
             disablePictureInPicture
             webkit-playsinline="true"
-            preload="metadata"
+            preload={isCurrent ? "auto" : "metadata"}
             className={
               effectiveAspect === 'vertical'
                 ? 'w-full h-full object-cover object-center block'
                 : 'w-full h-auto max-h-full object-contain object-center block bg-black'
             }
             onLoadedMetadata={checkVideoDimensions}
-            onLoadedData={checkVideoDimensions}
+            onLoadedData={() => {
+              checkVideoDimensions();
+              if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current) safePlay();
+            }}
             onResize={checkVideoDimensions}
             onCanPlay={() => {
               checkVideoDimensions();
+              if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current) safePlay();
+            }}
+            onCanPlayThrough={() => {
               if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current) safePlay();
             }}
             onTimeUpdate={(e) => {
@@ -468,6 +501,7 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
     );
   }
 );
-MovilVideoPlay.displayName = 'MovilVideoPlay';
+MovilVideoPlay.displayName = 'VideoPlay';
+export const VideoPlay = MovilVideoPlay;
 export const AndroidVideoPlayer = MovilVideoPlay;
 export default MovilVideoPlay;

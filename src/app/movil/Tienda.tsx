@@ -3,7 +3,7 @@ import { Product, CartItem, User, Order, Reel } from "../../types";
 import { ShoppingBag, Search, Plus, Minus, Trash2, X, Check, ArrowRight, Sparkles, Filter, CreditCard, Tag, Truck, ShieldCheck, Heart, RefreshCw, Star, Eye, AlertCircle, ShoppingCart, Volume2, VolumeX, Play, CheckCircle2, Bookmark, Globe, Loader2, PackageCheck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
-import { AndroidVideoPlayer } from "./components/movilvideoPlay";
+import { AndroidVideoPlayer } from "./components/videoplay";
 import { navigateTo, getProductPath, parseRoute } from "../../router";
 
 export interface AndroidShopProps {
@@ -1457,53 +1457,28 @@ export default function Tienda({
 
               {cart.map((item, idx) => {
                 const isSelected = selectedCartIndices.includes(idx);
+                const shippingFee =
+                  item.selectedShippingCost !== undefined
+                    ? Number(item.selectedShippingCost)
+                    : Number(item.product.shippingCost ?? 0);
+                const carrierName = item.selectedCarrier || item.product.selectedCarrier;
+
                 return (
                   <div
                     key={`${item.product.id}-${idx}`}
-                    className={`flex items-center justify-between rounded-3xl border p-3 shadow-xs transition-all ${
+                    className={`flex items-stretch rounded-2xl border transition-all shadow-sm overflow-hidden h-28 shrink-0 relative ${
                       isSelected
-                        ? "border-amber-300/90 bg-amber-50/40 ring-1 ring-amber-400/30"
-                        : "border-slate-200 bg-slate-50/70 opacity-60 hover:opacity-80"
+                        ? "bg-amber-500/[0.04] border-amber-400/80 shadow-amber-500/10 ring-1 ring-amber-400/40"
+                        : "bg-slate-50/70 border-slate-200 opacity-70 hover:opacity-100"
                     }`}
+                    id={`android-cart-item-${item.product.id}-${idx}`}
                   >
-                    <div className="flex items-center gap-2.5">
-                      {/* Checkbox */}
-                      <button
-                        type="button"
-                        onClick={() => toggleSelectCartItem(idx)}
-                        aria-label={isSelected ? "Deseleccionar producto" : "Seleccionar producto"}
-                        className="shrink-0 p-1 -m-1 cursor-pointer"
-                      >
-                        <div
-                          className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all ${
-                            isSelected
-                              ? "bg-amber-500 text-slate-950 shadow-xs font-black"
-                              : "border-2 border-slate-300 bg-white hover:border-amber-400"
-                          }`}
-                        >
-                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                        </div>
-                      </button>
-
-                      <div className="flex flex-col items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleItemQtyChange(idx, item, Math.max(1, (item.quantity || 1) - 1))}
-                          className="p-1.5 rounded-full bg-white border border-slate-300 text-slate-900 active:scale-90 cursor-pointer shadow-2xs hover:bg-slate-50"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="text-[11px] font-black w-6 text-center text-slate-900">{item.quantity || 1}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleItemQtyChange(idx, item, (item.quantity || 1) + 1)}
-                          className="p-1.5 rounded-full bg-white border border-slate-300 text-slate-900 active:scale-90 cursor-pointer shadow-2xs hover:bg-slate-50"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </div>
-                      <button
-                        type="button"
+                    <div className="w-24 sm:w-28 shrink-0 relative bg-slate-200 h-full overflow-hidden">
+                      <img
+                        src={item.product.imageUrl}
+                        alt={item.product.name}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
                         onClick={() => {
                           setSelectedProduct(item.product);
                           setIsCartOpen(false);
@@ -1513,59 +1488,87 @@ export default function Tienda({
                             navigateTo(getProductPath(item.product));
                           }
                         }}
-                        className="cursor-pointer"
-                      >
-                        <img
-                          src={item.product.imageUrl}
-                          alt={item.product.name}
-                          className="w-16 h-16 rounded-2xl object-cover border border-slate-200 hover:opacity-90 transition-opacity"
-                        />
-                      </button>
+                      />
                     </div>
 
-                    <div className="flex-1 px-3">
-                      <div className="flex items-start justify-between gap-1">
-                        <h4
-                          onClick={() => {
-                            setSelectedProduct(item.product);
-                            setIsCartOpen(false);
-                            if (onSelectProduct) {
-                              onSelectProduct(item.product);
-                            } else {
-                              navigateTo(getProductPath(item.product));
-                            }
-                          }}
-                          className="text-[12px] font-black text-slate-900 line-clamp-1 cursor-pointer hover:text-amber-600 transition-colors"
-                        >
-                          {item.product.name}
-                        </h4>
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md shrink-0 ${
-                          isSelected ? "bg-amber-100 text-amber-900" : "bg-slate-200 text-slate-500"
-                        }`}>
-                          {isSelected ? "A pagar" : "Omitido"}
-                        </span>
+                    <div className="flex-1 min-w-0 p-2.5 flex flex-col justify-between h-full">
+                      <div>
+                        <div className="flex items-start justify-between gap-1">
+                          <h4
+                            className="text-xs font-extrabold text-slate-900 truncate cursor-pointer hover:text-amber-600 transition-colors"
+                            title={item.product.name}
+                            onClick={() => {
+                              setSelectedProduct(item.product);
+                              setIsCartOpen(false);
+                              if (onSelectProduct) {
+                                onSelectProduct(item.product);
+                              } else {
+                                navigateTo(getProductPath(item.product));
+                              }
+                            }}
+                          >
+                            {item.product.name}
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => handleItemRemove(idx, item)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0 -mt-1 -mr-1"
+                            title="Eliminar producto"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                          <span className="text-xs font-mono font-extrabold text-amber-600">
+                            ${item.product.price.toFixed(2)}
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-600 bg-slate-200/80 px-1.5 py-0.5 rounded leading-tight">
+                            Envío: {shippingFee > 0 ? `$${shippingFee.toFixed(2)}` : "Gratis"}
+                            {carrierName ? ` (${carrierName})` : ""}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                        <p className="text-[11px] text-slate-500 font-bold">${item.product.price.toFixed(2)} c/u</p>
-                        <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/70 px-1.5 py-0.5 rounded">
-                          {(() => {
-                            const fee =
-                              item.selectedShippingCost !== undefined
-                                ? Number(item.selectedShippingCost)
-                                : Number(item.product.shippingCost ?? 0);
-                            return fee > 0 ? `Envío: $${fee.toFixed(2)}` : "Envío: Gratis";
-                          })()}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-[11px] font-black text-amber-600">Subtotal ${(item.product.price * (item.quantity || 1)).toFixed(2)}</span>
+
+                      {/* Incrementor buttons & Selection in bottom-right */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleItemQtyChange(idx, item, Math.max(1, (item.quantity || 1) - 1))}
+                            className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="text-xs font-mono font-extrabold text-slate-900 px-1">
+                            {item.quantity || 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleItemQtyChange(idx, item, (item.quantity || 1) + 1)}
+                            disabled={item.product.stock !== undefined && (item.quantity || 1) >= item.product.stock}
+                            className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs disabled:opacity-50 transition-colors cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {/* Selector in bottom-right corner */}
                         <button
                           type="button"
-                          onClick={() => handleItemRemove(idx, item)}
-                          className="p-1.5 rounded-full bg-rose-50 text-rose-500 hover:bg-rose-100 active:scale-90 cursor-pointer transition-colors"
-                          title="Eliminar producto"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSelectCartItem(idx);
+                          }}
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+                            isSelected
+                              ? "bg-amber-500 border-amber-500 text-slate-950 shadow-sm shadow-amber-500/30 scale-105"
+                              : "bg-white border-slate-300 hover:border-amber-400 text-transparent hover:text-slate-300"
+                          }`}
+                          title={isSelected ? "Deseleccionar producto para pago" : "Seleccionar producto para pagar"}
+                          aria-label={isSelected ? "Deseleccionar producto" : "Seleccionar producto"}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
                         </button>
                       </div>
                     </div>

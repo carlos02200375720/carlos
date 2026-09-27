@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
 import AndroidUserPublicationsFeed from "./components/AndroidUserPublicationsFeed";
 import AndroidPublicationCover from "./components/AndroidPublicationCover";
-import AndroidPublishView from "./PublishView";
+import AndroidPublishView from "./publicasion";
 import AndroidLoginView from "./login";
 import { isSuperAdmin } from "../../superAdmin";
 

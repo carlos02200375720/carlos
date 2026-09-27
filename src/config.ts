@@ -34,16 +34,17 @@ export const getMediaUrl = (path: string | undefined | null): string => {
   const trimmed = path.trim();
   if (!trimmed) return "";
 
-  // If this is a Google Cloud Storage URL (HLS playlist, video segment, MP4, image, avatar, or publication),
-  // route it through our backend streaming proxy (/api/hls/... or /uploads/...) so the browser's Hls.js / MSE
-  // and <video> tags receive full CORS headers (Access-Control-Allow-Origin: *) and avoid cross-origin blocking.
+  // If this is a Google Cloud Storage URL:
+  // - For HLS playlists/segments (.m3u8 / .ts), route through /api/hls/... so Hls.js relative segment resolution works seamlessly.
+  // - For direct MP4/WebM/MOV videos and images, serve directly from storage.googleapis.com CDN (which has CORS *, HTTP/2 & HTTP/3, and native 206 Range support) without bottlenecking through the Node.js proxy.
   const gcsMatch = trimmed.match(/^https?:\/\/storage\.googleapis\.com\/[^/]+\/(.+)$/);
   if (gcsMatch) {
     const rawSubpath = gcsMatch[1];
-    const isHls = rawSubpath.startsWith("hls/") || rawSubpath.includes(".m3u8");
-    const relativeProxy = isHls
-      ? `/api/hls/${rawSubpath.replace(/^hls\//, "")}`
-      : `/uploads/${rawSubpath}`;
+    const isHls = rawSubpath.startsWith("hls/") || rawSubpath.includes(".m3u8") || rawSubpath.endsWith(".ts");
+    if (!isHls) {
+      return trimmed;
+    }
+    const relativeProxy = `/api/hls/${rawSubpath.replace(/^hls\//, "")}`;
 
     if (isNativeMobileWrapper() || isExternalStaticHost()) {
       const trimmedBackend = (BACKEND_URL || CLOUD_RUN_BACKEND_URL).replace(/\/$/, "");

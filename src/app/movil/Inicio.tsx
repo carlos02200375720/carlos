@@ -2,12 +2,12 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Reel, ReelMedia, Product, User, Comment, CartItem, NavigationTab } from "../../types";
 import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X, RefreshCw, Video, Minus, Trash2, CreditCard, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { MovilVideoPlay, MovilVideoPlayHandle } from "./components/movilvideoPlay";
+import { MovilVideoPlay, MovilVideoPlayHandle } from "./components/videoplay";
 import { AndroidProgressBar } from "./components/barraprogreso";
 import { AndroidAuthModal } from "./components/AndroidAuthModal";
 import { MovilHamburgerButton, MovilHamburgerMenu } from "./components/MovilHamburgerMenu";
 import { getMediaUrl } from "../../config";
-import { getInicioShareUrl } from "../../router";
+import { getInicioShareUrl, findReelByInicioParam } from "../../router";
 
 export interface AndroidInicioProps {
   reels: Reel[];
@@ -84,12 +84,15 @@ export default function Inicio({
 }: AndroidInicioProps) {
   const [currentIndex, setCurrentIndex] = useState(() => {
     if (initialReelId && reels.length > 0) {
-      const idx = reels.findIndex((r) => r.id === initialReelId);
+      const matched = findReelByInicioParam(reels, initialReelId);
+      const idx = matched ? reels.findIndex((r) => r.id === matched.id) : -1;
       if (idx !== -1) return idx;
     }
     return 0;
   });
-  const lastSeenInitialReelIdPropRef = useRef<string | null>(initialReelId || null);
+  const lastSeenInitialReelIdPropRef = useRef<string | null>(
+    initialReelId && reels.length > 0 ? initialReelId : null
+  );
   const internalSwipedReelIdsRef = useRef<Set<string>>(new Set());
   const onActiveReelChangeRef = useRef(onActiveReelChange);
   onActiveReelChangeRef.current = onActiveReelChange;
@@ -200,11 +203,13 @@ export default function Inicio({
     if (lastSeenInitialReelIdPropRef.current === initialReelId) {
       return;
     }
-    const idx = reels.findIndex((r) => r.id === initialReelId);
+    const matched = findReelByInicioParam(reels, initialReelId);
+    const idx = matched ? reels.findIndex((r) => r.id === matched.id) : -1;
     if (idx !== -1) {
       lastSeenInitialReelIdPropRef.current = initialReelId;
-      if (internalSwipedReelIdsRef.current.has(initialReelId)) {
+      if (internalSwipedReelIdsRef.current.has(initialReelId) || internalSwipedReelIdsRef.current.has(matched!.id)) {
         internalSwipedReelIdsRef.current.delete(initialReelId);
+        internalSwipedReelIdsRef.current.delete(matched!.id);
         return;
       }
       if (idx !== currentIndex) {
@@ -219,7 +224,8 @@ export default function Inicio({
     const activeId = reels[currentIndex]?.id || reels[0]?.id;
     if (!activeId) return;
     if (initialReelId && lastSeenInitialReelIdPropRef.current !== initialReelId) {
-      const targetIdx = reels.findIndex((r) => r.id === initialReelId);
+      const matched = findReelByInicioParam(reels, initialReelId);
+      const targetIdx = matched ? reels.findIndex((r) => r.id === matched.id) : -1;
       if (targetIdx !== -1 && targetIdx !== currentIndex) {
         return;
       }
@@ -753,78 +759,115 @@ export default function Inicio({
                   <div className="space-y-3">
                     {cart.map((item, idx) => {
                       const isSelected = selectedCartIndices.includes(idx);
+                      const shippingFee =
+                        item.selectedShippingCost !== undefined
+                          ? Number(item.selectedShippingCost)
+                          : Number(item.product.shippingCost ?? 0);
+                      const carrierName = item.selectedCarrier || item.product.selectedCarrier;
+
                       return (
                         <div
                           key={`${item.product.id}-${idx}`}
-                          className={`flex items-center gap-2.5 rounded-2xl border p-2.5 transition-all ${
+                          className={`flex items-stretch rounded-2xl border transition-all shadow-sm overflow-hidden h-28 shrink-0 relative ${
                             isSelected
-                              ? "border-amber-300/90 bg-amber-50/50 shadow-xs ring-1 ring-amber-400/30"
-                              : "border-slate-200 bg-slate-50/60 opacity-60 hover:opacity-80"
+                              ? "bg-amber-500/[0.04] border-amber-400/80 shadow-amber-500/10 ring-1 ring-amber-400/40"
+                              : "bg-slate-50/70 border-slate-200 opacity-70 hover:opacity-100"
                           }`}
                         >
-                          <button
-                            type="button"
-                            onClick={() => toggleSelectCartItem(idx)}
-                            aria-label={isSelected ? "Deseleccionar producto" : "Seleccionar producto"}
-                            className="shrink-0 p-0.5 cursor-pointer"
-                          >
-                            <div
-                              className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all ${
-                                isSelected
-                                  ? "bg-amber-500 text-slate-950 shadow-xs font-black"
-                                  : "border-2 border-slate-300 bg-white hover:border-amber-400"
-                              }`}
-                            >
-                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                          <div className="w-24 sm:w-28 shrink-0 relative bg-slate-200 h-full overflow-hidden">
+                            <img
+                              src={item.product.imageUrl}
+                              alt={item.product.name}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
+                              onClick={() => {
+                                setShowCartPanel(false);
+                                if (handleProductSelect) handleProductSelect(item.product);
+                              }}
+                            />
+                          </div>
+
+                          <div className="flex-1 min-w-0 p-2.5 flex flex-col justify-between h-full">
+                            <div>
+                              <div className="flex items-start justify-between gap-1">
+                                <h4
+                                  className="text-xs font-extrabold text-slate-900 truncate cursor-pointer hover:text-amber-600 transition-colors"
+                                  title={item.product.name}
+                                  onClick={() => {
+                                    setShowCartPanel(false);
+                                    if (handleProductSelect) handleProductSelect(item.product);
+                                  }}
+                                >
+                                  {item.product.name}
+                                </h4>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (onRemoveFromCart) onRemoveFromCart(item.product.id, idx);
+                                  }}
+                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0 -mt-1 -mr-1"
+                                  title="Eliminar del carrito"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                <span className="text-xs font-mono font-extrabold text-amber-600">
+                                  ${item.product.price.toFixed(2)}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-600 bg-slate-200/80 px-1.5 py-0.5 rounded leading-tight">
+                                  Envío: {shippingFee > 0 ? `$${shippingFee.toFixed(2)}` : "Gratis"}
+                                  {carrierName ? ` (${carrierName})` : ""}
+                                </span>
+                              </div>
                             </div>
-                          </button>
 
-                          <img
-                            src={item.product.imageUrl}
-                            alt={item.product.name}
-                            className="w-14 h-14 rounded-xl object-cover border border-slate-200 shrink-0"
-                          />
+                            {/* Incrementor buttons & Selection in bottom-right */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newQty = Math.max(1, (item.quantity || 1) - 1);
+                                    if (onUpdateCartQuantity) onUpdateCartQuantity(item.product.id, newQty, idx);
+                                    else if (onRemoveFromCart) onRemoveFromCart(item.product.id, idx);
+                                  }}
+                                  className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </button>
+                                <span className="text-xs font-mono font-extrabold text-slate-900 px-1">
+                                  {item.quantity || 1}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (onUpdateCartQuantity) onUpdateCartQuantity(item.product.id, (item.quantity || 1) + 1, idx);
+                                  }}
+                                  disabled={item.product.stock !== undefined && (item.quantity || 1) >= item.product.stock}
+                                  className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs disabled:opacity-50 transition-colors cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                              </div>
 
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-1">
-                              <p className="text-[11px] font-black text-slate-900 truncate">{item.product.name}</p>
-                              <span
-                                className={`text-[9px] font-black px-1.5 py-0.5 rounded-md shrink-0 ${
-                                  isSelected ? "bg-amber-100 text-amber-900" : "bg-slate-200 text-slate-500"
+                              {/* Selector in bottom-right corner */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSelectCartItem(idx);
+                                }}
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+                                  isSelected
+                                    ? "bg-amber-500 border-amber-500 text-slate-950 shadow-sm shadow-amber-500/30 scale-105"
+                                    : "bg-white border-slate-300 hover:border-amber-400 text-transparent hover:text-slate-300"
                                 }`}
+                                title={isSelected ? "Deseleccionar producto para pago" : "Seleccionar producto para pagar"}
+                                aria-label={isSelected ? "Deseleccionar producto" : "Seleccionar producto"}
                               >
-                                {isSelected ? "A pagar" : "Omitido"}
-                              </span>
-                            </div>
-                            <p className="text-[10px] font-bold text-amber-600 mt-0.5">${item.product.price.toFixed(2)} c/u</p>
-                            <div className="flex items-center gap-2 mt-2">
-                              <button
-                                onClick={() => {
-                                  const newQty = Math.max(1, (item.quantity || 1) - 1);
-                                  if (onUpdateCartQuantity) onUpdateCartQuantity(item.product.id, newQty, idx);
-                                  else if (onRemoveFromCart) onRemoveFromCart(item.product.id, idx);
-                                }}
-                                className="p-1 rounded-full bg-slate-200 text-slate-700 active:scale-90 transition-transform cursor-pointer"
-                              >
-                                <Minus className="w-3 h-3" />
-                              </button>
-                              <span className="text-[11px] font-bold text-slate-900 w-5 text-center">{item.quantity || 1}</span>
-                              <button
-                                onClick={() => {
-                                  if (onUpdateCartQuantity) onUpdateCartQuantity(item.product.id, (item.quantity || 1) + 1, idx);
-                                }}
-                                className="p-1 rounded-full bg-slate-200 text-slate-700 active:scale-90 transition-transform cursor-pointer"
-                              >
-                                <Plus className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (onRemoveFromCart) onRemoveFromCart(item.product.id, idx);
-                                }}
-                                className="ml-auto p-1 rounded-full text-rose-500 hover:bg-rose-50 active:scale-90 transition-colors cursor-pointer"
-                                title="Eliminar del carrito"
-                              >
-                                <Trash2 className="w-4 h-4" />
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
                               </button>
                             </div>
                           </div>

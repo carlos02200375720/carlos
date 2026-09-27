@@ -4,7 +4,7 @@ export { default as Tienda, default as Shop, default as ShopView } from "./Tiend
 export { default as Perfil, default as ProfileView } from "./Perfil";
 export { default as LoginView, default as Login } from "./login";
 export { default as SocialPanel } from "./SocialPanel";
-export { default as PublishView } from "./PublishView";
+export { default as PublishView, default as Publicasion } from "./publicasion";
 export { default as SplashScreen } from "./SplashScreen";
-export * from "./components/movilvideoPlay";
+export * from "./components/videoplay";
 export * from "./components/barraprogreso";

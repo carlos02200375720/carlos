@@ -67,13 +67,17 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+  // In-memory cache of GCS object sizes to avoid repeated metadata lookups on Range requests
+  const gcsSizeCache = new Map<string, number>();
+
   // High-performance streaming proxy for HLS streams and GCS media.
-  // Directly pipes .m3u8 playlists and .ts chunks to the client with full CORS headers
-  // so Hls.js / MSE in Chrome, Firefox, Edge and Android can decode segments smoothly.
+  // Supports full HTTP 206 Partial Content Range requests so MP4/WebM/MOV videos
+  // and HLS segments start playing immediately without waiting for full-file downloads.
   const streamGcsFile = async (req: express.Request, res: express.Response, gcsRelativePath: string) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.setHeader("Access-Control-Allow-Headers", "Range, Origin, X-Requested-With, Content-Type, Accept, Authorization");
+    res.setHeader("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, Content-Type");
     if (req.method === "OPTIONS") return res.sendStatus(204);
 
     const cleanPath = String(gcsRelativePath || "").replace(/^\/+/, "");
@@ -106,7 +110,6 @@ async function startServer() {
         res.setHeader("Cache-Control", "public, max-age=86400");
       }
       res.setHeader("Accept-Ranges", "bytes");
-      if (req.method === "HEAD") return res.status(200).end();
       return res.sendFile(resolvedLocal);
     }
 
@@ -115,10 +118,6 @@ async function startServer() {
       const isHlsPlaylist = cleanPath.endsWith(".m3u8");
       const isHlsSegment = cleanPath.endsWith(".ts");
 
-      // HLS resources have immutable, known content types. Avoid an
-      // exists() + getMetadata() RPC before every playlist/segment request;
-      // those extra GCS round trips were becoming the bottleneck as the
-      // feed generated more segment requests.
       if (isHlsPlaylist) {
         res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
         res.setHeader("Cache-Control", "no-cache, must-revalidate");
@@ -136,21 +135,68 @@ async function startServer() {
         res.setHeader("Cache-Control", "public, max-age=86400");
       } else if (cleanPath.endsWith(".mp4") || cleanPath.endsWith(".m4v")) {
         res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.setHeader("Cache-Control", "public, max-age=31536000");
       } else if (cleanPath.endsWith(".webm")) {
         res.setHeader("Content-Type", "video/webm");
-        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.setHeader("Cache-Control", "public, max-age=31536000");
       } else if (cleanPath.endsWith(".mov")) {
         res.setHeader("Content-Type", "video/quicktime");
-        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.setHeader("Cache-Control", "public, max-age=31536000");
       }
 
       res.setHeader("Accept-Ranges", "bytes");
       if (req.method === "HEAD") return res.status(200).end();
 
-      // HLS playlists/segments are streamed directly. No metadata lookup is
-      // needed, and the storage stream reports missing objects as errors.
-      const stream = gcsFile.createReadStream();
+      const rangeHeader = req.headers.range;
+
+      // Support HTTP 206 Partial Content when explicit Range header is sent
+      if (rangeHeader) {
+        const [metadata] = await gcsFile.getMetadata();
+        const totalSize = Number(metadata.size || 0);
+        if (metadata.contentType && !res.getHeader("Content-Type")) {
+          res.setHeader("Content-Type", metadata.contentType);
+        }
+
+        if (totalSize > 0) {
+          const parts = rangeHeader.replace(/bytes=/, "").split("-");
+          const start = parseInt(parts[0], 10);
+          const requestedEnd = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
+          const end = Math.min(requestedEnd, totalSize - 1);
+
+          if (Number.isNaN(start) || start >= totalSize || start > end) {
+            res.setHeader("Content-Range", `bytes */${totalSize}`);
+            return res.status(416).end();
+          }
+
+          const chunkSize = end - start + 1;
+          res.status(206);
+          res.setHeader("Content-Range", `bytes ${start}-${end}/${totalSize}`);
+          res.setHeader("Content-Length", chunkSize);
+
+          const rangeStream = gcsFile.createReadStream({ start, end, validation: false });
+          res.on("close", () => {
+            if (!res.writableEnded) {
+              rangeStream.destroy();
+            }
+          });
+          rangeStream.on("error", (err: any) => {
+            if (!res.headersSent) {
+              res.status(err?.code === 404 ? 404 : 502).end();
+            } else {
+              res.destroy();
+            }
+          });
+          return rangeStream.pipe(res);
+        }
+      }
+
+      // HLS playlists/segments and non-range requests are streamed directly.
+      const stream = gcsFile.createReadStream({ validation: false });
+      res.on("close", () => {
+        if (!res.writableEnded) {
+          stream.destroy();
+        }
+      });
       stream.on("error", (err: any) => {
         console.error(`Error streaming GCS resource (${cleanPath}):`, err?.message || err);
         if (!res.headersSent) {
@@ -163,10 +209,13 @@ async function startServer() {
         }
       });
       stream.pipe(res);
-    } catch (err) {
-      console.error(`Error streaming GCS resource (${cleanPath}):`, err);
+    } catch (err: any) {
+      console.error(`Error streaming GCS resource (${cleanPath}):`, err?.message || err);
       if (!res.headersSent) {
-        res.status(500).type("text/plain").send("Google Cloud Storage unavailable");
+        const status = err?.code === 404 ? 404 : 500;
+        res.status(status).type("text/plain").send(
+          status === 404 ? "Media resource not found" : "Google Cloud Storage unavailable"
+        );
       }
     }
   };

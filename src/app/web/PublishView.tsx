@@ -215,37 +215,39 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts|m3u8)$/i.test(file.name);
     const fileToUpload = file;
 
-    // 1. PATRÓN DE SUBIDA DIRECTA A GOOGLE CLOUD STORAGE (Signed URLs)
-    // Permite subir directamente al bucket sin saturar la memoria o CPU del backend
-    try {
-      const folder = isVideo ? "videos" : "publicaciones";
-      const mime = fileToUpload.type || (isVideo ? "video/mp4" : "image/jpeg");
-      const signedUrlRes = await fetch(
-        getApiUrl(`/api/v1/media/upload-url?folder=${folder}&file_type=${encodeURIComponent(mime)}&file_name=${encodeURIComponent(fileToUpload.name)}`)
-      );
+    // 1. PATRÓN DE SUBIDA DIRECTA A GOOGLE CLOUD STORAGE (Signed URLs) PARA IMÁGENES
+    // Los videos pasan por el pipeline del backend para segmentación HLS / faststart (moov al inicio)
+    if (!isVideo) {
+      try {
+        const folder = "publicaciones";
+        const mime = fileToUpload.type || "image/jpeg";
+        const signedUrlRes = await fetch(
+          getApiUrl(`/api/v1/media/upload-url?folder=${folder}&file_type=${encodeURIComponent(mime)}&file_name=${encodeURIComponent(fileToUpload.name)}`)
+        );
 
-      if (signedUrlRes.ok) {
-        const { upload_url, public_url } = await signedUrlRes.json();
-        if (upload_url && public_url) {
-          console.log(`⚡ [Direct GCS] Subiendo ${fileToUpload.name} directo a Google Cloud Storage...`);
-          const putRes = await fetch(upload_url, {
-            method: "PUT",
-            headers: {
-              "Content-Type": mime,
-            },
-            body: fileToUpload,
-          });
+        if (signedUrlRes.ok) {
+          const { upload_url, public_url } = await signedUrlRes.json();
+          if (upload_url && public_url) {
+            console.log(`⚡ [Direct GCS] Subiendo ${fileToUpload.name} directo a Google Cloud Storage...`);
+            const putRes = await fetch(upload_url, {
+              method: "PUT",
+              headers: {
+                "Content-Type": mime,
+              },
+              body: fileToUpload,
+            });
 
-          if (putRes.ok) {
-            console.log(`✅ [Direct GCS] Subida directa exitosa a GCS: ${public_url}`);
-            return { url: public_url, hlsUrl: isVideo ? public_url : undefined };
-          } else {
-            console.warn(`⚠️ [Direct GCS] PUT directo a GCS retornó HTTP ${putRes.status}. Usando fallback vía servidor.`);
+            if (putRes.ok) {
+              console.log(`✅ [Direct GCS] Subida directa exitosa a GCS: ${public_url}`);
+              return { url: public_url };
+            } else {
+              console.warn(`⚠️ [Direct GCS] PUT directo a GCS retornó HTTP ${putRes.status}. Usando fallback vía servidor.`);
+            }
           }
         }
+      } catch (directErr) {
+        console.warn("⚠️ [Direct GCS] Subida directa no disponible o bloqueada por CORS en navegador. Usando fallback al servidor:", directErr);
       }
-    } catch (directErr) {
-      console.warn("⚠️ [Direct GCS] Subida directa no disponible o bloqueada por CORS en navegador. Usando fallback al servidor:", directErr);
     }
 
     const createFormData = () => {
