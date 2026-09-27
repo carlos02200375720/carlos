@@ -705,7 +705,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
   // Android Publish / Create Product with auto Companion Reel
   router.post("/products", async (req: Request, res: Response) => {
     try {
-      const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, variants, variantList, category } = req.body;
+      const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, variants, variantList, category, cjVid, cjPid } = req.body;
       let resolvedSellerId = sellerId || req.headers["x-user-id"];
       let seller: any = null;
 
@@ -724,21 +724,26 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         };
       }
 
+      const parsedStock = stock !== undefined && stock !== "" ? Math.max(0, Number(stock)) : 10;
+      const parsedShipping = shippingCost !== undefined && shippingCost !== "" ? Math.max(0, Number(shippingCost) || 0) : 0;
+
       const newProduct: Product = {
         id: "prod_" + generateId(),
         name: name || "Producto sin nombre",
         description: description || "",
         price: Number(price) || 0,
         imageUrl: imageUrl || (images && images[0]) || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=300&q=80",
-        stock: Number(stock) || 0,
+        stock: Number.isNaN(parsedStock) ? 10 : parsedStock,
         sellerId: seller.id,
         rating: 5,
-        shippingCost: Number(shippingCost) || 0,
+        shippingCost: Number.isNaN(parsedShipping) ? 0 : parsedShipping,
         images: images || [],
         videos: videos || [],
         variants: Array.isArray(variants) ? variants : [],
         variantList: Array.isArray(variantList) ? variantList : [],
         category: category || "",
+        cjVid: cjVid || undefined,
+        cjPid: cjPid || undefined,
         views: 0,
       };
 
@@ -1180,11 +1185,15 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
               sellerName: seller ? seller.name : (p.sellerName || "Vendedor"),
               sellerUsername: seller ? seller.username : (p.sellerUsername || "vendedor"),
               rating: p.rating || 5,
+              shippingCost: p.shippingCost !== undefined ? Number(p.shippingCost) : 0,
               category: p.category || "General",
               images: p.images || [],
               videos: p.videos || [],
               variants: p.variants || [],
               variantList: p.variantList || [],
+              cjVid: p.cjVid || undefined,
+              cjPid: p.cjPid || undefined,
+              views: p.views || 0,
             };
           });
         }

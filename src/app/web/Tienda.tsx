@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X, Video, Globe, PackageCheck, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Check, Eye, Share2, FileText } from "lucide-react";
+import { ShoppingCart, Star, Heart, ArrowLeft, Trash2, Plus, Minus, CreditCard, CheckCircle2, ShoppingBag, ShieldCheck, Truck, Search, X, Video, Globe, PackageCheck, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Check, Eye, Share2, FileText, Bookmark } from "lucide-react";
 import { Product, CartItem, Order, User } from "../../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../../config";
 import { NativeVideoPlayer } from "./components/VideoPlayer";
-import { getProductShareUrl } from "../../router";
+import { getProductShareUrl, getProductPath, navigateTo } from "../../router";
 
 const CJ_DEST_COUNTRIES = [
   { code: "US", name: "Estados Unidos 🇺🇸" },
@@ -121,7 +121,7 @@ const CATEGORIES = [
   }
 ];
 
-interface ShopViewProps {
+export interface ShopProps {
   products: Product[];
   cart: CartItem[];
   users: User[];
@@ -142,15 +142,20 @@ interface ShopViewProps {
   onNavigateToHistory: () => void;
   onToggleDetailView?: (isOpen: boolean) => void;
   onLoginSuccess?: (user: User) => void;
-  initialStep?: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou';
+  initialStep?: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou';
   initialSelectedCartIndices?: number[];
   onClearInitialStep?: () => void;
   onProductSelect?: (product: Product) => void;
   onBackToCatalog?: () => void;
-  onStepChange?: (step: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou') => void;
+  onStepChange?: (step: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou') => void;
+  savedReelIds?: string[];
+  onToggleSave?: (id: string) => void;
 }
 
-export default function ShopView({
+export type TiendaProps = ShopProps;
+export type ShopViewProps = ShopProps;
+
+export default function Tienda({
   products,
   cart,
   users,
@@ -171,10 +176,17 @@ export default function ShopView({
   onProductSelect,
   onBackToCatalog,
   onStepChange,
-}: ShopViewProps) {
+  savedReelIds = [],
+  onToggleSave,
+}: ShopProps) {
   // Navigation states: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou'
   const [activeStep, setActiveStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>(() => {
-    if (initialStep) return initialStep;
+    if (initialStep && initialStep !== 'cart') return initialStep;
+    if (typeof window !== 'undefined') {
+      const clean = window.location.pathname.replace(/\/+$/, '');
+      if (/^\/(?:tienda\/|shop\/)?(?:verificacion|checkout)$/i.test(clean)) return 'checkout';
+      if (/^\/(?:tienda\/|shop\/)?(?:gracia|gracias|thankyou|thank-you)$/i.test(clean)) return 'thankyou';
+    }
     if (selectedProductDirectly) return 'detail';
     return 'catalog';
   });
@@ -217,8 +229,20 @@ export default function ShopView({
     }));
   }, [selectedProduct]);
   const [optionsValidationError, setOptionsValidationError] = useState<string | null>(null);
-  const [showCartDrawer, setShowCartDrawer] = useState(false);
+  const [showCartDrawer, setShowCartDrawer] = useState(() => {
+    if (initialStep === 'cart') return true;
+    if (typeof window !== 'undefined' && /^\/(?:tienda\/|shop\/)?(?:carrito|cart)$/i.test(window.location.pathname.replace(/\/+$/, ''))) {
+      return true;
+    }
+    return false;
+  });
   const [copiedProductLink, setCopiedProductLink] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const toggleFavorite = (productId: string) => {
+    setFavorites((prev) =>
+      prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
+    );
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("todos");
   const [displayCount, setDisplayCount] = useState<number>(12);
@@ -458,57 +482,78 @@ export default function ShopView({
     categoryTrackRef.current.scrollBy({ left: amount, behavior: 'smooth' });
   };
   
-  // CJ Real-Time Shipping States
+  // CJ & Manual Shipping States
   const [shippingCountry, setShippingCountry] = useState("ES");
   const [cjShippingOptions, setCjShippingOptions] = useState<{carrier: string; aging: string; shippingCost: number}[]>([]);
   const [selectedShippingOption, setSelectedShippingOption] = useState<{carrier: string; aging: string; shippingCost: number} | null>(null);
   const [isLoadingFreight, setIsLoadingFreight] = useState(false);
   const [showShippingModal, setShowShippingModal] = useState(false);
 
+  const getManualShippingOption = (prod: Product | null) => {
+    const rawCost = Number(prod?.shippingCost ?? 0);
+    const cost = !Number.isNaN(rawCost) && rawCost >= 0 ? rawCost : 0;
+    return {
+      carrier: "Envío Estándar del Vendedor",
+      aging: "3-7 días hábiles",
+      shippingCost: cost,
+    };
+  };
+
   const fetchCjFreightOptions = async (countryCode: string, targetVid?: string, autoSelect: boolean = false) => {
+    let vidToUse = targetVid || "";
+    let pidToUse = "";
+
+    if (selectedProduct) {
+      if (!vidToUse) {
+        vidToUse = selectedProduct.cjVid || selectedProduct.variantList?.[0]?.vid || selectedProduct.cjPid || "";
+      }
+      pidToUse = selectedProduct.cjPid || "";
+    }
+
+    if (!vidToUse && !selectedProduct) {
+      const cjItem = cart.find(i => i.product.cjVid || i.product.cjPid);
+      if (cjItem) {
+        vidToUse = cjItem.product.cjVid || cjItem.product.variantList?.[0]?.vid || cjItem.product.cjPid || "";
+        pidToUse = cjItem.product.cjPid || "";
+      }
+    }
+
+    // If this is a manually published product (not imported from CJ), use the shipping cost configured at creation
+    if (!vidToUse && !pidToUse) {
+      const manualOpt = getManualShippingOption(selectedProduct);
+      setCjShippingOptions([manualOpt]);
+      setSelectedShippingOption(manualOpt);
+      setIsLoadingFreight(false);
+      return;
+    }
+
     setIsLoadingFreight(true);
     try {
-      let vidToUse = targetVid || "";
-      let pidToUse = "";
-
-      if (selectedProduct) {
-        if (!vidToUse) {
-          vidToUse = selectedProduct.cjVid || selectedProduct.variantList?.[0]?.vid || selectedProduct.cjPid || "";
-        }
-        pidToUse = selectedProduct.cjPid || "";
-      }
-
-      if (!vidToUse) {
-        const cjItem = cart.find(i => i.product.cjVid || i.product.cjPid);
-        if (cjItem) {
-          vidToUse = cjItem.product.cjVid || cjItem.product.variantList?.[0]?.vid || cjItem.product.cjPid || "";
-          pidToUse = cjItem.product.cjPid || "";
-        }
-      }
-
-      if (!vidToUse && !pidToUse) {
-        vidToUse = "2512100754141607700";
-      }
-
       const res = await apiFetch(`/api/cj/freight-options?vid=${encodeURIComponent(vidToUse)}&pid=${encodeURIComponent(pidToUse)}&destCountry=${encodeURIComponent(countryCode)}`);
       const data = await res.json();
 
+      const hasManualCost = selectedProduct && selectedProduct.shippingCost !== undefined && Number(selectedProduct.shippingCost) > 0;
+      const manualOpt = hasManualCost ? getManualShippingOption(selectedProduct) : null;
+
       if (data.success && Array.isArray(data.options) && data.options.length > 0) {
-        setCjShippingOptions(data.options);
-        if (autoSelect) {
-          setSelectedShippingOption(data.options[0]);
+        const mergedOptions = manualOpt ? [manualOpt, ...data.options] : data.options;
+        setCjShippingOptions(mergedOptions);
+        if (autoSelect || !selectedShippingOption) {
+          setSelectedShippingOption(mergedOptions[0]);
         }
       } else {
-        setCjShippingOptions([]);
-        if (autoSelect) {
-          setSelectedShippingOption(null);
+        const fallbackOpt = getManualShippingOption(selectedProduct);
+        setCjShippingOptions([fallbackOpt]);
+        if (autoSelect || !selectedShippingOption) {
+          setSelectedShippingOption(fallbackOpt);
         }
       }
     } catch (err) {
       console.error("Error fetching CJ freight options:", err);
-      setCjShippingOptions([]);
-      if (autoSelect) {
-        setSelectedShippingOption(null);
+      const fallbackOpt = getManualShippingOption(selectedProduct);
+      setCjShippingOptions([fallbackOpt]);
+      if (autoSelect || !selectedShippingOption) {
+        setSelectedShippingOption(fallbackOpt);
       }
     } finally {
       setIsLoadingFreight(false);
@@ -517,13 +562,26 @@ export default function ShopView({
 
   useEffect(() => {
     if (activeStep === 'checkout') {
-      fetchCjFreightOptions(shippingCountry, undefined, true);
+      const hasCjInCart = cart.some(i => i.product.cjVid || i.product.cjPid);
+      if (hasCjInCart) {
+        fetchCjFreightOptions(shippingCountry, undefined, true);
+      }
     }
   }, [activeStep, shippingCountry]);
 
   useEffect(() => {
-    if (activeStep === 'detail' && selectedProduct && (selectedProduct.cjVid || selectedProduct.cjPid)) {
-      fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid, false);
+    if (activeStep === 'detail' && selectedProduct) {
+      if (selectedProduct.cjVid || selectedProduct.cjPid) {
+        if (selectedProduct.shippingCost !== undefined && Number(selectedProduct.shippingCost) > 0) {
+          const manualOpt = getManualShippingOption(selectedProduct);
+          setSelectedShippingOption(manualOpt);
+        }
+        fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid, true);
+      } else {
+        const manualOpt = getManualShippingOption(selectedProduct);
+        setCjShippingOptions([manualOpt]);
+        setSelectedShippingOption(manualOpt);
+      }
     }
   }, [activeStep, selectedProduct, shippingCountry]);
 
@@ -663,7 +721,15 @@ export default function ShopView({
       setSelectedProductMediaUrl(selectedProductDirectly.imageUrl);
       setSelectedVariants({});
       setOptionsValidationError(null);
-      setSelectedShippingOption(null);
+      if (!selectedProductDirectly.cjVid && !selectedProductDirectly.cjPid) {
+        const manualOpt = getManualShippingOption(selectedProductDirectly);
+        setCjShippingOptions([manualOpt]);
+        setSelectedShippingOption(manualOpt);
+      } else if (selectedProductDirectly.shippingCost !== undefined && Number(selectedProductDirectly.shippingCost) > 0) {
+        setSelectedShippingOption(getManualShippingOption(selectedProductDirectly));
+      } else {
+        setSelectedShippingOption(null);
+      }
       setActiveGalleryIndex(0);
       setIsGalleryVideoPlaying(true);
       setIsGalleryVideoMuted(true);
@@ -676,7 +742,15 @@ export default function ShopView({
     setSelectedProductMediaUrl(product.imageUrl);
     setSelectedVariants({});
     setOptionsValidationError(null);
-    setSelectedShippingOption(null);
+    if (!product.cjVid && !product.cjPid) {
+      const manualOpt = getManualShippingOption(product);
+      setCjShippingOptions([manualOpt]);
+      setSelectedShippingOption(manualOpt);
+    } else if (product.shippingCost !== undefined && Number(product.shippingCost) > 0) {
+      setSelectedShippingOption(getManualShippingOption(product));
+    } else {
+      setSelectedShippingOption(null);
+    }
     setActiveGalleryIndex(0);
     setIsGalleryVideoPlaying(true);
     setIsGalleryVideoMuted(true);
@@ -699,7 +773,7 @@ export default function ShopView({
   const handleShareProduct = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!selectedProduct) return;
-    const url = getProductShareUrl(selectedProduct.id);
+    const url = getProductShareUrl(selectedProduct);
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(url).then(() => {
         setCopiedProductLink(true);
@@ -728,7 +802,11 @@ export default function ShopView({
 
   // Respond to initialStep or initialSelectedCartIndices from external navigation
   useEffect(() => {
-    if (initialStep && initialStep !== 'catalog') {
+    if (initialStep === 'cart') {
+      setShowCartDrawer(true);
+      onClearInitialStep?.();
+    } else if (initialStep && initialStep !== 'catalog') {
+      setShowCartDrawer(false);
       setActiveStep(initialStep);
       if (initialSelectedCartIndices && initialSelectedCartIndices.length > 0) {
         setSelectedCartIndices(initialSelectedCartIndices);
@@ -736,6 +814,48 @@ export default function ShopView({
       onClearInitialStep?.();
     }
   }, [initialStep, initialSelectedCartIndices, onClearInitialStep]);
+
+  // Synchronize Cart Drawer, Checkout, and Thank You step with browser URL (/tienda/carrito, /tienda/verificacion, /tienda/gracia) on Back/Forward navigation
+  useEffect(() => {
+    const syncStepFromUrl = () => {
+      const cleanPath = window.location.pathname.trim().replace(/\/+$/, '');
+      if (/^\/(?:tienda\/|shop\/)?(?:carrito|cart)$/i.test(cleanPath)) {
+        setShowCartDrawer(true);
+      } else if (/^\/(?:tienda\/|shop\/)?(?:verificacion|checkout)$/i.test(cleanPath)) {
+        setShowCartDrawer(false);
+        setActiveStep('checkout');
+      } else if (/^\/(?:tienda\/|shop\/)?(?:gracia|gracias|thankyou|thank-you)$/i.test(cleanPath)) {
+        setShowCartDrawer(false);
+        setActiveStep('thankyou');
+      } else {
+        setShowCartDrawer(false);
+      }
+    };
+    window.addEventListener('popstate', syncStepFromUrl);
+    window.addEventListener('app-route-change', syncStepFromUrl);
+    return () => {
+      window.removeEventListener('popstate', syncStepFromUrl);
+      window.removeEventListener('app-route-change', syncStepFromUrl);
+    };
+  }, []);
+
+  const openCartDrawer = () => {
+    setShowCartDrawer(true);
+    navigateTo('/tienda/carrito');
+  };
+
+  const closeCartDrawer = () => {
+    setShowCartDrawer(false);
+    if (activeStep === 'detail' && selectedProduct) {
+      navigateTo(getProductPath(selectedProduct));
+    } else if (activeStep === 'checkout') {
+      navigateTo('/tienda/verificacion');
+    } else if (activeStep === 'thankyou') {
+      navigateTo('/tienda/gracia');
+    } else {
+      navigateTo('/tienda');
+    }
+  };
 
   // Automatically sync cart selections when cart items change
   useEffect(() => {
@@ -782,6 +902,8 @@ export default function ShopView({
     if (effectiveCheckoutItems.length === 0) return;
     setShowCartDrawer(false);
     setActiveStep('checkout');
+    navigateTo('/tienda/verificacion');
+    onStepChange?.('checkout');
   };
 
   const executePayment = () => {
@@ -807,6 +929,8 @@ export default function ShopView({
         (newOrder) => {
           setCompletedOrder(newOrder);
           setActiveStep('thankyou');
+          navigateTo('/tienda/gracia');
+          onStepChange?.('thankyou');
         },
         effectiveCheckoutItems,
         {
@@ -934,39 +1058,56 @@ export default function ShopView({
           }}
           id="product-detail-transparent-header"
         >
-          {/* Botón de Regreso */}
+          {/* Botón de Regreso - fondo transparente */}
           <div className="flex items-center">
             <button
               type="button"
               onClick={handleBackToCatalog}
-              className="w-10 h-10 rounded-full bg-slate-900/60 backdrop-blur-md text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer"
+              className="w-10 h-10 rounded-full bg-transparent text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
               aria-label="Regresar al catálogo"
               id="detail-back-button"
             >
-              <ArrowLeft className="w-6 h-6 text-white" />
+              <ArrowLeft className="w-6 h-6 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]" />
             </button>
           </div>
 
-          {/* Carrito y Botón Compartir */}
+          {/* Botón Guardar Producto y Carrito - fondo transparente */}
           <div className="flex items-center space-x-2">
             <button
               type="button"
-              onClick={handleShareProduct}
-              className="w-10 h-10 rounded-full bg-slate-900/60 backdrop-blur-md text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer"
-              id="detail-share-trigger-btn"
-              aria-label="Compartir producto"
-              title="Copiar enlace directo del producto"
+              onClick={() => {
+                if (!selectedProduct) return;
+                if (onToggleSave) {
+                  onToggleSave(selectedProduct.id);
+                } else {
+                  toggleFavorite(selectedProduct.id);
+                }
+              }}
+              className="w-10 h-10 rounded-full bg-transparent text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
+              id="detail-save-trigger-btn"
+              aria-label="Guardar producto"
+              title={
+                selectedProduct && (savedReelIds.includes(selectedProduct.id) || favorites.includes(selectedProduct.id))
+                  ? "Guardado"
+                  : "Guardar producto"
+              }
             >
-              <Share2 className="w-5 h-5 text-white" />
+              <Bookmark
+                className={`w-6 h-6 transition-all duration-200 drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] ${
+                  selectedProduct && (savedReelIds.includes(selectedProduct.id) || favorites.includes(selectedProduct.id))
+                    ? "fill-amber-400 text-amber-400 scale-105"
+                    : "text-white hover:text-amber-200"
+                }`}
+              />
             </button>
             <button
               type="button"
-              onClick={() => setShowCartDrawer(true)}
-              className="relative w-10 h-10 rounded-full bg-slate-900/60 backdrop-blur-md text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer"
+              onClick={openCartDrawer}
+              className="relative w-10 h-10 rounded-full bg-transparent text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
               id="detail-cart-trigger-btn"
               aria-label="Ver carrito"
             >
-              <ShoppingCart className="w-6 h-6 text-white" />
+              <ShoppingCart className="w-6 h-6 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]" />
               {cartItemCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-extrabold font-mono text-[9px] sm:text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center border-2 border-slate-950 shadow-xs">
                   {cartItemCount}
@@ -987,7 +1128,7 @@ export default function ShopView({
         >
           {/* Top Bar: Navigation / Search / Cart */}
           <div className="px-3 sm:px-5 pb-2.5 sm:pb-3 flex items-center justify-between gap-3 w-full">
-            <div className="flex items-center space-x-2 shrink-0">
+            <div className={`flex items-center space-x-2 shrink-0 ${activeStep === 'catalog' ? 'pl-10 md:pl-0' : ''}`}>
               {activeStep !== 'catalog' && (
                 <button
                   onClick={handleBackToCatalog}
@@ -1024,7 +1165,7 @@ export default function ShopView({
             {/* Cart Trigger Badge */}
             <div className="flex items-center shrink-0">
               <button
-                onClick={() => setShowCartDrawer(true)}
+                onClick={openCartDrawer}
                 className="relative p-1.5 sm:p-2 rounded-full bg-slate-900 text-white hover:bg-slate-800 transition-colors cursor-pointer shadow-sm pointer-events-auto active:scale-95"
                 id="cart-trigger-btn"
               >
@@ -1187,8 +1328,13 @@ export default function ShopView({
                               <p className="text-[10px] sm:text-xs text-slate-500 mt-1 line-clamp-1 sm:line-clamp-2 leading-relaxed">{product.description}</p>
                             </div>
                             
-                            <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                            <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-1">
                               <span className="text-sm sm:text-base font-extrabold font-mono text-slate-900">${product.price.toFixed(2)}</span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+                                {product.shippingCost && Number(product.shippingCost) > 0
+                                  ? `Envío: $${Number(product.shippingCost).toFixed(2)}`
+                                  : "Envío Gratis"}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1470,11 +1616,14 @@ export default function ShopView({
                               <span className="text-xs font-extrabold text-slate-900">
                                 Envío a {CJ_DEST_COUNTRIES.find(c => c.code === shippingCountry)?.name || shippingCountry}
                               </span>
-                              {selectedShippingOption && (
-                                <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300/80">
-                                  {selectedShippingOption.shippingCost === 0 ? "GRATIS" : `$${selectedShippingOption.shippingCost.toFixed(2)}`}
-                                </span>
-                              )}
+                              <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300/80">
+                                {(() => {
+                                  const cost = selectedShippingOption
+                                    ? selectedShippingOption.shippingCost
+                                    : Number(selectedProduct.shippingCost ?? 0);
+                                  return cost === 0 ? "GRATIS" : `$${cost.toFixed(2)}`;
+                                })()}
+                              </span>
                             </div>
                             <p className="text-[11px] text-slate-600 mt-0.5 truncate">
                               {selectedShippingOption ? (
@@ -1486,8 +1635,13 @@ export default function ShopView({
                                   )}
                                 </span>
                               ) : (
-                                <span className="text-slate-500">
-                                  Calcula tarifas oficiales y tiempos de entrega estimados
+                                <span className="flex items-center gap-1 text-slate-700 font-medium">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 inline" />
+                                  <span>
+                                    {Number(selectedProduct.shippingCost ?? 0) > 0
+                                      ? `Costo de envío configurado: $${Number(selectedProduct.shippingCost).toFixed(2)}`
+                                      : "Envío Gratis configurado por el vendedor"}
+                                  </span>
                                 </span>
                               )}
                             </p>
@@ -1743,31 +1897,22 @@ export default function ShopView({
                           <span>Envío a tu País ({shippingCountry}):</span>
                         </p>
 
-                        {selectedShippingOption ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowShippingModal(true);
-                              fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
-                            }}
-                            className="text-[11px] font-extrabold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200/80 flex items-center space-x-1 cursor-pointer transition-colors"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            <span>{selectedShippingOption.carrier}: {selectedShippingOption.shippingCost === 0 ? "GRATIS" : `$${selectedShippingOption.shippingCost.toFixed(2)}`}</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowShippingModal(true);
-                              fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
-                            }}
-                            className="text-[10px] font-extrabold text-amber-900 bg-amber-100/90 hover:bg-amber-200 px-2.5 py-1 rounded-md border border-amber-300 cursor-pointer transition-colors flex items-center gap-1.5"
-                          >
-                            <Truck className="w-3.5 h-3.5 text-amber-700" />
-                            <span>Calcular envío</span>
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowShippingModal(true);
+                            fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
+                          }}
+                          className="text-[11px] font-extrabold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200/80 flex items-center space-x-1 cursor-pointer transition-colors"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>
+                            {(() => {
+                              const opt = selectedShippingOption || getManualShippingOption(selectedProduct);
+                              return `${opt.carrier}: ${opt.shippingCost === 0 ? "GRATIS" : `$${opt.shippingCost.toFixed(2)}`}`;
+                            })()}
+                          </span>
+                        </button>
                       </div>
 
                       {/* Add to Cart button integrated directly in product detail page */}
@@ -1811,7 +1956,7 @@ export default function ShopView({
                                   };
                                   
                                   onAddToCart(customizedProduct);
-                                  setShowCartDrawer(true);
+                                  openCartDrawer();
                                 }
                               }}
                               disabled={selectedProduct.stock <= 0}
@@ -2143,7 +2288,7 @@ export default function ShopView({
           )}
 
           {/* 5. THANK YOU STEP */}
-          {activeStep === 'thankyou' && completedOrder && (
+          {activeStep === 'thankyou' && (
             <div
               className="w-full px-2 sm:px-4 py-2"
               style={{
@@ -2161,7 +2306,7 @@ export default function ShopView({
                 <p className="text-xs text-slate-500 mt-1">El vendedor ha verificado la transacción correctamente.</p>
                 
                 {/* Resumen de Productos Comprados */}
-                {completedOrder.items && completedOrder.items.length > 0 && (
+                {completedOrder?.items && completedOrder.items.length > 0 && (
                   <div className="bg-slate-50/80 rounded-xl p-3 sm:p-4 mt-5 text-left">
                     <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-2.5">
                       Productos Comprados ({completedOrder.items.reduce((sum, item) => sum + item.quantity, 0)})
@@ -2189,31 +2334,33 @@ export default function ShopView({
                 )}
 
                 {/* Detalle de Pedido y Dirección Completa */}
-                <div className="bg-slate-50/80 rounded-xl p-3 sm:p-4 mt-3 text-left space-y-2.5 text-xs">
-                  <div className="flex justify-between border-b border-slate-200/60 pb-2">
-                    <span className="text-slate-500 font-medium">Código de Pedido:</span>
-                    <span className="font-mono font-bold text-slate-800">{completedOrder.id}</span>
+                {completedOrder && (
+                  <div className="bg-slate-50/80 rounded-xl p-3 sm:p-4 mt-3 text-left space-y-2.5 text-xs">
+                    <div className="flex justify-between border-b border-slate-200/60 pb-2">
+                      <span className="text-slate-500 font-medium">Código de Pedido:</span>
+                      <span className="font-mono font-bold text-slate-800">{completedOrder.id}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200/60 pb-2">
+                      <span className="text-slate-500 font-medium">Fecha:</span>
+                      <span className="font-mono text-slate-700">
+                        {new Date(completedOrder.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="border-b border-slate-200/60 pb-2.5">
+                      <span className="text-slate-500 font-medium block mb-1">Dirección de Envío Completa:</span>
+                      <p className="text-slate-800 font-medium text-xs leading-relaxed break-words whitespace-normal">
+                        {completedOrder.shippingAddress}
+                      </p>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold pt-0.5">
+                      <span>Total Cargado:</span>
+                      <span className="text-emerald-600 font-mono text-base">${completedOrder.total.toFixed(2)}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between border-b border-slate-200/60 pb-2">
-                    <span className="text-slate-500 font-medium">Fecha:</span>
-                    <span className="font-mono text-slate-700">
-                      {new Date(completedOrder.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="border-b border-slate-200/60 pb-2.5">
-                    <span className="text-slate-500 font-medium block mb-1">Dirección de Envío Completa:</span>
-                    <p className="text-slate-800 font-medium text-xs leading-relaxed break-words whitespace-normal">
-                      {completedOrder.shippingAddress}
-                    </p>
-                  </div>
-                  <div className="flex justify-between text-sm font-bold pt-0.5">
-                    <span>Total Cargado:</span>
-                    <span className="text-emerald-600 font-mono text-base">${completedOrder.total.toFixed(2)}</span>
-                  </div>
-                </div>
+                )}
 
                 {/* Auto-Created User Profile Card for Guest Checkout */}
-                {completedOrder.autoCreatedUser && completedOrder.autoCreatedUser.created && (
+                {completedOrder?.autoCreatedUser && completedOrder.autoCreatedUser.created && (
                   <div className="bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-slate-50 border-2 border-amber-500/40 rounded-2xl p-4 sm:p-5 mt-4 text-left shadow-sm">
                     <div className="flex items-center space-x-2 text-amber-600 font-extrabold text-xs uppercase tracking-wider mb-2">
                       <span className="text-base">🎉</span>
@@ -2261,6 +2408,8 @@ export default function ShopView({
                     onClick={() => {
                       setActiveStep('catalog');
                       setSelectedProduct(null);
+                      navigateTo('/tienda');
+                      onStepChange?.('catalog');
                     }}
                     className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-3 rounded-xl text-xs transition-colors cursor-pointer"
                   >
@@ -2291,7 +2440,7 @@ export default function ShopView({
               initial={{ opacity: 0 }}
               animate={{ opacity: 0.5 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowCartDrawer(false)}
+              onClick={closeCartDrawer}
               className="fixed inset-0 bg-black z-50"
             />
 
@@ -2312,7 +2461,7 @@ export default function ShopView({
               >
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => setShowCartDrawer(false)}
+                    onClick={closeCartDrawer}
                     className="p-1 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer transition-colors"
                     id="close-cart-drawer-btn"
                   >
@@ -2387,8 +2536,7 @@ export default function ShopView({
                             className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
                             onClick={() => {
                               setShowCartDrawer(false);
-                              setSelectedProduct(item.product);
-                              setActiveStep('detail');
+                              handleProductSelect(item.product);
                             }}
                           />
                         </div>
@@ -2400,8 +2548,7 @@ export default function ShopView({
                                 title={item.product.name}
                                 onClick={() => {
                                   setShowCartDrawer(false);
-                                  setSelectedProduct(item.product);
-                                  setActiveStep('detail');
+                                  handleProductSelect(item.product);
                                 }}
                               >
                                 {item.product.name}
@@ -2588,7 +2735,11 @@ export default function ShopView({
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
                       <Truck className="w-4 h-4 text-amber-500" />
-                      <span>Opciones de Envío Disponibles CJ:</span>
+                      <span>
+                        {selectedProduct.cjVid || selectedProduct.cjPid
+                          ? "Opciones de Envío Disponibles:"
+                          : "Envío Configurado del Producto:"}
+                      </span>
                     </h4>
                   </div>
 
@@ -2645,7 +2796,9 @@ export default function ShopView({
                                   ⏱️ Entrega: <span className="font-bold text-slate-800">{option.aging}</span>
                                 </p>
                                 <p className="text-[10px] text-slate-400 font-medium mt-0.5 truncate">
-                                  📦 Almacén CN → {shippingCountry}
+                                  {selectedProduct.cjVid || selectedProduct.cjPid
+                                    ? `📦 Almacén CN → ${shippingCountry}`
+                                    : `📦 Envío directo del vendedor → ${shippingCountry}`}
                                 </p>
                               </div>
                             </div>
@@ -2694,7 +2847,7 @@ export default function ShopView({
 
                       onAddToCart(customizedProduct);
                       setShowShippingModal(false);
-                      setShowCartDrawer(true);
+                      openCartDrawer();
                     } else {
                       setShowShippingModal(false);
                     }

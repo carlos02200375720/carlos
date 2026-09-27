@@ -44,7 +44,9 @@ export default function AndroidPublishView({
   // Product state
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
-  const [category, setCategory] = useState("Moda");
+  const [shippingCost, setShippingCost] = useState("");
+  const [stock, setStock] = useState("10");
+  const [category, setCategory] = useState("Ropa Femenina");
   const [productDescription, setProductDescription] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -203,18 +205,27 @@ export default function AndroidPublishView({
       if (image) imageUrl = (await upload(image)).url;
       if (!imageUrl) throw new Error("El backend no devolvió la URL de la imagen.");
 
+      const parsedShipping = parseFloat(String(shippingCost).replace(",", "."));
+      const effectiveShippingCost = !Number.isNaN(parsedShipping) && parsedShipping >= 0 ? parsedShipping : 0;
+      const parsedStock = parseInt(String(stock), 10);
+      const effectiveStock = !Number.isNaN(parsedStock) && parsedStock >= 0 ? parsedStock : 10;
+
       const r = await androidApiFetch("/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          price: parseFloat(price) || 0,
+          price: parseFloat(String(price).replace(",", ".")) || 0,
+          shippingCost: effectiveShippingCost,
+          stock: effectiveStock,
           description: productDescription.trim(),
           category,
           imageUrl,
+          images: [imageUrl],
           sellerId: currentUser.originalId || currentUser.id,
           sellerName: currentUser.name,
-          inStock: true,
+          sellerUsername: currentUser.username,
+          inStock: effectiveStock > 0,
         }),
       });
 
@@ -448,19 +459,63 @@ export default function AndroidPublishView({
               />
             </div>
 
-            {/* Product Price */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                Precio (USD) <span className="text-amber-500">*</span>
-              </label>
-              <input
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 transition-colors"
-              />
+            {/* Product Price, Shipping Cost & Stock */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Precio ($) <span className="text-amber-500">*</span>
+                </label>
+                <input
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Envío ($)
+                </label>
+                <input
+                  value={shippingCost}
+                  onChange={(e) => setShippingCost(e.target.value)}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Gratis (0.00)"
+                  className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Stock <span className="text-amber-500">*</span>
+                </label>
+                <input
+                  value={stock}
+                  onChange={(e) => setStock(e.target.value)}
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="10"
+                  className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* Configured Shipping Preview Panel */}
+            <div className="p-3 rounded-xl bg-slate-900/90 border border-amber-500/30 flex items-center justify-between text-xs">
+              <span className="text-slate-300 font-semibold">Costo de envío configurado:</span>
+              <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-400 font-extrabold border border-amber-500/40 font-mono">
+                {(() => {
+                  const num = parseFloat(String(shippingCost).replace(",", "."));
+                  return !Number.isNaN(num) && num > 0 ? `$${num.toFixed(2)} USD` : "GRATIS ($0.00)";
+                })()}
+              </span>
             </div>
 
             {/* Product Category */}
@@ -473,11 +528,25 @@ export default function AndroidPublishView({
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition-colors"
               >
-                <option>Moda</option>
-                <option>Calzado</option>
-                <option>Accesorios</option>
-                <option>Tecnología</option>
-                <option>Belleza</option>
+                <option value="Ropa Femenina">Ropa Femenina</option>
+                <option value="Ropa Masculina">Ropa Masculina</option>
+                <option value="Mascotas">Mascotas</option>
+                <option value="Hogar">Hogar</option>
+                <option value="Salud">Salud</option>
+                <option value="Joyas">Joyas</option>
+                <option value="Bolsos">Bolsos</option>
+                <option value="Zapatos">Zapatos</option>
+                <option value="Juguetes">Juguetes</option>
+                <option value="Deportes">Deportes</option>
+                <option value="Electrónica">Electrónica</option>
+                <option value="Automotriz">Automotriz</option>
+                <option value="Teléfonos">Teléfonos</option>
+                <option value="Informática">Informática</option>
+                <option value="Moda">Moda</option>
+                <option value="Calzado">Calzado</option>
+                <option value="Accesorios">Accesorios</option>
+                <option value="Tecnología">Tecnología</option>
+                <option value="Belleza">Belleza</option>
               </select>
             </div>
 

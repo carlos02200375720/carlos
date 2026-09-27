@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { Product, CartItem, User, Order, Reel } from "../../types";
-import { ShoppingBag, Search, Plus, Minus, Trash2, X, Check, ArrowRight, Sparkles, Filter, CreditCard, Tag, Truck, ShieldCheck, Heart, RefreshCw, Star, Eye, AlertCircle, ShoppingCart, Volume2, VolumeX, Play, CheckCircle2, Bookmark } from "lucide-react";
+import { ShoppingBag, Search, Plus, Minus, Trash2, X, Check, ArrowRight, Sparkles, Filter, CreditCard, Tag, Truck, ShieldCheck, Heart, RefreshCw, Star, Eye, AlertCircle, ShoppingCart, Volume2, VolumeX, Play, CheckCircle2, Bookmark, Globe, Loader2, PackageCheck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
-import { AndroidVideoPlayer } from "./components/AndroidVideoPlayer";
+import { AndroidVideoPlayer } from "./components/movilvideoPlay";
+import { navigateTo, getProductPath } from "../../router";
 
-export interface AndroidShopViewProps {
+export interface AndroidShopProps {
   products: Product[];
   onAddToCart: (product: Product, quantity?: number, selectedOptions?: Record<string, string>, selectedVariantVid?: string) => void;
   cart: CartItem[];
@@ -37,7 +38,7 @@ export interface AndroidShopViewProps {
   onNavigateToHistory?: () => void;
   onToggleDetailView?: (open: boolean) => void;
   onToggleCart?: (open: boolean) => void;
-  initialStep?: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou';
+  initialStep?: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou';
   initialSelectedCartIndices?: number[];
   onClearInitialStep?: () => void;
   isLoading?: boolean;
@@ -46,6 +47,8 @@ export interface AndroidShopViewProps {
   savedReelIds?: string[];
   onToggleSave?: (productId: string) => void;
 }
+
+export type AndroidShopViewProps = AndroidShopProps;
 
 export interface AndroidCategory {
   id: string;
@@ -147,7 +150,7 @@ const CATEGORIES_WITH_IMAGES: AndroidCategory[] = [
   },
 ];
 
-export default function AndroidShopView({
+export default function Tienda({
   products,
   onAddToCart,
   cart,
@@ -175,7 +178,7 @@ export default function AndroidShopView({
   savedReelIds = [],
   onToggleSave,
   onBackToCatalog,
-}: AndroidShopViewProps) {
+}: AndroidShopProps) {
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [searchQuery, setSearchQuery] = useState("");
   const [displayCount, setDisplayCount] = useState(10);
@@ -187,11 +190,29 @@ export default function AndroidShopView({
     selectedProductDirectly || initialSelectedProduct || null
   );
   const [detailGalleryIndex, setDetailGalleryIndex] = useState(0);
-  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(() => {
+    if (initialStep === 'cart') return true;
+    if (typeof window !== 'undefined' && /^\/(?:tienda\/|shop\/)?(?:carrito|cart)$/i.test(window.location.pathname.replace(/\/+$/, ''))) {
+      return true;
+    }
+    return false;
+  });
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
-  const [showCheckoutPage, setShowCheckoutPage] = useState(false);
-  const [showThankYouPage, setShowThankYouPage] = useState(false);
+  const [showCheckoutPage, setShowCheckoutPage] = useState(() => {
+    if (initialStep === 'checkout') return true;
+    if (typeof window !== 'undefined' && /^\/(?:tienda\/|shop\/)?(?:verificacion|checkout)$/i.test(window.location.pathname.replace(/\/+$/, ''))) {
+      return true;
+    }
+    return false;
+  });
+  const [showThankYouPage, setShowThankYouPage] = useState(() => {
+    if (initialStep === 'thankyou') return true;
+    if (typeof window !== 'undefined' && /^\/(?:tienda\/|shop\/)?(?:gracia|gracias|thankyou|thank-you)$/i.test(window.location.pathname.replace(/\/+$/, ''))) {
+      return true;
+    }
+    return false;
+  });
 
   // Cart selection state: allows customer to choose specific products to buy
   const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>(() => {
@@ -240,15 +261,75 @@ export default function AndroidShopView({
     return selectedCartItems.length > 0 ? selectedCartItems : (cart || []);
   }, [selectedCartItems, cart]);
 
-  // Route directly to checkout if initiated from Reels/outside
+  // Route directly to checkout, cart, or thankyou if initiated from Reels/outside/URL
   useEffect(() => {
     if (initialStep === 'checkout') {
       setIsCartOpen(false);
       setSelectedProduct(null);
+      setShowThankYouPage(false);
       setShowCheckoutPage(true);
+      onClearInitialStep?.();
+    } else if (initialStep === 'cart') {
+      setShowCheckoutPage(false);
+      setShowThankYouPage(false);
+      setIsCartOpen(true);
+      onClearInitialStep?.();
+    } else if (initialStep === 'thankyou') {
+      setIsCartOpen(false);
+      setSelectedProduct(null);
+      setShowCheckoutPage(false);
+      setShowThankYouPage(true);
       onClearInitialStep?.();
     }
   }, [initialStep, onClearInitialStep]);
+
+  // Synchronize Cart, Checkout, and Thank You page state with browser URL (/tienda/carrito, /tienda/verificacion, /tienda/gracia) on Back/Forward navigation
+  useEffect(() => {
+    const syncStepFromUrl = () => {
+      const cleanPath = window.location.pathname.trim().replace(/\/+$/, '');
+      if (/^\/(?:tienda\/|shop\/)?(?:carrito|cart)$/i.test(cleanPath)) {
+        setIsCartOpen(true);
+        setShowCheckoutPage(false);
+        setShowThankYouPage(false);
+      } else if (/^\/(?:tienda\/|shop\/)?(?:verificacion|checkout)$/i.test(cleanPath)) {
+        setIsCartOpen(false);
+        setShowThankYouPage(false);
+        setShowCheckoutPage(true);
+      } else if (/^\/(?:tienda\/|shop\/)?(?:gracia|gracias|thankyou|thank-you)$/i.test(cleanPath)) {
+        setIsCartOpen(false);
+        setShowCheckoutPage(false);
+        setShowThankYouPage(true);
+      } else {
+        setIsCartOpen(false);
+        setShowCheckoutPage(false);
+        setShowThankYouPage(false);
+      }
+    };
+    window.addEventListener('popstate', syncStepFromUrl);
+    window.addEventListener('app-route-change', syncStepFromUrl);
+    return () => {
+      window.removeEventListener('popstate', syncStepFromUrl);
+      window.removeEventListener('app-route-change', syncStepFromUrl);
+    };
+  }, []);
+
+  const openCartPage = () => {
+    setIsCartOpen(true);
+    navigateTo('/tienda/carrito');
+  };
+
+  const closeCartPage = () => {
+    setIsCartOpen(false);
+    if (selectedProduct) {
+      navigateTo(getProductPath(selectedProduct));
+    } else if (showCheckoutPage) {
+      navigateTo('/tienda/verificacion');
+    } else if (showThankYouPage) {
+      navigateTo('/tienda/gracia');
+    } else {
+      navigateTo('/tienda');
+    }
+  };
 
   // Synchronize cart & detail view visibility with Android navigation bar
   useEffect(() => {
@@ -429,6 +510,18 @@ export default function AndroidShopView({
       setSelectedProductMediaUrl(selectedProduct.imageUrl || "");
       setSelectedVariants({});
       setOptionsValidationError(null);
+      if (!selectedProduct.cjVid && !selectedProduct.cjPid) {
+        const manualOpt = getManualShippingOption(selectedProduct);
+        setCjShippingOptions([manualOpt]);
+        setSelectedShippingOption(manualOpt);
+      } else {
+        if (selectedProduct.shippingCost !== undefined && Number(selectedProduct.shippingCost) > 0) {
+          setSelectedShippingOption(getManualShippingOption(selectedProduct));
+        } else {
+          setSelectedShippingOption(null);
+        }
+        fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid, true);
+      }
     }
   }, [selectedProduct?.id]);
 
@@ -778,9 +871,112 @@ export default function AndroidShopView({
     return list;
   }, [filteredProducts, displayCount]);
 
-  const cartTotal = useMemo(() => {
+  const CJ_DEST_COUNTRIES = [
+    { code: "US", name: "Estados Unidos 🇺🇸" },
+    { code: "ES", name: "España 🇪🇸" },
+    { code: "MX", name: "México 🇲🇽" },
+    { code: "CO", name: "Colombia 🇨🇴" },
+    { code: "CL", name: "Chile 🇨🇱" },
+    { code: "AR", name: "Argentina 🇦🇷" },
+    { code: "FR", name: "Francia 🇫🇷" },
+    { code: "DE", name: "Alemania 🇩🇪" },
+    { code: "GB", name: "Reino Unido 🇬🇧" },
+    { code: "CA", name: "Canadá 🇨🇦" },
+    { code: "BR", name: "Brasil 🇧🇷" },
+    { code: "PE", name: "Perú 🇵🇪" },
+    { code: "EC", name: "Ecuador 🇪🇨" },
+    { code: "DO", name: "República Dominicana 🇩🇴" },
+    { code: "IT", name: "Italia 🇮🇹" },
+    { code: "PT", name: "Portugal 🇵🇹" },
+    { code: "AU", name: "Australia 🇦🇺" },
+  ];
+
+  const [shippingCountry, setShippingCountry] = useState("ES");
+  const [cjShippingOptions, setCjShippingOptions] = useState<{ carrier: string; aging: string; shippingCost: number }[]>([]);
+  const [selectedShippingOption, setSelectedShippingOption] = useState<{ carrier: string; aging: string; shippingCost: number } | null>(null);
+  const [isLoadingFreight, setIsLoadingFreight] = useState(false);
+  const [showShippingModal, setShowShippingModal] = useState(false);
+
+  const getManualShippingOption = (prod: Product | null) => {
+    const rawCost = Number(prod?.shippingCost ?? 0);
+    const cost = !Number.isNaN(rawCost) && rawCost >= 0 ? rawCost : 0;
+    return {
+      carrier: "Envío Estándar del Vendedor",
+      aging: "3-7 días hábiles",
+      shippingCost: cost,
+    };
+  };
+
+  const fetchCjFreightOptions = async (countryCode: string, targetVid?: string, autoSelect: boolean = false) => {
+    let vidToUse = targetVid || "";
+    let pidToUse = "";
+
+    if (selectedProduct) {
+      if (!vidToUse) {
+        vidToUse = selectedProduct.cjVid || selectedProduct.variantList?.[0]?.vid || selectedProduct.cjPid || "";
+      }
+      pidToUse = selectedProduct.cjPid || "";
+    }
+
+    if (!vidToUse && !pidToUse) {
+      const manualOpt = getManualShippingOption(selectedProduct);
+      setCjShippingOptions([manualOpt]);
+      setSelectedShippingOption(manualOpt);
+      setIsLoadingFreight(false);
+      return;
+    }
+
+    setIsLoadingFreight(true);
+    try {
+      const res = await fetch(`/api/cj/freight-options?vid=${encodeURIComponent(vidToUse)}&pid=${encodeURIComponent(pidToUse)}&destCountry=${encodeURIComponent(countryCode)}`);
+      const data = await res.json();
+
+      const hasManualCost = selectedProduct && selectedProduct.shippingCost !== undefined && Number(selectedProduct.shippingCost) > 0;
+      const manualOpt = hasManualCost ? getManualShippingOption(selectedProduct) : null;
+
+      if (data.success && Array.isArray(data.options) && data.options.length > 0) {
+        const mergedOptions = manualOpt ? [manualOpt, ...data.options] : data.options;
+        setCjShippingOptions(mergedOptions);
+        if (autoSelect || !selectedShippingOption) {
+          setSelectedShippingOption(mergedOptions[0]);
+        }
+      } else {
+        const fallbackOpt = getManualShippingOption(selectedProduct);
+        setCjShippingOptions([fallbackOpt]);
+        if (autoSelect || !selectedShippingOption) {
+          setSelectedShippingOption(fallbackOpt);
+        }
+      }
+    } catch {
+      const fallbackOpt = getManualShippingOption(selectedProduct);
+      setCjShippingOptions([fallbackOpt]);
+      if (autoSelect || !selectedShippingOption) {
+        setSelectedShippingOption(fallbackOpt);
+      }
+    } finally {
+      setIsLoadingFreight(false);
+    }
+  };
+
+  const cartSubtotal = useMemo(() => {
     return effectiveCheckoutItems.reduce((sum, item) => sum + item.product.price * (item.quantity || 1), 0);
   }, [effectiveCheckoutItems]);
+
+  const cartShippingTotal = useMemo(() => {
+    return effectiveCheckoutItems.reduce((sum, item) => {
+      const fee =
+        item.selectedShippingCost !== undefined
+          ? Number(item.selectedShippingCost)
+          : item.product.shippingCost !== undefined
+          ? Number(item.product.shippingCost)
+          : 0;
+      return sum + (Number.isNaN(fee) ? 0 : fee) * (item.quantity || 1);
+    }, 0);
+  }, [effectiveCheckoutItems]);
+
+  const cartTotal = useMemo(() => {
+    return cartSubtotal + cartShippingTotal;
+  }, [cartSubtotal, cartShippingTotal]);
 
   React.useEffect(() => {
     if (cartDrawerRequest > 0) {
@@ -829,6 +1025,7 @@ export default function AndroidShopView({
       setIsCheckingOut(false);
       setShowCheckoutPage(false);
       setShowThankYouPage(true);
+      navigateTo('/tienda/gracia');
     }, 1500);
   };
 
@@ -839,7 +1036,7 @@ export default function AndroidShopView({
     const shippingAddress = checkoutForm.shippingAddress || "Dirección Android Principal";
 
     if (onCheckout) {
-      onCheckout(shippingAddress, 0, (newOrder) => {
+      onCheckout(shippingAddress, cartShippingTotal, (newOrder) => {
         finalizeOrder(shippingAddress, effectiveCheckoutItems);
       }, effectiveCheckoutItems);
       return;
@@ -963,6 +1160,7 @@ export default function AndroidShopView({
                 setShowCheckoutPage(false);
                 setSelectedProduct(null);
                 setIsCartOpen(false);
+                navigateTo('/tienda');
               }}
               className="w-full max-w-xs py-3.5 bg-gradient-to-r from-amber-300 to-orange-500 text-slate-950 font-black rounded-2xl shadow-xl shadow-orange-900/40 flex items-center justify-center space-x-2 active:scale-95 transition-transform"
               style={{ marginBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
@@ -987,7 +1185,7 @@ export default function AndroidShopView({
             type="button"
             onClick={() => {
               setShowCheckoutPage(false);
-              setIsCartOpen(true);
+              openCartPage();
             }}
             className="p-2 rounded-full bg-slate-100 text-slate-900 active:scale-95 cursor-pointer hover:bg-slate-200 transition-colors"
             id="android-checkout-back-btn"
@@ -1091,9 +1289,21 @@ export default function AndroidShopView({
                 ))
               )}
             </div>
-            <div className="mt-4 border-t border-slate-200 pt-3 flex justify-between items-center text-sm font-black text-slate-900">
-              <span>Total</span>
-              <span className="text-amber-600">${cartTotal.toFixed(2)}</span>
+            <div className="mt-4 border-t border-slate-200 pt-3 space-y-1.5 text-xs">
+              <div className="flex justify-between items-center text-slate-600 font-semibold">
+                <span>Subtotal</span>
+                <span className="font-mono">${cartSubtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600 font-semibold">
+                <span>Costo de Envío</span>
+                <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/70">
+                  {cartShippingTotal === 0 ? "GRATIS" : `$${cartShippingTotal.toFixed(2)}`}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-sm font-black text-slate-900 pt-1.5 border-t border-slate-100">
+                <span>Total</span>
+                <span className="text-amber-600 font-mono">${cartTotal.toFixed(2)}</span>
+              </div>
             </div>
           </div>
 
@@ -1134,7 +1344,7 @@ export default function AndroidShopView({
         >
           <button
             type="button"
-            onClick={() => setIsCartOpen(false)}
+            onClick={closeCartPage}
             className="p-2 rounded-full bg-slate-100 text-slate-900 active:scale-95 cursor-pointer hover:bg-slate-200 transition-colors"
             id="android-cart-back-btn"
             title="Volver"
@@ -1164,6 +1374,7 @@ export default function AndroidShopView({
                 onClick={() => {
                   setIsCartOpen(false);
                   setSelectedProduct(null);
+                  navigateTo('/tienda');
                 }}
                 className="mt-5 px-5 py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-xs cursor-pointer shadow-md hover:bg-amber-400 active:scale-95 transition-all"
               >
@@ -1255,6 +1466,7 @@ export default function AndroidShopView({
                         onClick={() => {
                           setSelectedProduct(item.product);
                           setIsCartOpen(false);
+                          onSelectProduct?.(item.product);
                         }}
                         className="cursor-pointer"
                       >
@@ -1272,6 +1484,7 @@ export default function AndroidShopView({
                           onClick={() => {
                             setSelectedProduct(item.product);
                             setIsCartOpen(false);
+                            onSelectProduct?.(item.product);
                           }}
                           className="text-[12px] font-black text-slate-900 line-clamp-1 cursor-pointer hover:text-amber-600 transition-colors"
                         >
@@ -1283,7 +1496,18 @@ export default function AndroidShopView({
                           {isSelected ? "A pagar" : "Omitido"}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-500 font-bold mt-0.5">${item.product.price.toFixed(2)} c/u</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        <p className="text-[11px] text-slate-500 font-bold">${item.product.price.toFixed(2)} c/u</p>
+                        <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/70 px-1.5 py-0.5 rounded">
+                          {(() => {
+                            const fee =
+                              item.selectedShippingCost !== undefined
+                                ? Number(item.selectedShippingCost)
+                                : Number(item.product.shippingCost ?? 0);
+                            return fee > 0 ? `Envío: $${fee.toFixed(2)}` : "Envío: Gratis";
+                          })()}
+                        </span>
+                      </div>
                       <div className="flex items-center justify-between mt-2">
                         <span className="text-[11px] font-black text-amber-600">Subtotal ${(item.product.price * (item.quantity || 1)).toFixed(2)}</span>
                         <button
@@ -1311,14 +1535,21 @@ export default function AndroidShopView({
             style={{ paddingBottom: "max(1rem, calc(env(safe-area-inset-bottom, 0px) + 0.5rem))" }}
           >
             <div className="max-w-md mx-auto w-full">
-              <div className="flex items-center justify-between text-sm font-black text-slate-900 mb-2.5">
-                <div className="flex flex-col">
-                  <span className="text-xs text-slate-500 font-bold">Total a pagar</span>
-                  <span className="text-[10px] font-bold text-slate-400">
-                    {selectedCartItems.length} de {cart.length} {cart.length === 1 ? "producto" : "productos"} seleccionados
+              <div className="space-y-1 mb-2.5">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold">
+                  <span>Subtotal ({selectedCartItems.length} de {cart.length} selec.):</span>
+                  <span className="font-mono text-slate-800 font-bold">${cartSubtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold">
+                  <span>Costo de Envío:</span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    {cartShippingTotal === 0 ? "GRATIS" : `$${cartShippingTotal.toFixed(2)}`}
                   </span>
                 </div>
-                <span className="text-base text-amber-600 font-black">${cartTotal.toFixed(2)}</span>
+                <div className="flex items-center justify-between text-sm font-black text-slate-900 pt-1 border-t border-slate-100">
+                  <span>Total a pagar</span>
+                  <span className="text-base text-amber-600 font-black font-mono">${cartTotal.toFixed(2)}</span>
+                </div>
               </div>
               <button
                 type="button"
@@ -1326,6 +1557,7 @@ export default function AndroidShopView({
                 onClick={() => {
                   setIsCartOpen(false);
                   setShowCheckoutPage(true);
+                  navigateTo('/tienda/verificacion');
                 }}
                 className={`w-full py-3.5 rounded-2xl text-xs font-black shadow-lg transition-all flex items-center justify-center space-x-2 ${
                   selectedCartIndices.length === 0
@@ -1402,7 +1634,7 @@ export default function AndroidShopView({
             <button
               type="button"
               id="android-detail-cart-btn"
-              onClick={() => setIsCartOpen(true)}
+              onClick={openCartPage}
               className="pointer-events-auto relative p-2 bg-transparent text-white active:scale-90 transition-transform flex items-center justify-center cursor-pointer border-0 shadow-none outline-none group"
               title="Ver carrito"
             >
@@ -1650,6 +1882,68 @@ export default function AndroidShopView({
               </div>
             </div>
 
+            {/* Panel de Envío debajo del precio (App Móvil) */}
+            <div
+              className="mt-2 bg-gradient-to-r from-amber-50/80 via-slate-50 to-amber-50/40 p-3 rounded-xl border border-amber-200/70 shadow-2xs"
+              id="android-product-detail-shipping-card"
+            >
+              <div className="flex items-center justify-between gap-2.5 flex-wrap">
+                <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                  <div className="w-9 h-9 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center text-amber-700 shrink-0">
+                    <Truck className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-extrabold text-slate-900">
+                        Envío a {CJ_DEST_COUNTRIES.find(c => c.code === shippingCountry)?.name || shippingCountry}
+                      </span>
+                      <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300/80 font-mono">
+                        {(() => {
+                          const cost = selectedShippingOption
+                            ? selectedShippingOption.shippingCost
+                            : Number(selectedProduct.shippingCost ?? 0);
+                          return cost === 0 ? "GRATIS" : `$${cost.toFixed(2)}`;
+                        })()}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-0.5 truncate">
+                      {selectedShippingOption ? (
+                        <span className="flex items-center gap-1 text-slate-700 font-medium">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 inline" />
+                          <span>{selectedShippingOption.carrier}</span>
+                          {selectedShippingOption.aging && (
+                            <span className="text-slate-500">({selectedShippingOption.aging})</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-slate-700 font-medium">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 inline" />
+                          <span>
+                            {Number(selectedProduct.shippingCost ?? 0) > 0
+                              ? `Costo de envío configurado: $${Number(selectedProduct.shippingCost).toFixed(2)}`
+                              : "Envío Gratis configurado"}
+                          </span>
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  id="android-btn-calcular-envio"
+                  onClick={() => {
+                    setShowShippingModal(true);
+                    fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
+                  }}
+                  className="px-3 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0 bg-amber-400 hover:bg-amber-500 text-slate-950"
+                >
+                  <Truck className="w-3.5 h-3.5 text-slate-950 shrink-0" />
+                  <span>Ver envío</span>
+                </button>
+              </div>
+            </div>
+
             {/* Description */}
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line">
               {selectedProduct.description}
@@ -1869,14 +2163,28 @@ export default function AndroidShopView({
             })()}
 
             {/* Shipping Information Banner */}
-            <div className="mt-4 bg-slate-50 rounded-xl border border-slate-100 p-3 flex items-center justify-between text-xs">
+            <div
+              onClick={() => {
+                setShowShippingModal(true);
+                fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
+              }}
+              className="mt-4 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 p-3 flex items-center justify-between text-xs cursor-pointer transition-colors"
+              id="android-shipping-info-banner"
+            >
               <div className="flex items-center space-x-2 text-slate-700 font-bold">
                 <Truck className="w-4 h-4 text-amber-500 shrink-0" />
-                <span>Envío a tu País:</span>
+                <span>Envío a tu País ({shippingCountry}):</span>
               </div>
-              <span className="text-[11px] font-extrabold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/80 flex items-center space-x-1">
+              <span className="text-[11px] font-extrabold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/80 flex items-center space-x-1 font-mono">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>GRATIS</span>
+                <span>
+                  {(() => {
+                    const cost = selectedShippingOption
+                      ? selectedShippingOption.shippingCost
+                      : Number(selectedProduct.shippingCost ?? 0);
+                    return cost === 0 ? "GRATIS" : `$${cost.toFixed(2)}`;
+                  })()}
+                </span>
               </span>
             </div>
           </div>
@@ -1910,11 +2218,19 @@ export default function AndroidShopView({
                       .join(", ");
 
                     const activeImageUrl = selectedProductMediaUrl || selectedProduct.imageUrl;
+                    const effectiveShippingFee = selectedShippingOption
+                      ? selectedShippingOption.shippingCost
+                      : Number(selectedProduct.shippingCost ?? 0);
+                    const effectiveCarrier = selectedShippingOption
+                      ? selectedShippingOption.carrier
+                      : "Envío Estándar del Vendedor";
 
                     const customizedProduct: Product = {
                       ...selectedProduct,
                       imageUrl: activeImageUrl,
                       name: variantStr ? `${selectedProduct.name} (${variantStr})` : selectedProduct.name,
+                      shippingCost: effectiveShippingFee,
+                      selectedCarrier: effectiveCarrier,
                     };
 
                     onAddToCart(customizedProduct, 1, selectedVariants);
@@ -1962,6 +2278,148 @@ export default function AndroidShopView({
             })()}
           </div>
         </div>
+
+        {/* Bottom Sheet Modal for Shipping Panel in Mobile */}
+        <AnimatePresence>
+          {showShippingModal && selectedProduct && (
+            <div
+              className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm p-0"
+              onClick={() => setShowShippingModal(false)}
+              id="android-shipping-modal-overlay"
+            >
+              <motion.div
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 220 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-lg bg-white rounded-t-3xl shadow-2xl border-t border-slate-200 flex flex-col max-h-[85vh] overflow-hidden text-slate-900 relative"
+                id="android-shipping-modal-panel"
+              >
+                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-1.5 bg-amber-500/15 rounded-lg text-amber-600">
+                      <Globe className="w-4 h-4" />
+                    </div>
+                    <h3 className="font-bold text-sm text-slate-900 leading-tight">Panel de Envío</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowShippingModal(false)}
+                    className="p-1 rounded-full hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
+                      <Globe className="w-4 h-4 text-amber-500" />
+                      <span>País de Destino:</span>
+                    </label>
+                    <select
+                      value={shippingCountry}
+                      onChange={(e) => {
+                        const newCountry = e.target.value;
+                        setShippingCountry(newCountry);
+                        fetchCjFreightOptions(newCountry, selectedProduct.cjVid || selectedProduct.cjPid);
+                      }}
+                      className="w-full bg-slate-50 border-2 border-slate-200 focus:border-amber-500 rounded-2xl p-3 text-xs font-extrabold text-slate-800 outline-none"
+                    >
+                      {CJ_DEST_COUNTRIES.map((c, cIdx) => (
+                        <option key={`${c.code}-${cIdx}`} value={c.code}>
+                          {c.name} ({c.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100">
+                    <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5 mb-3">
+                      <Truck className="w-4 h-4 text-amber-500" />
+                      <span>
+                        {selectedProduct.cjVid || selectedProduct.cjPid
+                          ? "Opciones de Envío Disponibles:"
+                          : "Envío Configurado del Producto:"}
+                      </span>
+                    </h4>
+
+                    {isLoadingFreight ? (
+                      <div className="py-8 flex flex-col items-center justify-center space-y-2 text-center">
+                        <Loader2 className="w-7 h-7 text-amber-500 animate-spin" />
+                        <p className="text-xs font-bold text-slate-600">Cargando tarifas de envío...</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {(cjShippingOptions.length > 0 ? cjShippingOptions : [getManualShippingOption(selectedProduct)]).map((option, idx) => {
+                          const isSelected = (selectedShippingOption?.carrier || "Envío Estándar del Vendedor") === option.carrier;
+                          return (
+                            <div
+                              key={idx}
+                              onClick={() => {
+                                setSelectedShippingOption(option);
+                                if (selectedProduct) {
+                                  selectedProduct.shippingCost = option.shippingCost;
+                                }
+                              }}
+                              className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                                isSelected
+                                  ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/30 shadow-sm"
+                                  : "bg-white hover:bg-slate-50 border-slate-200"
+                              }`}
+                            >
+                              <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                <div className={`p-2 rounded-xl mt-0.5 shrink-0 ${isSelected ? "bg-amber-500 text-slate-950" : "bg-slate-100 text-slate-600"}`}>
+                                  <Truck className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-xs font-extrabold text-slate-900 block truncate">
+                                    {option.carrier}
+                                  </span>
+                                  <p className="text-[11px] text-slate-500 font-medium mt-0.5 truncate">
+                                    ⏱️ Entrega: <span className="font-bold text-slate-800">{option.aging}</span>
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <span className="text-xs font-black font-mono text-slate-900 block">
+                                  {option.shippingCost === 0 ? "GRATIS" : `$${option.shippingCost.toFixed(2)}`}
+                                </span>
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full inline-block mt-1 ${
+                                  isSelected ? "bg-amber-500 text-slate-950 font-black" : "bg-slate-100 text-slate-600"
+                                }`}>
+                                  {isSelected ? "Seleccionado" : "Elegir"}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className="py-2.5 px-4 border-t border-slate-200 bg-slate-50/95"
+                  style={{ paddingBottom: "max(0.75rem, calc(env(safe-area-inset-bottom, 0px) + 0.35rem))" }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setShowShippingModal(false)}
+                    className="w-full py-2.5 rounded-xl font-extrabold text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer shadow-sm"
+                  >
+                    Confirmar envío ({(() => {
+                      const cost = selectedShippingOption
+                        ? selectedShippingOption.shippingCost
+                        : Number(selectedProduct.shippingCost ?? 0);
+                      return cost === 0 ? "GRATIS" : `$${cost.toFixed(2)}`;
+                    })()})
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -1999,7 +2457,7 @@ export default function AndroidShopView({
           </div>
 
           <button
-            onClick={() => setIsCartOpen(true)}
+            onClick={openCartPage}
             className="relative p-2 text-slate-900 active:scale-95 transition-transform shrink-0"
             aria-label="Carrito de compras"
           >
@@ -2182,8 +2640,15 @@ export default function AndroidShopView({
                   <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5">{p.description}</p>
                 </div>
 
-                <div className="flex items-center justify-between mt-0 px-2.5 pb-2.5 pt-2 border-t border-slate-100">
-                  <span className="text-xs font-black text-amber-500">${p.price.toFixed(2)}</span>
+                <div className="flex items-center justify-between mt-0 px-2.5 pb-2.5 pt-2 border-t border-slate-100 gap-1">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-black text-amber-500">${p.price.toFixed(2)}</span>
+                    <span className="text-[9px] font-bold text-emerald-700">
+                      {p.shippingCost && Number(p.shippingCost) > 0
+                        ? `Envío: $${Number(p.shippingCost).toFixed(2)}`
+                        : "Envío Gratis"}
+                    </span>
+                  </div>
                   <button
                     type="button"
                     id={`android-save-product-btn-${p.id}`}

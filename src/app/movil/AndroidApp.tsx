@@ -1,18 +1,18 @@
 import React from "react";
 import { Play, ShoppingBag, User as UserIcon, MessageSquare } from "lucide-react";
-import { User, Reel, Product, CartItem, Order, ChatMessage } from "../../types";
-import ReelsView from "./ReelsView";
-import ShopView from "./ShopView";
+import { User, Reel, Product, CartItem, Order, ChatMessage, NavigationTab } from "../../types";
+import Inicio from "./Inicio";
+import Tienda from "./Tienda";
 import SocialPanel from "./SocialPanel";
-import ProfileView from "./ProfileView";
+import Perfil from "./Perfil";
 import AndroidLoginView from "./LoginView";
 import { motion, AnimatePresence } from "motion/react";
 import { sessionState } from "../../utils/sessionState";
-import { navigateTo } from "../../router";
+import { navigateTo, getProfilePath, getProductPath, getInicioPath } from "../../router";
 
 export interface AndroidAppProps {
-  activeTab: 'reels' | 'shop' | 'messages' | 'profile';
-  setActiveTab: React.Dispatch<React.SetStateAction<'reels' | 'shop' | 'messages' | 'profile'>>;
+  activeTab: NavigationTab;
+  setActiveTab: React.Dispatch<React.SetStateAction<NavigationTab>>;
   users: User[];
   reels: Reel[];
   products: Product[];
@@ -24,8 +24,8 @@ export interface AndroidAppProps {
   setSelectedCreatorProfileId: (creatorId: string | null) => void;
   isProductDetailOpen: boolean;
   setIsProductDetailOpen: (open: boolean) => void;
-  shopInitialStep: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou';
-  setShopInitialStep: (step: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou') => void;
+  shopInitialStep: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou';
+  setShopInitialStep: (step: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou') => void;
   shopInitialSelectedIndices: number[];
   setShopInitialSelectedIndices: (indices: number[]) => void;
   activeChatUser: User | null;
@@ -35,6 +35,7 @@ export interface AndroidAppProps {
   savedReelIds: string[];
   isLiveViewerOpen: boolean;
   totalUnreads: number;
+  targetReelId?: string | null;
   handleAddToCart: (product: Product, quantity?: number, selectedOptions?: Record<string, string>, selectedVariantVid?: string) => void;
   handleRemoveFromCart: (productId: string, idx?: number) => void;
   handleUpdateCartQuantity: (productId: string, qty: number, idx?: number) => void;
@@ -92,6 +93,7 @@ export default function AndroidApp({
   savedReelIds,
   isLiveViewerOpen,
   totalUnreads,
+  targetReelId,
   handleAddToCart,
   handleRemoveFromCart,
   handleUpdateCartQuantity,
@@ -119,7 +121,8 @@ export default function AndroidApp({
   socket,
 }: AndroidAppProps) {
   const isUserLoggedIn = (isLoggedIn && !currentUser.isGuest && currentUser.username !== "invitado" && currentUser.id !== "guest") || (!currentUser.isGuest && Boolean(currentUser.username) && currentUser.username !== "invitado" && currentUser.id !== "guest");
-  const isDarkNavActive = activeTab === 'reels';
+  const isHomeActive = activeTab === 'inicio' || activeTab === 'reels';
+  const isDarkNavActive = isHomeActive;
   const [navBarHeight, setNavBarHeight] = React.useState(56);
   const [cartDrawerRequest, setCartDrawerRequest] = React.useState(0);
   const [isCartPageOpen, setIsCartPageOpen] = React.useState(false);
@@ -175,22 +178,22 @@ export default function AndroidApp({
         style={{
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',
-          marginBottom: (activeTab === 'messages' && activeChatUser) || isLiveViewerOpen || activeTab === 'reels'
+          marginBottom: (activeTab === 'messages' && activeChatUser) || isLiveViewerOpen || isHomeActive
             ? 0
             : undefined
         }}
       >
         <AnimatePresence mode="wait">
           <motion.div
-            key={activeTab}
+            key={isHomeActive ? 'inicio' : activeTab}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.15 }}
-            className={`w-full ${activeTab === 'reels' ? 'h-full' : ''}`}
+            className={`w-full ${isHomeActive ? 'h-full' : ''}`}
           >
-            {activeTab === 'reels' && (
-              <ReelsView
+            {isHomeActive && (
+              <Inicio
                 reels={reels}
                 currentUser={currentUser}
                 users={users}
@@ -201,11 +204,15 @@ export default function AndroidApp({
                 onRefreshReels={refreshReels}
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}
-                onNavigateToShop={() => setActiveTab('shop')}
+                onNavigateToShop={() => {
+                  setActiveTab('shop');
+                  navigateTo('/tienda');
+                }}
                 onNavigateToCheckout={(selectedIndices) => {
                   setShopInitialStep('checkout');
                   setShopInitialSelectedIndices(selectedIndices || []);
                   setActiveTab('shop');
+                  navigateTo('/tienda/verificacion');
                 }}
                 onProductClick={handleProductDetailsLink}
                 onCreatorClick={handleCreatorProfileLink}
@@ -214,15 +221,24 @@ export default function AndroidApp({
                 savedReelIds={savedReelIds}
                 onToggleSaveReel={handleToggleSaveReel}
                 onToggleFollowUser={handleToggleFollowUser}
-                onNavigateToProfile={() => setActiveTab('profile')}
+                onNavigateToProfile={() => {
+                  setSelectedCreatorProfileId(null);
+                  setActiveTab('profile');
+                  navigateTo(getProfilePath(currentUser));
+                }}
                 onGuestInteraction={(action) => {
-                  setGuestInteractionAlert(`Para ${action} en este reel, por favor inicia sesión.`);
+                  setGuestInteractionAlert(`Para ${action} en esta publicación, por favor inicia sesión.`);
+                }}
+                initialReelId={targetReelId}
+                onActiveReelChange={(reelId) => {
+                  const activeReel = reels.find((r) => r.id === reelId);
+                  navigateTo(getInicioPath(activeReel || reelId), { replace: true });
                 }}
               />
             )}
 
             {activeTab === 'shop' && (
-              <ShopView
+              <Tienda
                 products={products}
                 cart={cart}
                 users={users}
@@ -237,12 +253,9 @@ export default function AndroidApp({
                 selectedProductDirectly={directSelectedProduct}
                 clearDirectProduct={() => setDirectSelectedProduct(null)}
                 onNavigateToHistory={() => {
-                  if (!isUserLoggedIn) {
-                    setSelectedCreatorProfileId(null);
-                  } else {
-                    setSelectedCreatorProfileId(currentUser.id);
-                  }
+                  setSelectedCreatorProfileId(null);
                   setActiveTab('profile');
+                  navigateTo(getProfilePath(currentUser));
                 }}
                 onToggleDetailView={setIsProductDetailOpen}
                 onToggleCart={setIsCartPageOpen}
@@ -254,11 +267,11 @@ export default function AndroidApp({
                 }}
                 onSelectProduct={(p) => {
                   setDirectSelectedProduct(p);
-                  navigateTo(`/product/${encodeURIComponent(p.id)}`);
+                  navigateTo(getProductPath(p));
                 }}
                 onBackToCatalog={() => {
                   setDirectSelectedProduct(null);
-                  navigateTo('/shop');
+                  navigateTo('/tienda');
                 }}
                 cartDrawerRequest={cartDrawerRequest}
                 savedReelIds={savedReelIds}
@@ -287,10 +300,11 @@ export default function AndroidApp({
                       refreshAllData();
                       setSelectedCreatorProfileId(null);
                       setActiveTab('profile');
+                      navigateTo(getProfilePath(loggedUser));
                     }}
                   />
                 ) : (
-                  <ProfileView
+                  <Perfil
                     currentUser={currentUser}
                     selectedCreatorId={selectedCreatorProfileId}
                     users={users}
@@ -298,7 +312,10 @@ export default function AndroidApp({
                     products={products}
                     savedReelIds={savedReelIds}
                     onToggleSaveReel={handleToggleSaveReel}
-                    onBackToSelf={() => setSelectedCreatorProfileId(null)}
+                    onBackToSelf={() => {
+                      setSelectedCreatorProfileId(null);
+                      navigateTo(getProfilePath(currentUser));
+                    }}
                     onOpenDirectChat={openPrivateChatDirectly}
                     onSelectProduct={handleProductDetailsLink}
                     onSelectReel={handleReelLink}
@@ -313,6 +330,7 @@ export default function AndroidApp({
                         sessionState.setUsername(updatedUser.username);
                         setSelectedCreatorProfileId(null);
                         setActiveTab('profile');
+                        navigateTo(getProfilePath(updatedUser));
                       }
                     }}
                     onRefreshUsers={refreshAllData}
@@ -335,7 +353,10 @@ export default function AndroidApp({
                 onSendPrivateMessage={handleSendPrivateMessage}
                 unreadCounts={unreadCounts}
                 clearUnreads={handleClearUnreads}
-                onClose={() => setActiveTab('reels')}
+                onClose={() => {
+                  setActiveTab('inicio');
+                  navigateTo('/inicio');
+                }}
               />
             )}
           </motion.div>
@@ -357,27 +378,27 @@ export default function AndroidApp({
         >
           <div className="max-w-md mx-auto grid grid-cols-4 items-center">
             
-            {/* Tab 1: Reels */}
+            {/* Tab 1: Inicio */}
             <button
-              onClick={() => { refreshReels(); setActiveTab('reels'); }}
+              onClick={() => { refreshReels(); setActiveTab('inicio'); navigateTo('/inicio'); }}
               className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all active:bg-amber-500/10 cursor-pointer ${
-                activeTab === 'reels'
+                isHomeActive
                   ? "text-amber-500 scale-105"
                   : "text-slate-400 hover:text-white"
               }`}
-              id="android-nav-reels"
+              id="android-nav-inicio"
             >
-              <Play className={`w-5 h-5 transition-all ${activeTab === 'reels' ? "fill-amber-500 stroke-amber-500" : ""}`} />
-              <span className="text-[10px] font-medium mt-0.5 tracking-tight">Reels</span>
+              <Play className={`w-5 h-5 transition-all ${isHomeActive ? "fill-amber-500 stroke-amber-500" : ""}`} />
+              <span className="text-[10px] font-medium mt-0.5 tracking-tight">Inicio</span>
             </button>
 
             {/* Tab 2: Shop */}
             <button
-              onClick={() => setActiveTab('shop')}
+              onClick={() => { setActiveTab('shop'); navigateTo('/tienda'); }}
               className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all active:bg-amber-500/10 cursor-pointer relative ${
                 activeTab === 'shop'
                   ? "text-amber-600 scale-105"
-                  : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
+                  : isHomeActive ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
               }`}
               id="android-nav-shop"
             >
@@ -387,11 +408,11 @@ export default function AndroidApp({
 
             {/* Tab 3: Messages */}
             <button
-              onClick={() => setActiveTab('messages')}
+              onClick={() => { setActiveTab('messages'); navigateTo('/messages'); }}
               className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all active:bg-amber-500/10 cursor-pointer relative ${
                 activeTab === 'messages'
                   ? "text-amber-600 scale-105"
-                  : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
+                  : isHomeActive ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
               }`}
               id="android-nav-messages"
             >
@@ -409,11 +430,12 @@ export default function AndroidApp({
               onClick={() => {
                 setSelectedCreatorProfileId(null);
                 setActiveTab('profile');
+                navigateTo(getProfilePath(currentUser));
               }}
               className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all active:bg-amber-500/10 cursor-pointer ${
                 activeTab === 'profile'
                   ? "text-amber-600 scale-105"
-                  : activeTab === 'reels' ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
+                  : isHomeActive ? "text-slate-400 hover:text-white" : "text-slate-400 hover:text-slate-800"
               }`}
               id="android-nav-profile"
             >

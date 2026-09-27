@@ -1,14 +1,14 @@
 import React from "react";
 import { User, Reel, Product, CartItem, Order, ChatMessage, NavigationTab } from "../../types";
 import WebSidebar from "./WebSidebar";
-import ReelsView from "./ReelsView";
-import ShopView from "./ShopView";
+import Inicio from "./Inicio";
+import Tienda from "./Tienda";
 import SocialPanel from "./SocialPanel";
-import ProfileView from "./ProfileView";
+import Perfil from "./Perfil";
 import AdminView from "./AdminView";
 import { motion, AnimatePresence } from "motion/react";
 import { sessionState } from "../../utils/sessionState";
-import { navigateTo } from "../../router";
+import { navigateTo, getProfilePath, getProductPath, getInicioPath } from "../../router";
 import { isSuperAdmin } from "../../superAdmin";
 
 export interface WebAppProps {
@@ -25,8 +25,8 @@ export interface WebAppProps {
   setSelectedCreatorProfileId: (creatorId: string | null) => void;
   isProductDetailOpen: boolean;
   setIsProductDetailOpen: (open: boolean) => void;
-  shopInitialStep: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou';
-  setShopInitialStep: (step: 'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou') => void;
+  shopInitialStep: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou';
+  setShopInitialStep: (step: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou') => void;
   shopInitialSelectedIndices: number[];
   setShopInitialSelectedIndices: (indices: number[]) => void;
   activeChatUser: User | null;
@@ -123,7 +123,8 @@ export default function WebApp({
   onSwitchPlatform,
   targetReelId,
 }: WebAppProps) {
-  const isDarkNavActive = activeTab === 'reels';
+  const isHomeActive = activeTab === 'inicio' || activeTab === 'reels';
+  const isDarkNavActive = isHomeActive;
 
   return (
     <div className="w-full flex-1 flex relative" id="web-app-layout">
@@ -136,37 +137,63 @@ export default function WebApp({
         selectedCreatorProfileId={selectedCreatorProfileId}
         setSelectedCreatorProfileId={setSelectedCreatorProfileId}
         refreshReels={refreshReels}
+        hideMobileHamburger={
+          activeTab === 'shop' &&
+          (isProductDetailOpen ||
+            Boolean(directSelectedProduct) ||
+            shopInitialStep === 'detail' ||
+            shopInitialStep === 'checkout' ||
+            shopInitialStep === 'payment')
+        }
       />
 
       {/* Main Web Views Canvas */}
       <main
-        className={`flex-1 w-full md:pl-60 lg:pl-64 ${activeTab === 'reels' ? 'h-screen overflow-hidden' : 'min-h-screen pb-16 md:pb-0'} ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
+        className={`flex-1 w-full md:pl-60 lg:pl-64 ${isHomeActive ? 'h-screen overflow-hidden' : 'min-h-screen pb-0'} ${isDarkNavActive ? "bg-slate-950" : "bg-white"}`}
       >
         <AnimatePresence mode="wait">
           <motion.div
-            key={activeTab}
+            key={isHomeActive ? 'inicio' : activeTab}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.15 }}
-            className={`w-full ${activeTab === 'reels' ? 'h-full flex flex-col' : ''}`}
+            className={`w-full ${isHomeActive ? 'h-full flex flex-col' : ''}`}
           >
-            {activeTab === 'reels' && (
-              <ReelsView
+            {isHomeActive && (
+              <Inicio
                 reels={reels}
                 currentUser={currentUser}
                 cart={cart}
+                totalUnreads={totalUnreads}
+                onRefreshReels={refreshReels}
+                onNavigateToTab={(tab) => {
+                  setSelectedCreatorProfileId(null);
+                  setActiveTab(tab);
+                  if (tab === 'profile') {
+                    navigateTo(getProfilePath(currentUser));
+                  } else if (tab === 'inicio' || tab === 'reels') {
+                    refreshReels();
+                    navigateTo('/inicio');
+                  } else if (tab === 'shop') {
+                    navigateTo('/tienda');
+                  } else if (tab === 'messages') {
+                    navigateTo('/messages');
+                  } else if (tab === 'admin') {
+                    navigateTo('/admin');
+                  }
+                }}
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}
                 onNavigateToShop={() => {
                   setActiveTab('shop');
-                  navigateTo('/shop');
+                  navigateTo('/tienda');
                 }}
                 onNavigateToCheckout={(selectedIndices) => {
                   setShopInitialStep('checkout');
                   setShopInitialSelectedIndices(selectedIndices || []);
                   setActiveTab('shop');
-                  navigateTo('/checkout');
+                  navigateTo('/tienda/verificacion');
                 }}
                 onProductClick={handleProductDetailsLink}
                 onCreatorClick={handleCreatorProfileLink}
@@ -176,21 +203,24 @@ export default function WebApp({
                 onToggleSaveReel={handleToggleSaveReel}
                 onToggleFollowUser={handleToggleFollowUser}
                 onGuestInteraction={(action) => {
-                  setGuestInteractionAlert(`Para ${action} en este reel, por favor inicia sesión o crea una cuenta de creador.`);
+                  setGuestInteractionAlert(`Para ${action} en esta publicación, por favor inicia sesión o crea una cuenta de creador.`);
                 }}
                 initialReelId={targetReelId}
                 onActiveReelChange={(reelId) => {
-                  navigateTo(`/reel/${encodeURIComponent(reelId)}`);
+                  const activeReel = reels.find((r) => r.id === reelId);
+                  navigateTo(getInicioPath(activeReel || reelId), { replace: true });
                 }}
               />
             )}
 
             {activeTab === 'shop' && (
-              <ShopView
+              <Tienda
                 products={products}
                 cart={cart}
                 users={users}
                 currentUser={currentUser}
+                savedReelIds={savedReelIds}
+                onToggleSave={handleToggleSaveReel}
                 onAddToCart={handleAddToCart}
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}
@@ -198,7 +228,7 @@ export default function WebApp({
                 onCreatorClick={handleCreatorProfileLink}
                 selectedProductDirectly={directSelectedProduct}
                 clearDirectProduct={() => setDirectSelectedProduct(null)}
-                onNavigateToHistory={() => { setSelectedCreatorProfileId(currentUser.id); setActiveTab('profile'); navigateTo('/profile'); }}
+                onNavigateToHistory={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); navigateTo(getProfilePath(currentUser)); }}
                 onToggleDetailView={setIsProductDetailOpen}
                 initialStep={shopInitialStep}
                 initialSelectedCartIndices={shopInitialSelectedIndices}
@@ -208,17 +238,26 @@ export default function WebApp({
                 }}
                 onProductSelect={(prod) => {
                   setDirectSelectedProduct(prod);
-                  navigateTo(`/product/${encodeURIComponent(prod.id)}`);
+                  navigateTo(getProductPath(prod));
                 }}
                 onBackToCatalog={() => {
                   setDirectSelectedProduct(null);
-                  navigateTo('/shop');
+                  setIsProductDetailOpen(false);
+                  setShopInitialStep('catalog');
+                  navigateTo('/tienda');
                 }}
                 onStepChange={(step) => {
+                  setShopInitialStep(step);
                   if (step === 'checkout') {
-                    navigateTo('/checkout');
+                    navigateTo('/tienda/verificacion');
+                  } else if (step === 'cart') {
+                    navigateTo('/tienda/carrito');
+                  } else if (step === 'thankyou') {
+                    navigateTo('/tienda/gracia');
                   } else if (step === 'catalog') {
-                    navigateTo('/shop');
+                    setDirectSelectedProduct(null);
+                    setIsProductDetailOpen(false);
+                    navigateTo('/tienda');
                   }
                 }}
               />
@@ -226,11 +265,14 @@ export default function WebApp({
 
             {activeTab === 'profile' && (
               <div className="w-full pb-6" id="web-profile-container">
-                <ProfileView
+                <Perfil
                   currentUser={currentUser}
                   selectedCreatorId={selectedCreatorProfileId}
                   users={users}
-                  onBackToSelf={() => setSelectedCreatorProfileId(null)}
+                  onBackToSelf={() => {
+                    setSelectedCreatorProfileId(null);
+                    navigateTo(getProfilePath(currentUser));
+                  }}
                   onOpenDirectChat={openPrivateChatDirectly}
                   onSelectProduct={handleProductDetailsLink}
                   onSelectReel={handleReelLink}
@@ -245,6 +287,7 @@ export default function WebApp({
                       sessionState.setUsername(updatedUser.username);
                       setSelectedCreatorProfileId(null);
                       setActiveTab('profile');
+                      navigateTo(getProfilePath(updatedUser));
                     }
                   }}
                   onRefreshUsers={refreshAllData}
@@ -265,7 +308,10 @@ export default function WebApp({
                 onSendPrivateMessage={handleSendPrivateMessage}
                 unreadCounts={unreadCounts}
                 clearUnreads={handleClearUnreads}
-                onClose={() => setActiveTab('reels')}
+                onClose={() => {
+                  setActiveTab('inicio');
+                  navigateTo('/inicio');
+                }}
               />
             )}
 
@@ -285,6 +331,17 @@ export default function WebApp({
                   onNavigateToTab={(tab) => {
                     setSelectedCreatorProfileId(null);
                     setActiveTab(tab);
+                    if (tab === 'profile') {
+                      navigateTo(getProfilePath(currentUser));
+                    } else if (tab === 'inicio' || tab === 'reels') {
+                      navigateTo('/inicio');
+                    } else if (tab === 'shop') {
+                      navigateTo('/tienda');
+                    } else if (tab === 'messages') {
+                      navigateTo('/messages');
+                    } else if (tab === 'admin') {
+                      navigateTo('/admin');
+                    }
                   }}
                   setUsers={setUsers}
                   setReels={setReels}

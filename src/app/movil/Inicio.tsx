@@ -2,12 +2,13 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Reel, ReelMedia, Product, User, Comment, CartItem } from "../../types";
 import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X, RefreshCw, Video, Minus, Trash2, CreditCard, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { AndroidVideoPlayer, AndroidVideoPlayerHandle } from "./components/AndroidVideoPlayer";
+import { MovilVideoPlay, MovilVideoPlayHandle } from "./components/movilvideoPlay";
 import { AndroidProgressBar } from "./components/AndroidProgressBar";
 import { AndroidAuthModal } from "./components/AndroidAuthModal";
 import { getMediaUrl } from "../../config";
+import { getInicioShareUrl } from "../../router";
 
-export interface AndroidReelsViewProps {
+export interface AndroidInicioProps {
   reels: Reel[];
   currentUser: User;
   onLikeReel: (reelId: string) => void;
@@ -39,9 +40,11 @@ export interface AndroidReelsViewProps {
   onNavigateToShop?: () => void;
   onNavigateToCheckout?: (selectedIndices?: number[]) => void;
   onNavigateToProfile?: () => void;
+  initialReelId?: string | null;
+  onActiveReelChange?: (reelId: string) => void;
 }
 
-export default function AndroidReelsView({
+export default function Inicio({
   reels,
   currentUser,
   onLikeReel,
@@ -70,8 +73,17 @@ export default function AndroidReelsView({
   onNavigateToProfile,
   onRemoveFromCart,
   onUpdateCartQuantity,
-}: AndroidReelsViewProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+  initialReelId,
+  onActiveReelChange,
+}: AndroidInicioProps) {
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    if (initialReelId && reels.length > 0) {
+      const idx = reels.findIndex((r) => r.id === initialReelId);
+      if (idx !== -1) return idx;
+    }
+    return 0;
+  });
+  const lastSyncedReelIdRef = useRef<string | null>(initialReelId || null);
   const [localMuted, setLocalMuted] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [commentInput, setCommentInput] = useState("");
@@ -123,14 +135,23 @@ export default function AndroidReelsView({
     const updateHeight = () => {
       const navEl = document.getElementById("android-bottom-nav-bar");
       if (navEl) {
-        setActualNavHeight(navEl.offsetHeight || navEl.getBoundingClientRect().height || 56);
+        setActualNavHeight(navEl.getBoundingClientRect().height || navEl.offsetHeight || 56);
       } else if (bottomNavHeight) {
         setActualNavHeight(bottomNavHeight);
       }
     };
     updateHeight();
+    const navEl = document.getElementById("android-bottom-nav-bar");
+    let ro: ResizeObserver | null = null;
+    if (navEl && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(updateHeight);
+      ro.observe(navEl);
+    }
     window.addEventListener("resize", updateHeight);
-    return () => window.removeEventListener("resize", updateHeight);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", updateHeight);
+    };
   }, [bottomNavHeight]);
 
   const isMuted = propIsMuted !== undefined ? propIsMuted : localMuted;
@@ -153,7 +174,7 @@ export default function AndroidReelsView({
     setProgressVideo((prev) => (prev === video ? prev : video));
   }, []);
 
-  const playerRef = useRef<AndroidVideoPlayerHandle>(null);
+  const playerRef = useRef<MovilVideoPlayHandle>(null);
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
   const mouseStartX = useRef<number>(0);
@@ -165,8 +186,36 @@ export default function AndroidReelsView({
   const currentReel = reels[currentIndex] || reels[0];
 
   useEffect(() => {
+    if (!initialReelId || reels.length === 0) return;
+    if (lastSyncedReelIdRef.current === initialReelId) {
+      const currentId = reels[currentIndex]?.id;
+      if (currentId === initialReelId) return;
+    }
+    const idx = reels.findIndex((r) => r.id === initialReelId);
+    if (idx !== -1) {
+      lastSyncedReelIdRef.current = initialReelId;
+      if (idx !== currentIndex) {
+        setCurrentIndex(idx);
+      }
+    }
+  }, [initialReelId, reels.length]);
+
+  useEffect(() => {
     setActiveMediaIndex(0);
-  }, [currentIndex]);
+    setImageAspect(currentReel?.aspectRatio || 'vertical');
+    const activeId = reels[currentIndex]?.id;
+    if (!activeId) return;
+    if (initialReelId && lastSyncedReelIdRef.current !== initialReelId) {
+      const targetIdx = reels.findIndex((r) => r.id === initialReelId);
+      if (targetIdx !== -1 && targetIdx !== currentIndex) {
+        return;
+      }
+    }
+    if (lastSyncedReelIdRef.current !== activeId) {
+      lastSyncedReelIdRef.current = activeId;
+      onActiveReelChange?.(activeId);
+    }
+  }, [currentIndex, reels.length]);
 
   const handleProductSelect = onProductClick || onSelectProduct;
 
@@ -377,8 +426,8 @@ export default function AndroidReelsView({
     const img = e.currentTarget;
     if (img.naturalWidth && img.naturalHeight) {
       const ratio = img.naturalWidth / img.naturalHeight;
-      if (ratio < 0.85) setImageAspect("vertical");
-      else if (ratio > 1.18) setImageAspect("horizontal");
+      if (ratio > 1.05) setImageAspect("horizontal");
+      else if (ratio < 0.95) setImageAspect("vertical");
       else setImageAspect("square");
     }
   };
@@ -412,17 +461,17 @@ export default function AndroidReelsView({
   };
 
   const handleShare = async () => {
+    const shareUrl = getInicioShareUrl(currentReel);
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({
-          title: currentReel.description || "Reel",
+          title: currentReel.description || "Inicio",
           text: currentReel.description,
-          url: window.location.href,
+          url: shareUrl,
         });
       } catch {}
     } else {
-      navigator.clipboard?.writeText?.(window.location.href);
-      alert("Enlace copiado al portapapeles de Android");
+      navigator.clipboard?.writeText?.(shareUrl);
     }
   };
 
@@ -439,7 +488,9 @@ export default function AndroidReelsView({
     <div
       className="relative w-full bg-black overflow-hidden flex flex-col items-center justify-center select-none font-sans"
       style={{
-        height: `calc(100vh - ${actualNavHeight}px)`,
+        height: `calc(100dvh - ${actualNavHeight}px)`,
+        minHeight: `calc(100dvh - ${actualNavHeight}px)`,
+        maxHeight: `calc(100dvh - ${actualNavHeight}px)`,
         touchAction: "pan-y",
       }}
       onTouchStart={handleTouchStart}
@@ -448,56 +499,10 @@ export default function AndroidReelsView({
       onMouseUp={handleMouseUp}
       id="android-reels-view"
     >
-      {/* Media item sequence indicators for multi-media publications (Video -> Image -> Image etc.) */}
-      {mediaItems.length > 1 && (
-        <div className="absolute top-1.5 inset-x-3 z-35 flex items-center space-x-1.5 pointer-events-none">
-          {mediaItems.map((_, idx) => (
-            <div
-              key={idx}
-              className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                idx === activeMediaIndex ? "bg-amber-400 shadow-sm" : "bg-white/35"
-              }`}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Navigation chevrons for multi-media publication sequence */}
-      {mediaItems.length > 1 && (
-        <>
-          {activeMediaIndex > 0 && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveMediaIndex((prev) => prev - 1);
-              }}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 z-35 w-8 h-8 rounded-full bg-black/45 backdrop-blur-xs text-white/90 flex items-center justify-center active:scale-90 transition-all cursor-pointer border border-white/10 shadow-lg"
-              title="Anterior elemento"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-          )}
-          {activeMediaIndex < mediaItems.length - 1 && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveMediaIndex((prev) => prev + 1);
-              }}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 z-35 w-8 h-8 rounded-full bg-black/45 backdrop-blur-xs text-white/90 flex items-center justify-center active:scale-90 transition-all cursor-pointer border border-white/10 shadow-lg"
-              title="Siguiente elemento"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          )}
-        </>
-      )}
-
-      {/* Media Player Container: Dynamic Aspect Architecture (Vertical 100%, Horizontal 16:9, Square 1:1) */}
+      {/* Media Player Container: Dynamic Aspect Architecture (Vertical 100% from nav bar, Horizontal 16:9, Square 1:1) */}
       {isVideo ? (
-        <>
-          <AndroidVideoPlayer
+        <div className="absolute inset-0 w-full h-full overflow-hidden">
+          <MovilVideoPlay
             key={currentReel.id}
             ref={playerRef}
             src={getMediaUrl(currentMedia.url)}
@@ -513,29 +518,15 @@ export default function AndroidReelsView({
             onVideoReady={handleVideoReady}
             className="w-full h-full"
           />
-        </>
+        </div>
       ) : (
         /* Image / Carousel publication */
-        <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden bg-black">
-          {imageAspect !== "vertical" && (
-            <div
-              className="absolute inset-0 overflow-hidden pointer-events-none opacity-30 filter blur-3xl scale-125 select-none"
-              aria-hidden="true"
-            >
-              <img
-                src={getMediaUrl(currentMedia?.url || currentReel.thumbnailUrl || (currentReel.images && currentReel.images[0]))}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            </div>
-          )}
+        <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center overflow-hidden bg-black">
           <div
             className={
               imageAspect === "vertical"
-                ? "w-full h-full flex items-center justify-center relative overflow-hidden"
-                : imageAspect === "horizontal"
-                ? "w-full max-h-[calc(100vh-120px)] relative z-10 flex items-center justify-center my-auto px-0 rounded-none overflow-hidden"
-                : "w-full max-w-[min(94vw,calc(100vh-160px))] aspect-square relative z-10 mx-auto flex items-center justify-center my-auto rounded-2xl overflow-hidden shadow-2xl border border-white/10"
+                ? "absolute inset-0 w-full h-full overflow-hidden bg-black"
+                : "w-full h-full flex items-center justify-center bg-black overflow-hidden"
             }
           >
             <img
@@ -544,19 +535,17 @@ export default function AndroidReelsView({
               onLoad={handleImageLoad}
               className={
                 imageAspect === "vertical"
-                  ? "w-full h-full object-cover"
-                  : imageAspect === "horizontal"
-                  ? "w-full max-h-full aspect-video object-cover rounded-none shadow-none"
-                  : "w-full h-full object-cover"
+                  ? "w-full h-full object-cover object-center block"
+                  : "w-full h-auto max-h-full object-contain object-center block bg-black"
               }
             />
           </div>
         </div>
       )}
 
-      {nextMedia && nextReel && (
-        <AndroidVideoPlayer
-          key={nextReel.id}
+      {nextMedia && nextReel && nextReel.id !== currentReel.id && (
+        <MovilVideoPlay
+          key={`preload-${nextReel.id}`}
           src={getMediaUrl(nextMedia.url)}
           hlsUrl={getMediaUrl(nextMedia.hlsUrl || (nextMedia.url?.includes(".m3u8") ? nextMedia.url : nextReel.hlsUrl))}
           poster={nextReel.thumbnailUrl ? getMediaUrl(nextReel.thumbnailUrl) : undefined}

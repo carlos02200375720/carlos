@@ -568,7 +568,7 @@ export default function UserPublicationsFeed({
 
   // Share publication
   const handleShare = async (reel: Reel) => {
-    const shareUrl = `${window.location.origin}/#reel-${reel.id}`;
+    const shareUrl = `${window.location.origin}/inicio/${encodeURIComponent(reel.id)}`;
     if (navigator.share) {
       try {
         await navigator.share({

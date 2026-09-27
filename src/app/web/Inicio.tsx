@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from "react";
-import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, VolumeX, Send, X, Play, Bookmark, Trash2, Check, ArrowLeft, Plus, Minus, ChevronLeft, ChevronRight } from "lucide-react";
-import { Reel, ReelMedia, Product, Comment, User, CartItem } from "../../types";
+import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, VolumeX, Send, X, Play, Bookmark, Trash2, Check, ArrowLeft, Plus, Minus, ChevronLeft, ChevronRight, Menu, MessageSquare, User as UserIcon, ShieldCheck, Sparkles } from "lucide-react";
+import { Reel, ReelMedia, Product, Comment, User, CartItem, NavigationTab } from "../../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch, getMediaUrl } from "../../config";
 import { ReelProgressBar } from "./components/ReelProgressBar";
 import Hls from "hls.js";
-import { getReelShareUrl } from "../../router";
+import { getInicioShareUrl, navigateTo, getProfilePath } from "../../router";
+import { isSuperAdmin } from "../../superAdmin";
 
-interface ReelsViewProps {
+export interface InicioProps {
   reels: Reel[];
   currentUser: User;
   cart?: CartItem[];
+  totalUnreads?: number;
+  onRefreshReels?: () => void;
+  onNavigateToTab?: (tab: NavigationTab) => void;
   onRemoveFromCart?: (productId: string, idx?: number) => void;
   onUpdateCartQuantity?: (productId: string, qty: number, idx?: number) => void;
   onNavigateToShop?: () => void;
@@ -27,10 +31,13 @@ interface ReelsViewProps {
   onActiveReelChange?: (reelId: string) => void;
 }
 
-export default function ReelsView({
+export default function Inicio({
   reels,
   currentUser,
   cart = [],
+  totalUnreads = 0,
+  onRefreshReels,
+  onNavigateToTab,
   onRemoveFromCart,
   onUpdateCartQuantity,
   onNavigateToShop,
@@ -45,7 +52,7 @@ export default function ReelsView({
   onGuestInteraction,
   initialReelId,
   onActiveReelChange,
-}: ReelsViewProps) {
+}: InicioProps) {
   const [activeReelIndex, setActiveReelIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [activeVideoElement, setActiveVideoElement] = useState<HTMLVideoElement | null>(null);
@@ -56,6 +63,7 @@ export default function ReelsView({
   const [showShareModal, setShowShareModal] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
+  const [showMobileNavMenu, setShowMobileNavMenu] = useState(false);
   const [carouselIndices, setCarouselIndices] = useState<{ [key: string]: number }>({});
   const [mediaAspectRatios, setMediaAspectRatios] = useState<{ [key: string]: 'vertical' | 'square' | 'horizontal' | 'horizontal_or_square' }>({});
 
@@ -130,21 +138,30 @@ export default function ReelsView({
     setMediaAspectRatios((prev) => prev[reelId] === ratio ? prev : { ...prev, [reelId]: ratio });
   }, []);
 
-  // Auto-scroll to initialReelId if deep-linked via URL
+  const lastSyncedReelIdRef = useRef<string | null>(null);
+
+  // Auto-scroll to initialReelId if deep-linked via URL, or sync first reel to URL
   useEffect(() => {
-    if (initialReelId && displayedReels.length > 0) {
+    if (displayedReels.length === 0) return;
+    if (initialReelId && lastSyncedReelIdRef.current !== initialReelId) {
       const idx = displayedReels.findIndex((r) => r.id === initialReelId);
-      if (idx !== -1 && idx !== activeReelIndex) {
-        setActiveReelIndex(idx);
-        if (containerRef.current) {
-          const childHeight = containerRef.current.clientHeight;
-          if (childHeight) {
-            containerRef.current.scrollTo({ top: idx * childHeight, behavior: 'instant' });
+      if (idx !== -1) {
+        lastSyncedReelIdRef.current = initialReelId;
+        if (idx !== activeReelIndex) {
+          setActiveReelIndex(idx);
+          if (containerRef.current) {
+            const childHeight = containerRef.current.clientHeight;
+            if (childHeight) {
+              containerRef.current.scrollTo({ top: idx * childHeight, behavior: 'instant' });
+            }
           }
         }
       }
+    } else if (!initialReelId && displayedReels[activeReelIndex]?.id && lastSyncedReelIdRef.current !== displayedReels[activeReelIndex].id) {
+      lastSyncedReelIdRef.current = displayedReels[activeReelIndex].id;
+      onActiveReelChange?.(displayedReels[activeReelIndex].id);
     }
-  }, [initialReelId, displayedReels]);
+  }, [initialReelId, displayedReels.length]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const container = e.currentTarget;
@@ -156,6 +173,7 @@ export default function ReelsView({
       setActiveVideoElement(null);
       setIsPlaying(true);
       if (displayedReels[index]) {
+        lastSyncedReelIdRef.current = displayedReels[index].id;
         onActiveReelChange?.(displayedReels[index].id);
       }
     }
@@ -215,7 +233,8 @@ export default function ReelsView({
   };
 
   const copyToClipboard = (reelId: string) => {
-    const shareUrl = getReelShareUrl(reelId);
+    const reel = reels.find((r) => r.id === reelId);
+    const shareUrl = getInicioShareUrl(reel || reelId);
     navigator.clipboard.writeText(shareUrl).then(() => {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
@@ -247,29 +266,7 @@ export default function ReelsView({
     });
   }, [reels]);
 
-  const [navBarHeight, setNavBarHeight] = useState(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 768) {
-      const navBar = document.getElementById("bottom-nav-bar");
-      if (navBar) return navBar.getBoundingClientRect().height || navBar.offsetHeight || 56;
-      return 56;
-    }
-    return 0;
-  });
   const [containerHeight, setContainerHeight] = useState<number>(0);
-
-  useEffect(() => {
-    const updateNavBarHeight = () => {
-      if (window.innerWidth >= 768) { setNavBarHeight(0); return; }
-      const navBar = document.getElementById("bottom-nav-bar");
-      setNavBarHeight(navBar ? navBar.getBoundingClientRect().height || navBar.offsetHeight || 56 : 56);
-    };
-    updateNavBarHeight();
-    const navBar = document.getElementById("bottom-nav-bar");
-    let navObserver: ResizeObserver | null = null;
-    if (navBar) { navObserver = new ResizeObserver(() => updateNavBarHeight()); navObserver.observe(navBar); }
-    window.addEventListener("resize", updateNavBarHeight);
-    return () => { navObserver?.disconnect(); window.removeEventListener("resize", updateNavBarHeight); };
-  }, []);
 
   useEffect(() => {
     const updateContainerDimensions = () => { if (containerRef.current) setContainerHeight(containerRef.current.clientHeight); };
@@ -280,6 +277,27 @@ export default function ReelsView({
     return () => { containerObserver?.disconnect(); window.removeEventListener("resize", updateContainerDimensions); };
   }, []);
 
+  const handleMobileNavSelect = (tab: NavigationTab) => {
+    setShowMobileNavMenu(false);
+    if (onNavigateToTab) {
+      onNavigateToTab(tab);
+      return;
+    }
+    if (tab === 'inicio' || tab === 'reels') {
+      onRefreshReels?.();
+      navigateTo('/inicio');
+    } else if (tab === 'shop') {
+      if (onNavigateToShop) onNavigateToShop();
+      else navigateTo('/tienda');
+    } else if (tab === 'messages') {
+      navigateTo('/messages');
+    } else if (tab === 'profile') {
+      navigateTo(getProfilePath(currentUser));
+    } else if (tab === 'admin') {
+      navigateTo('/admin');
+    }
+  };
+
   const submitComment = (e: React.FormEvent, reelId: string) => {
     e.preventDefault();
     if (!commentText.trim()) return;
@@ -288,12 +306,22 @@ export default function ReelsView({
   };
 
   return (
-    <div className="relative w-full bg-slate-950 overflow-hidden flex flex-col" id="reels-panel" style={{ height: navBarHeight > 0 ? `calc(100dvh - ${navBarHeight}px)` : "100dvh", maxHeight: navBarHeight > 0 ? `calc(100dvh - ${navBarHeight}px)` : "100dvh" }}>
+    <div className="relative w-full bg-slate-950 overflow-hidden flex flex-col" id="reels-panel" style={{ height: "100dvh", maxHeight: "100dvh" }}>
       <header className="absolute top-0 inset-x-0 z-40 flex items-center justify-between px-4 pointer-events-none" style={{ paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))", paddingBottom: "0.75rem" }} id="reels-fixed-header">
-        <button onClick={() => setShowCartDrawer(true)} className="relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto" id="reels-header-cart-btn" title="Ver carrito de compras">
-          <ShoppingBag className="w-5 h-5 text-amber-400 drop-shadow-md" />
-          {totalCartCount > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-mono text-[10px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center border border-slate-950 shadow-md animate-pulse">{totalCartCount}</span>}
-        </button>
+        <div className="flex items-center space-x-2 pointer-events-auto">
+          <button
+            type="button"
+            onClick={() => setShowMobileNavMenu(true)}
+            className="md:hidden relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center"
+            id="reels-header-hamburger-btn"
+            title="Abrir menú de navegación"
+          >
+            <Menu className="w-6 h-6 text-white drop-shadow-md" />
+            {totalUnreads > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-rose-500 border border-slate-950" />
+            )}
+          </button>
+        </div>
         <div className="flex items-center space-x-2 pointer-events-auto">
           {currentReel && ((currentReel.media?.length || currentReel.images?.length || 0) > 1) && (
             <div className="inline-flex items-center space-x-1 px-1.5 py-1 bg-transparent text-xs font-extrabold text-white drop-shadow-md" id={`carousel-counter-${currentReel.id}`}>
@@ -306,7 +334,10 @@ export default function ReelsView({
               </span>
             </div>
           )}
-          <button onClick={handleToggleMute} className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto" id="reels-header-mute-btn" title={isMuted ? "Activar sonido" : "Silenciar video"}>{isMuted ? <VolumeX className="w-5 h-5 drop-shadow-md" /> : <Volume2 className="w-5 h-5 drop-shadow-md" />}</button>
+          <button onClick={() => setShowCartDrawer(true)} className="relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto" id="reels-header-cart-btn" title="Ver carrito de compras">
+            <ShoppingBag className="w-5 h-5 text-amber-400 drop-shadow-md" />
+            {totalCartCount > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-mono text-[10px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center border border-slate-950 shadow-md animate-pulse">{totalCartCount}</span>}
+          </button>
         </div>
       </header>
 
@@ -342,20 +373,6 @@ export default function ReelsView({
                   <div className="relative w-full h-full md:w-auto md:aspect-[9/16] md:h-full md:max-w-[520px] lg:max-w-[580px] xl:max-w-[640px] 2xl:max-w-[700px] md:rounded-2xl md:border md:border-white/15 md:shadow-[0_16px_50px_rgba(0,0,0,0.9)] overflow-hidden flex items-center justify-center bg-black select-none shrink-0" id={`reel-card-${reel.id}`}>
                     <div className="hidden md:flex absolute top-3.5 right-3.5 z-30 items-center space-x-2"><button type="button" onClick={handleToggleMute} className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md hover:bg-black/70 active:scale-95 text-white flex items-center justify-center transition-all border border-white/20 cursor-pointer shadow-lg" title={isMuted ? "Activar sonido" : "Silenciar video"} id={`desktop-frame-mute-btn-${reel.id}`}>{isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}</button></div>
                     <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none z-10" />
-
-                    {/* Media sequence indicators for multi-media publications */}
-                    {reelMediaItems.length > 1 && (
-                      <div className="absolute top-2.5 inset-x-3.5 z-30 flex items-center space-x-1 pointer-events-none">
-                        {reelMediaItems.map((_, mIdx) => (
-                          <div
-                            key={mIdx}
-                            className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                              mIdx === currentMediaIdx ? "bg-amber-400 shadow-sm" : "bg-white/30"
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    )}
 
                     {/* Left/Right navigation for multi-media publication sequence */}
                     {reelMediaItems.length > 1 && (
@@ -515,11 +532,152 @@ export default function ReelsView({
       </AnimatePresence>
 
       <AnimatePresence>
-        {showShareModal && <div className="absolute inset-0 flex items-center justify-center z-50 p-4"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.5 }} exit={{ opacity: 0 }} onClick={() => setShowShareModal(null)} className="absolute inset-0 bg-black" /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 w-full max-w-sm relative z-10 text-slate-200 shadow-2xl"><button onClick={() => setShowShareModal(null)} className="absolute top-4 right-4 p-1 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"><X className="w-4 h-4" /></button><h3 className="font-display font-bold text-base text-slate-100 flex items-center space-x-2"><Share2 className="w-5 h-5 text-amber-500" /><span>Compartir Publicación</span></h3><p className="text-xs text-slate-400 mt-2">Comparte este video con tus amigos para descubrir nuevos productos en vivo.</p><div className="mt-4 flex items-center space-x-2"><div className="flex-1 bg-slate-950 px-3 py-2.5 rounded-xl border border-slate-800 text-[10px] text-slate-300 font-mono truncate">{window.location.origin}/reel/{showShareModal}</div><button onClick={() => copyToClipboard(showShareModal)} className="px-3 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-bold text-xs rounded-xl transition-all whitespace-nowrap cursor-pointer">{copiedLink ? "Copiado!" : "Copiar"}</button></div><div className="mt-4 border-t border-slate-800/60 pt-4 flex items-center justify-between text-[11px] text-slate-500"><span>Latencia de transmisión: 180ms (WebRTC)</span><span className="text-amber-500/80 font-bold">LiveStream activo</span></div></motion.div></div>}
+        {showShareModal && <div className="absolute inset-0 flex items-center justify-center z-50 p-4"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.5 }} exit={{ opacity: 0 }} onClick={() => setShowShareModal(null)} className="absolute inset-0 bg-black" /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 w-full max-w-sm relative z-10 text-slate-200 shadow-2xl"><button onClick={() => setShowShareModal(null)} className="absolute top-4 right-4 p-1 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"><X className="w-4 h-4" /></button><h3 className="font-display font-bold text-base text-slate-100 flex items-center space-x-2"><Share2 className="w-5 h-5 text-amber-500" /><span>Compartir Publicación</span></h3><p className="text-xs text-slate-400 mt-2">Comparte este video con tus amigos para descubrir nuevos productos en vivo.</p><div className="mt-4 flex items-center space-x-2"><div className="flex-1 bg-slate-950 px-3 py-2.5 rounded-xl border border-slate-800 text-[10px] text-slate-300 font-mono truncate">{getInicioShareUrl(reels.find((r) => r.id === showShareModal) || showShareModal)}</div><button onClick={() => copyToClipboard(showShareModal)} className="px-3 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-bold text-xs rounded-xl transition-all whitespace-nowrap cursor-pointer">{copiedLink ? "Copiado!" : "Copiar"}</button></div><div className="mt-4 border-t border-slate-800/60 pt-4 flex items-center justify-between text-[11px] text-slate-500"><span>Latencia de transmisión: 180ms (WebRTC)</span><span className="text-amber-500/80 font-bold">LiveStream activo</span></div></motion.div></div>}
       </AnimatePresence>
 
       <AnimatePresence>
         {showCartDrawer && <div className="fixed inset-0 z-50 flex justify-start bg-black/60 backdrop-blur-sm" id="cart-drawer-overlay"><motion.div initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }} transition={{ type: "spring", damping: 25, stiffness: 220 }} className="w-full max-w-xs sm:max-w-sm h-full bg-white border-r border-slate-200 flex flex-col shadow-2xl text-slate-900" id="cart-drawer-panel"><div className="px-4 pb-3 border-b border-slate-100 flex items-center justify-between bg-white shrink-0" style={{ paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 0.85rem))" }}><div className="flex items-center space-x-2.5"><div className="p-2 bg-amber-500/10 rounded-xl text-amber-600"><ShoppingBag className="w-4 h-4" /></div><div><h3 className="font-extrabold text-sm text-slate-900 leading-tight">Carrito</h3><p className="text-[11px] text-slate-500 font-semibold">{totalCartCount} {totalCartCount === 1 ? 'producto' : 'productos'}</p></div></div><div className="flex items-center space-x-1.5">{cart.length > 0 && <button type="button" onClick={toggleSelectAllCart} className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer bg-transparent border border-slate-200 hover:border-amber-400 hover:bg-amber-50/40 text-slate-700 active:scale-95" id="reel-cart-select-all-btn"><div className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-colors ${isAllCartSelected ? "bg-amber-500 text-slate-950" : selectedCartIndices.length > 0 ? "bg-amber-200 text-amber-900" : "border border-slate-300 bg-white"}`}>{isAllCartSelected ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : selectedCartIndices.length > 0 ? <div className="w-1.5 h-1.5 bg-amber-900 rounded-xs" /> : null}</div><span className="text-[10.5px]">{isAllCartSelected ? "Quitar" : "Todo"} ({selectedCartIndices.length}/{cart.length})</span></button>}{<button onClick={() => setShowCartDrawer(false)} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer" id="close-cart-drawer-btn"><X className="w-4 h-4" /></button>}</div></div><div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>{cart.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-12 space-y-3"><div className="p-4 bg-slate-100 rounded-full border border-slate-200"><ShoppingBag className="w-10 h-10 stroke-1 text-slate-400" /></div><p className="text-sm font-extrabold text-slate-800">Tu carrito está vacío</p><p className="text-xs text-slate-500 max-w-[200px]">Haz clic en los productos etiquetados en los reels para añadirlos a tu carrito.</p>{onNavigateToShop && <button onClick={() => { setShowCartDrawer(false); onNavigateToShop(); }} className="mt-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-all cursor-pointer shadow-md shadow-amber-500/20" id="empty-cart-go-shop-btn">Ir al Mercado</button>}</div> : cart.map((item, idx) => { const isSelected = selectedCartIndices.includes(idx); const shippingFee = item.selectedShippingCost !== undefined ? item.selectedShippingCost : (item.product.shippingCost !== undefined ? item.product.shippingCost : 0); const carrierName = item.selectedCarrier || item.product.selectedCarrier; return <div key={`${item.product.id}_${idx}`} className={`flex items-stretch rounded-2xl border transition-all shadow-sm overflow-hidden h-28 shrink-0 relative ${isSelected ? "bg-amber-500/[0.04] border-amber-400/80 shadow-amber-500/10 ring-1 ring-amber-400/40" : "bg-slate-50/70 border-slate-200 opacity-70 hover:opacity-100"}`} id={`reel-cart-item-${item.product.id}-${idx}`}><div className="w-24 sm:w-28 shrink-0 relative bg-slate-200 h-full overflow-hidden flex items-center justify-center">{item.product.imageUrl ? <img src={item.product.imageUrl} alt={item.product.name} referrerPolicy="no-referrer" className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300" onClick={() => { setShowCartDrawer(false); onProductClick(item.product); }} /> : <ShoppingBag className="w-6 h-6 text-slate-400" />}</div><div className="flex-1 min-w-0 p-2.5 flex flex-col justify-between h-full"><div><div className="flex items-start justify-between gap-1"><h4 className="text-xs font-extrabold text-slate-900 truncate cursor-pointer hover:text-amber-600 transition-colors" onClick={() => { setShowCartDrawer(false); onProductClick(item.product); }}>{item.product.name}</h4><button onClick={() => onRemoveFromCart?.(item.product.id, idx)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0 -mt-1 -mr-1" title="Eliminar producto"><Trash2 className="w-3.5 h-3.5" /></button></div><div className="flex flex-wrap items-center gap-1.5 mt-0.5"><span className="text-xs font-mono font-extrabold text-amber-600">${item.product.price.toFixed(2)}</span><span className="text-[9px] font-bold text-slate-600 bg-slate-200/80 px-1.5 py-0.5 rounded leading-tight">Envío: {shippingFee > 0 ? `$${shippingFee.toFixed(2)}` : "Gratis"}{carrierName ? ` (${carrierName})` : ""}</span></div></div><div className="flex items-center justify-between"><div className="flex items-center space-x-1.5"><button onClick={() => { if (item.quantity > 1) onUpdateCartQuantity?.(item.product.id, item.quantity - 1, idx); else onRemoveFromCart?.(item.product.id, idx); }} className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs transition-colors cursor-pointer"><Minus className="w-3 h-3" /></button><span className="text-xs font-mono font-extrabold text-slate-900 px-1">{item.quantity}</span><button onClick={() => onUpdateCartQuantity?.(item.product.id, item.quantity + 1, idx)} disabled={item.product.stock !== undefined && item.quantity >= item.product.stock} className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-800 font-bold flex items-center justify-center text-xs disabled:opacity-50 transition-colors cursor-pointer"><Plus className="w-3 h-3" /></button></div><button type="button" onClick={(e) => toggleItemSelection(idx, e)} className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${isSelected ? "bg-amber-500 border-amber-500 text-slate-950 shadow-sm shadow-amber-500/30 scale-105" : "bg-white border-slate-300 hover:border-amber-400 text-transparent hover:text-slate-300"}`} title={isSelected ? "Deseleccionar producto para pago" : "Seleccionar producto para pagar"} id={`reel-cart-select-${idx}`}><Check className="w-3.5 h-3.5 stroke-[3]" /></button></div></div></div>; })}</div>{cart.length > 0 && <div className="p-4 border-t border-slate-100 bg-white space-y-2.5 shrink-0" style={{ paddingBottom: 'max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1rem))' }}><div className="flex justify-between text-xs text-slate-500 font-medium"><span>Subtotal ({selectedCartItems.length} de {cart.length} selec.):</span><span className="font-mono text-slate-800 font-semibold">${effectiveSubtotal.toFixed(2)}</span></div><div className="flex justify-between text-xs text-slate-500 font-medium"><span>Envío estimado:</span><span className="font-mono text-slate-800 font-semibold">{effectiveShipping > 0 ? `$${effectiveShipping.toFixed(2)}` : "Gratis"}</span></div><div className="flex justify-between text-xs font-bold text-slate-900 border-t border-slate-100 pt-2"><span>Total a Pagar:</span><span className="font-mono text-slate-950 font-black text-sm">${effectiveTotal.toFixed(2)}</span></div><button onClick={() => { setShowCartDrawer(false); if (onNavigateToCheckout) onNavigateToCheckout(selectedCartIndices); else if (onNavigateToShop) onNavigateToShop(); }} disabled={selectedCartItems.length === 0} className={`w-full font-black py-3 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-1 shadow-lg ${selectedCartItems.length > 0 ? "bg-amber-500 hover:bg-amber-600 active:scale-98 text-slate-950 shadow-amber-500/25" : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"}`} id="cart-checkout-btn">{selectedCartItems.length > 0 ? <><ShoppingCart className="w-4 h-4 text-slate-950" /><span>Pagar ({selectedCartItems.length} {selectedCartItems.length === 1 ? 'producto' : 'productos'})</span><ArrowLeft className="w-4 h-4 rotate-180 text-slate-950" /></> : <span>Selecciona productos para pagar</span>}</button></div>}</motion.div></div>}
+      </AnimatePresence>
+
+      {/* Mobile Navigation Hamburger Menu Drawer (Small screens) */}
+      <AnimatePresence>
+        {showMobileNavMenu && (
+          <div
+            className="md:hidden fixed inset-0 z-50 flex justify-start bg-black/60 backdrop-blur-sm"
+            id="mobile-web-nav-drawer-overlay"
+            onClick={() => setShowMobileNavMenu(false)}
+          >
+            <motion.aside
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 220 }}
+              className="w-72 max-w-[82vw] h-full bg-slate-950 border-r border-slate-800/80 flex flex-col justify-between p-4 shadow-2xl text-white select-none"
+              id="mobile-web-nav-drawer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div>
+                <div
+                  className="flex items-center justify-between px-2 pb-4 mb-4 border-b border-slate-800/80"
+                  style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))" }}
+                >
+                  <div
+                    className="flex items-center space-x-2.5 cursor-pointer"
+                    onClick={() => handleMobileNavSelect('inicio')}
+                  >
+                    <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-amber-500/20">
+                      <Sparkles className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="font-display font-black text-lg tracking-tight leading-none bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 bg-clip-text text-transparent">
+                        Mall
+                      </h2>
+                      <span className="text-[10px] font-mono tracking-widest uppercase block mt-0.5 text-slate-400">
+                        Menú Principal
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowMobileNavMenu(false)}
+                    className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    id="close-mobile-web-nav-drawer-btn"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <nav className="space-y-1.5" id="mobile-web-hamburger-nav-links">
+                  <button
+                    type="button"
+                    onClick={() => handleMobileNavSelect('inicio')}
+                    className="w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                    id="mobile-hamburger-nav-inicio"
+                  >
+                    <Play strokeWidth={2.6} className="w-5 h-5 fill-slate-950" />
+                    <span className="font-black tracking-wide">Inicio</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleMobileNavSelect('shop')}
+                    className="w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer text-slate-300 hover:text-white hover:bg-slate-900"
+                    id="mobile-hamburger-nav-shop"
+                  >
+                    <ShoppingBag strokeWidth={2.6} className="w-5 h-5" />
+                    <span className="font-black tracking-wide">Tienda</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleMobileNavSelect('messages')}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer text-slate-300 hover:text-white hover:bg-slate-900"
+                    id="mobile-hamburger-nav-messages"
+                  >
+                    <div className="flex items-center space-x-3.5">
+                      <MessageSquare strokeWidth={2.6} className="w-5 h-5" />
+                      <span className="font-black tracking-wide">Mensajes</span>
+                    </div>
+                    {totalUnreads > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-rose-500 text-white">
+                        {totalUnreads > 9 ? "9+" : totalUnreads}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleMobileNavSelect('profile')}
+                    className="w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer text-slate-300 hover:text-white hover:bg-slate-900"
+                    id="mobile-hamburger-nav-profile"
+                  >
+                    <UserIcon strokeWidth={2.6} className="w-5 h-5" />
+                    <span className="font-black tracking-wide">
+                      {currentUser.username === "invitado" ? "Perfil / Registro" : "Perfil"}
+                    </span>
+                  </button>
+
+                  {isSuperAdmin(currentUser) && (
+                    <button
+                      type="button"
+                      onClick={() => handleMobileNavSelect('admin')}
+                      className="w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer text-slate-300 hover:text-white hover:bg-slate-900"
+                      id="mobile-hamburger-nav-admin"
+                    >
+                      <ShieldCheck strokeWidth={2.6} className="w-5 h-5" />
+                      <span className="font-black tracking-wide">Admin</span>
+                    </button>
+                  )}
+                </nav>
+              </div>
+
+              <div
+                className="pt-4 border-t border-slate-800/80"
+                style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
+              >
+                <div
+                  onClick={() => handleMobileNavSelect('profile')}
+                  className="flex items-center space-x-3 p-2.5 rounded-2xl border bg-slate-900/80 hover:bg-slate-900 border-slate-800/80 transition-all cursor-pointer group"
+                >
+                  <img
+                    src={currentUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
+                    alt={currentUser.name}
+                    referrerPolicy="no-referrer"
+                    className="w-9 h-9 rounded-full object-cover border border-amber-500/40 shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold truncate text-white group-hover:text-amber-500 transition-colors">
+                      {currentUser.name}
+                    </p>
+                    <p className="text-[10px] truncate font-mono text-slate-400">
+                      @{currentUser.username || "invitado"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </motion.aside>
+          </div>
+        )}
       </AnimatePresence>
     </div>
   );

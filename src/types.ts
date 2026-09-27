@@ -1,4 +1,4 @@
-export type NavigationTab = 'reels' | 'shop' | 'messages' | 'profile' | 'admin';
+export type NavigationTab = 'inicio' | 'reels' | 'shop' | 'messages' | 'profile' | 'admin';
 
 export interface User {
   id: string;

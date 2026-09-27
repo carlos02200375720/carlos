@@ -37,11 +37,12 @@ import {
   UserCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, Reel, Product, Order } from "../../types";
+import { User, Reel, Product, Order, NavigationTab } from "../../types";
 import PublishView from "./PublishView";
 import { apiFetch } from "../../config";
 import { sessionState } from "../../utils/sessionState";
 import { isSuperAdmin } from "../../superAdmin";
+import { navigateTo } from "../../router";
 import {
   getDefaultAvatar,
   getDefaultCoverPhoto,
@@ -61,7 +62,7 @@ export interface AdminViewProps {
   onCreatorClick: (creatorId: string) => void;
   onProductClick: (product: Product) => void;
   onReelClick: (reelId: string) => void;
-  onNavigateToTab: (tab: 'reels' | 'shop' | 'messages' | 'profile') => void;
+  onNavigateToTab: (tab: NavigationTab) => void;
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
   setReels: React.Dispatch<React.SetStateAction<Reel[]>>;
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
@@ -127,7 +128,7 @@ export default function AdminView({
   const [customAvatarUrl, setCustomAvatarUrl] = useState('');
   const [customCoverUrl, setCustomCoverUrl] = useState('');
 
-  // Platform switcher state (app/web <-> app/android)
+  // Platform switcher state (app/web <-> app/movil)
   const [currentPlatform, setCurrentPlatform] = useState<'android' | 'web'>(() => {
     return activePlatform || (sessionState.getPlatform() as 'android' | 'web') || 'web';
   });
@@ -932,7 +933,7 @@ export default function AdminView({
                 </h3>
                 <div className="space-y-2">
                   <button
-                    onClick={() => onNavigateToTab('reels')}
+                    onClick={() => { onNavigateToTab('inicio'); navigateTo('/inicio'); }}
                     className="w-full flex items-center justify-between p-3 rounded-2xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all text-left group"
                   >
                     <div className="flex items-center space-x-3">
@@ -940,8 +941,8 @@ export default function AdminView({
                         <Video className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-900">Feed de Reels</p>
-                        <p className="text-[10px] text-slate-500">Ver interfaz de usuario</p>
+                        <p className="text-xs font-bold text-slate-900">Página de Inicio</p>
+                        <p className="text-[10px] text-slate-500">Ver interfaz de inicio</p>
                       </div>
                     </div>
                     <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700" />

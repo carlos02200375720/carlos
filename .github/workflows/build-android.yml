@@ -45,8 +45,8 @@ jobs:
           npm install @capacitor/cli @capacitor/core @capacitor/android @capacitor/status-bar
           npx cap add android || true
           npx cap sync android
-          if [ -f "src/app/android/AndroidManifest.xml" ] && [ -d "android/app/src/main" ]; then
-            cp src/app/android/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          if [ -f "src/app/movil/AndroidManifest.xml" ] && [ -d "android/app/src/main" ]; then
+            cp src/app/movil/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
           fi
 
       - name: Corregir clases duplicadas de Kotlin

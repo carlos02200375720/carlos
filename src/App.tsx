@@ -2,12 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Capacitor } from "@capacitor/core";
 import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession, NavigationTab } from "./types";
 import { WebApp, SplashScreen, AuthModal } from "./app/web";
-import { AndroidApp } from "./app/android";
+import { AndroidApp } from "./app/movil";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { isSuperAdmin } from "./superAdmin";
 import { sessionState } from "./utils/sessionState";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
-import { useCurrentRoute, navigateTo, parseRoute } from "./router";
+import { useCurrentRoute, navigateTo, parseRoute, getProfilePath, getProductPath, getInicioPath } from "./router";
 
 const deduplicateById = <T extends { id?: string; _id?: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -20,12 +20,12 @@ const deduplicateById = <T extends { id?: string; _id?: string }>(items: T[]): T
 };
 
 export default function App() {
-  // Navigation states: 'reels' | 'shop' | 'messages' | 'profile' | 'admin'
-  // Synchronously initialize from the URL pathname to avoid flashing Reels on deep-link entry
+  // Navigation states: 'inicio' | 'shop' | 'messages' | 'profile' | 'admin'
+  // Synchronously initialize from the URL pathname to avoid flashing on deep-link entry
   const [activeTab, setActiveTab] = useState<NavigationTab>(() => {
     if (typeof window !== "undefined") {
       const route = parseRoute(window.location.pathname);
-      if (route.type === 'product' || route.type === 'shop' || route.type === 'checkout' || route.type === 'cart') {
+      if (route.type === 'product' || route.type === 'shop' || route.type === 'checkout' || route.type === 'cart' || route.type === 'thankyou') {
         return 'shop';
       }
       if (route.type === 'store' || route.type === 'profile') {
@@ -39,18 +39,25 @@ export default function App() {
           const savedUserJson = JSON.stringify(sessionState.getUser());
           if (savedUserJson && isSuperAdmin(JSON.parse(savedUserJson))) return 'admin';
         } catch {}
-        return 'reels';
+        return 'inicio';
       }
-      if (route.type === 'reels') {
-        return 'reels';
+      if (route.type === 'inicio' || route.type === 'reels') {
+        return 'inicio';
       }
     }
-    return 'reels';
+    return 'inicio';
   });
 
-  // Stop all media playback when switching away from reels tab (shop, messages, profile)
+  // Ensure root URL '/' normalizes to '/inicio' when on the home page
   useEffect(() => {
-    if (activeTab !== 'reels' && typeof document !== "undefined") {
+    if (typeof window !== "undefined" && (window.location.pathname === "/" || window.location.pathname === "")) {
+      navigateTo("/inicio", { replace: true });
+    }
+  }, []);
+
+  // Stop all media playback when switching away from inicio tab (shop, messages, profile)
+  useEffect(() => {
+    if (activeTab !== 'inicio' && activeTab !== 'reels' && typeof document !== "undefined") {
       document.querySelectorAll("video").forEach((v) => {
         try {
           v.pause();
@@ -146,8 +153,8 @@ export default function App() {
   // evaluated only after the variable has been initialized.
   useEffect(() => {
     if (activeTab === "admin" && !isSuperAdmin(currentUser)) {
-      setActiveTab("reels");
-      navigateTo("/");
+      setActiveTab("inicio");
+      navigateTo("/inicio");
     }
   }, [activeTab, currentUser]);
 
@@ -186,11 +193,13 @@ export default function App() {
     }
     return false;
   });
-  const [shopInitialStep, setShopInitialStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>(() => {
+  const [shopInitialStep, setShopInitialStep] = useState<'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou'>(() => {
     if (typeof window !== "undefined") {
       const route = parseRoute(window.location.pathname);
       if (route.type === 'product') return 'detail';
+      if (route.type === 'cart') return 'cart';
       if (route.type === 'checkout') return 'checkout';
+      if (route.type === 'thankyou') return 'thankyou';
     }
     return 'catalog';
   });
@@ -198,7 +207,7 @@ export default function App() {
   const [targetReelId, setTargetReelId] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
       const route = parseRoute(window.location.pathname);
-      if (route.type === 'reels' && route.reelId) return route.reelId;
+      if ((route.type === 'inicio' || route.type === 'reels') && route.reelId) return route.reelId;
     }
     return null;
   });
@@ -225,8 +234,8 @@ export default function App() {
       if (saved === "android" || saved === "web") return saved;
       if (window.location.search.includes("platform=android")) return "android";
       if (window.location.search.includes("platform=web")) return "web";
-      // If direct deep link route is accessed (e.g. /product, /reel, /store, /shop, etc.)
-      if (window.location.pathname.match(/^\/(product|store|creator|reel|shop|checkout|cart|messages|profile|admin)/i)) {
+      // If direct deep link route is accessed (e.g. /inicio, /product, /store, /shop, /tienda, /perfil, etc.)
+      if (window.location.pathname.match(/^\/(inicio|product|store|creator|reel|reels|shop|tienda|checkout|verificacion|cart|carrito|gracia|gracias|messages|perfil|profile|admin)/i)) {
         return "web";
       }
       if ((import.meta as any).env?.VITE_APP_TARGET === "android") return "android";
@@ -254,10 +263,20 @@ export default function App() {
       setActiveTab('shop');
       setShopInitialStep('detail');
       setIsProductDetailOpen(true);
-      // Find product in memory or fetch if not present yet
-      const existing = products.find(p => p.id === currentRoute.productId || (p as any)._id === currentRoute.productId);
+      // Find product in memory by ID, _id, raw slug segment, or canonical path
+      const existing = products.find(
+        (p) =>
+          p.id === currentRoute.productId ||
+          (p as any)._id === currentRoute.productId ||
+          (currentRoute.productSlug && p.id === currentRoute.productSlug) ||
+          (typeof window !== 'undefined' && getProductPath(p).toLowerCase() === window.location.pathname.toLowerCase())
+      );
       if (existing) {
         setDirectSelectedProduct(existing);
+        const canonicalPath = getProductPath(existing);
+        if (typeof window !== 'undefined' && window.location.pathname !== canonicalPath) {
+          navigateTo(canonicalPath, { replace: true });
+        }
       } else {
         apiFetch(`/api/products/${encodeURIComponent(currentRoute.productId)}`)
           .then(res => res.ok ? res.json() : null)
@@ -268,14 +287,41 @@ export default function App() {
                 const found = prev.some(p => p.id === data.id);
                 return found ? prev : [data, ...prev];
               });
+              const canonicalPath = getProductPath(data);
+              if (typeof window !== 'undefined' && window.location.pathname !== canonicalPath) {
+                navigateTo(canonicalPath, { replace: true });
+              }
             }
           })
           .catch(() => {});
       }
-    } else if (currentRoute.type === 'reels') {
-      setActiveTab('reels');
+    } else if (currentRoute.type === 'inicio' || currentRoute.type === 'reels') {
+      setActiveTab('inicio');
       if (currentRoute.reelId) {
-        setTargetReelId(currentRoute.reelId);
+        const existingReel = reels.find(
+          (r) =>
+            r.id === currentRoute.reelId ||
+            (r as any)._id === currentRoute.reelId ||
+            (currentRoute.reelSlug && r.id === currentRoute.reelSlug) ||
+            (typeof window !== 'undefined' && getInicioPath(r).toLowerCase() === window.location.pathname.toLowerCase())
+        );
+        if (existingReel) {
+          setTargetReelId(existingReel.id);
+          const canonicalPath = getInicioPath(existingReel);
+          if (typeof window !== 'undefined' && window.location.pathname !== canonicalPath) {
+            navigateTo(canonicalPath, { replace: true });
+          }
+        } else {
+          setTargetReelId(currentRoute.reelId);
+        }
+      } else if (reels.length > 0) {
+        const firstReel = reels[0];
+        if (firstReel?.id) {
+          const canonicalPath = getInicioPath(firstReel);
+          if (typeof window !== 'undefined' && window.location.pathname !== canonicalPath) {
+            navigateTo(canonicalPath, { replace: true });
+          }
+        }
       }
     } else if (currentRoute.type === 'store') {
       setActivePlatform('web');
@@ -286,20 +332,71 @@ export default function App() {
       setShopInitialStep('catalog');
       setDirectSelectedProduct(null);
       setIsProductDetailOpen(false);
+      if (typeof window !== 'undefined' && window.location.pathname.toLowerCase() !== '/tienda') {
+        navigateTo('/tienda', { replace: true });
+      }
+    } else if (currentRoute.type === 'cart') {
+      setActiveTab('shop');
+      setShopInitialStep('cart');
+      if (typeof window !== 'undefined' && window.location.pathname.toLowerCase() !== '/tienda/carrito') {
+        navigateTo('/tienda/carrito', { replace: true });
+      }
     } else if (currentRoute.type === 'checkout') {
       setActiveTab('shop');
       setShopInitialStep('checkout');
+      if (typeof window !== 'undefined' && window.location.pathname.toLowerCase() !== '/tienda/verificacion') {
+        navigateTo('/tienda/verificacion', { replace: true });
+      }
+    } else if (currentRoute.type === 'thankyou') {
+      setActiveTab('shop');
+      setShopInitialStep('thankyou');
+      if (typeof window !== 'undefined' && window.location.pathname.toLowerCase() !== '/tienda/gracia') {
+        navigateTo('/tienda/gracia', { replace: true });
+      }
     } else if (currentRoute.type === 'messages') {
       setActiveTab('messages');
     } else if (currentRoute.type === 'profile') {
       setActiveTab('profile');
       if (currentRoute.userId) {
-        setSelectedCreatorProfileId(currentRoute.userId);
+        const isOwnUser =
+          currentUser &&
+          !currentUser.isGuest &&
+          currentUser.username !== 'invitado' &&
+          (currentRoute.userId.toLowerCase() === currentUser.username?.toLowerCase() ||
+            currentRoute.userId === currentUser.id ||
+            (Boolean(currentUser.originalId) && currentRoute.userId === currentUser.originalId));
+        setSelectedCreatorProfileId(isOwnUser ? null : currentRoute.userId);
+      } else {
+        setSelectedCreatorProfileId(null);
       }
     } else if (currentRoute.type === 'admin') {
       setActiveTab('admin');
     }
   }, [currentRoute, products]);
+
+  // Keep profile URL synchronized with /perfil/:username of the active user or viewed creator
+  useEffect(() => {
+    if (activeTab !== 'profile' || typeof window === 'undefined') return;
+
+    if (selectedCreatorProfileId) {
+      const matchedCreator = users.find(
+        (u) =>
+          u.id === selectedCreatorProfileId ||
+          (u.originalId && u.originalId === selectedCreatorProfileId) ||
+          (u.username && u.username.toLowerCase() === selectedCreatorProfileId.toLowerCase())
+      );
+      const targetUsername = matchedCreator?.username || selectedCreatorProfileId;
+      const expectedPath = getProfilePath(targetUsername);
+      if (window.location.pathname !== expectedPath) {
+        navigateTo(expectedPath, { replace: true });
+      }
+    } else {
+      const expectedPath = getProfilePath(currentUser);
+      if (window.location.pathname !== expectedPath) {
+        navigateTo(expectedPath, { replace: true });
+      }
+    }
+  }, [activeTab, selectedCreatorProfileId, currentUser, users]);
 
   // App Startup & Server Connection Splash State (disabled by default on web for instant paint)
   const [isInitialLoading, setIsInitialLoading] = useState(() => {
@@ -320,7 +417,7 @@ export default function App() {
 
   // Synchronize status bar and native bottom navigation bar color dynamically
   useEffect(() => {
-    const isDark = activeTab === 'reels';
+    const isDark = activeTab === 'inicio' || activeTab === 'reels';
     const currentThemeColor = isDark ? "#000000" : "#ffffff";
     const statusBarStyle = isDark ? "black-translucent" : "default";
 
@@ -1226,21 +1323,37 @@ export default function App() {
 
   // Public/Creator profile cross linkers
   const handleCreatorProfileLink = (creatorId: string) => {
-    setSelectedCreatorProfileId(creatorId);
+    const matchedCreator = users.find(
+      (u) =>
+        u.id === creatorId ||
+        (u.originalId && u.originalId === creatorId) ||
+        (u.username && u.username.toLowerCase() === creatorId.toLowerCase())
+    );
+    const targetUsername = matchedCreator?.username || creatorId;
+    const isOwn =
+      currentUser &&
+      !currentUser.isGuest &&
+      currentUser.username !== "invitado" &&
+      (targetUsername.toLowerCase() === currentUser.username?.toLowerCase() ||
+        creatorId === currentUser.id ||
+        (Boolean(currentUser.originalId) && creatorId === currentUser.originalId));
+    setSelectedCreatorProfileId(isOwn ? null : creatorId);
     setActiveTab('profile');
-    navigateTo(`/creator/${encodeURIComponent(creatorId)}`);
+    navigateTo(getProfilePath(targetUsername));
   };
 
   const handleProductDetailsLink = (product: Product) => {
     setDirectSelectedProduct(product);
+    setIsProductDetailOpen(true);
+    setShopInitialStep('detail');
     setActiveTab('shop');
-    navigateTo(`/product/${encodeURIComponent(product.id)}`);
+    navigateTo(getProductPath(product));
   };
 
   const handleReelLink = (reelId: string) => {
     setTargetReelId(reelId);
-    setActiveTab('reels');
-    navigateTo(`/reel/${encodeURIComponent(reelId)}`);
+    setActiveTab('inicio');
+    navigateTo(`/inicio/${encodeURIComponent(reelId)}`);
   };
 
   // Go live action
@@ -1309,7 +1422,8 @@ export default function App() {
         if (data && data.user) {
           setCurrentUser(data.user);
           setSavedReelIds([]);
-          setActiveTab('reels');
+          setActiveTab('inicio');
+          navigateTo('/inicio');
         }
       })
       .catch((err) => {
@@ -1327,12 +1441,13 @@ export default function App() {
           isGuest: true,
         });
         setSavedReelIds([]);
-        setActiveTab('reels');
+        setActiveTab('inicio');
+        navigateTo('/inicio');
       });
   };
 
   const totalUnreads: number = Object.values(unreadCounts).reduce<number>((acc, val) => acc + (val as number), 0);
-  const isDarkNavActive = activeTab === 'reels';
+  const isDarkNavActive = activeTab === 'inicio' || activeTab === 'reels';
 
   return (
     <div className={`w-full ${isDarkNavActive ? "h-dvh max-h-dvh overflow-hidden bg-slate-950 text-slate-100" : "min-h-screen bg-white text-slate-900"} font-sans flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950`}>
@@ -1412,6 +1527,7 @@ export default function App() {
               savedReelIds={savedReelIds}
               isLiveViewerOpen={isLiveViewerOpen}
               totalUnreads={totalUnreads}
+              targetReelId={targetReelId}
               handleAddToCart={handleAddToCart}
               handleRemoveFromCart={handleRemoveFromCart}
               handleUpdateCartQuantity={handleUpdateCartQuantity}
@@ -1520,7 +1636,9 @@ export default function App() {
             return [...prev, loggedUser];
           });
           setGuestInteractionAlert(null);
+          setSelectedCreatorProfileId(null);
           setActiveTab('profile');
+          navigateTo(getProfilePath(loggedUser));
         }}
       />
 

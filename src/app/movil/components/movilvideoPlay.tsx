@@ -3,7 +3,7 @@ import { Play, Pause } from "lucide-react";
 import Hls from "hls.js";
 import { getMediaUrl } from "../../../config";
 
-export interface AndroidVideoPlayerHandle {
+export interface MovilVideoPlayHandle {
   getVideoElement: () => HTMLVideoElement | null;
   play: () => Promise<void>;
   pause: () => void;
@@ -12,7 +12,9 @@ export interface AndroidVideoPlayerHandle {
   unmute: () => void;
 }
 
-export interface AndroidVideoPlayerProps {
+export type AndroidVideoPlayerHandle = MovilVideoPlayHandle;
+
+export interface MovilVideoPlayProps {
   /** Video source URL (HLS playlist .m3u8 or media stream) */
   src?: string;
   /** HLS playlist URL (.m3u8) */
@@ -34,7 +36,9 @@ export interface AndroidVideoPlayerProps {
   onVideoReady?: (video: HTMLVideoElement | null) => void;
 }
 
-export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVideoPlayerProps>(
+export type AndroidVideoPlayerProps = MovilVideoPlayProps;
+
+export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayProps>(
   (
     {
       src,
@@ -148,7 +152,8 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       const video = videoRef.current;
       if (!video?.videoWidth || !video?.videoHeight) return;
       const ratio = video.videoWidth / video.videoHeight;
-      const detected: 'vertical' | 'horizontal' | 'square' = ratio < 0.85 ? 'vertical' : ratio > 1.18 ? 'horizontal' : 'square';
+      const detected: 'vertical' | 'horizontal' | 'square' =
+        ratio > 1.05 ? 'horizontal' : ratio < 0.95 ? 'vertical' : 'square';
       setDetectedAspect(p => (p === detected ? p : detected));
       onAspectRatioDetectedRef.current?.(detected, ratio);
     }, []);
@@ -217,12 +222,12 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
       setDetectedAspect(aspectRatio || 'vertical');
     }, [targetSource, aspectRatio]);
 
-    const handleVideoRef = useCallback((el: HTMLVideoElement | null) => {
-      if (videoRef.current !== el) {
-        videoRef.current = el;
-        onVideoReadyRef.current?.(el);
-      }
-    }, []);
+    useEffect(() => {
+      onVideoReadyRef.current?.(videoRef.current);
+      return () => {
+        onVideoReadyRef.current?.(null);
+      };
+    }, [targetSource]);
 
     // Load media source (HLS or standard video) safely - ONLY re-executes when targetSource changes
     useEffect(() => {
@@ -390,20 +395,15 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
     const effectiveAspect = detectedAspect;
     return (
       <div className={`relative w-full h-full flex flex-col items-center justify-center overflow-hidden bg-black ${className}`} onClick={handleTap}>
-        {effectiveAspect !== 'vertical' && poster && (
-          <img src={poster} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20 blur-3xl scale-110 pointer-events-none" aria-hidden="true" />
-        )}
         <div
           className={
             effectiveAspect === 'vertical'
-              ? 'w-full h-full flex items-center justify-center relative overflow-hidden'
-              : effectiveAspect === 'horizontal'
-              ? 'w-full max-h-[calc(100vh-120px)] relative z-10 flex items-center justify-center my-auto overflow-hidden'
-              : 'w-full max-w-[min(94vw,calc(100vh-160px))] aspect-square relative z-10 mx-auto flex items-center justify-center my-auto overflow-hidden'
+              ? 'absolute inset-0 w-full h-full overflow-hidden bg-black'
+              : 'w-full h-full flex items-center justify-center bg-black overflow-hidden'
           }
         >
           <video
-            ref={handleVideoRef}
+            ref={videoRef}
             poster={poster ? getMediaUrl(poster) : undefined}
             autoPlay={autoPlay && isCurrent}
             loop={loop}
@@ -414,13 +414,12 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
             preload="metadata"
             className={
               effectiveAspect === 'vertical'
-                ? 'w-full h-full object-cover'
-                : effectiveAspect === 'horizontal'
-                ? 'w-full max-h-full aspect-video object-contain'
-                : 'w-full h-full object-contain'
+                ? 'w-full h-full object-cover object-center block'
+                : 'w-full h-auto max-h-full object-contain object-center block bg-black'
             }
             onLoadedMetadata={checkVideoDimensions}
             onLoadedData={checkVideoDimensions}
+            onResize={checkVideoDimensions}
             onCanPlay={() => {
               checkVideoDimensions();
               if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current) safePlay();
@@ -469,4 +468,6 @@ export const AndroidVideoPlayer = forwardRef<AndroidVideoPlayerHandle, AndroidVi
     );
   }
 );
-AndroidVideoPlayer.displayName = 'AndroidVideoPlayer';
+MovilVideoPlay.displayName = 'MovilVideoPlay';
+export const AndroidVideoPlayer = MovilVideoPlay;
+export default MovilVideoPlay;

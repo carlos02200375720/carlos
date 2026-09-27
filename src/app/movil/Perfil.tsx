@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { User, Reel, Product, Order } from "../../types";
-import { Play, ShoppingBag, Bookmark, Settings, LogOut, Edit3, Grid, Camera, Check, Sparkles, UserPlus, UserCheck, X, ExternalLink, Package, Plus, Trash2, ShieldCheck } from "lucide-react";
+import { Play, ShoppingBag, Bookmark, Settings, LogOut, Edit3, Grid, Camera, Check, Sparkles, UserPlus, UserCheck, X, ExternalLink, Package, Plus, Trash2, ShieldCheck, Truck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
 import AndroidUserPublicationsFeed from "./components/AndroidUserPublicationsFeed";
@@ -9,7 +9,7 @@ import AndroidPublishView from "./PublishView";
 import AndroidLoginView from "./LoginView";
 import { isSuperAdmin } from "../../superAdmin";
 
-export interface AndroidProfileViewProps {
+export interface AndroidPerfilProps {
   user?: User;
   currentUser: User;
   selectedCreatorId?: string | null;
@@ -41,9 +41,11 @@ export interface AndroidProfileViewProps {
   socket?: WebSocket | null;
 }
 
+export type AndroidProfileViewProps = AndroidPerfilProps;
+
 type TabType = "reels" | "products" | "saved" | "orders";
 
-export default function AndroidProfileView({
+export default function Perfil({
   user: directUser,
   currentUser,
   selectedCreatorId,
@@ -65,11 +67,18 @@ export default function AndroidProfileView({
   onOpenDirectChat,
   onRefreshUsers,
   onPublishSuccess,
-}: AndroidProfileViewProps) {
+}: AndroidPerfilProps) {
   // Determine who we are viewing
   const activeUser =
     directUser ||
-    (selectedCreatorId ? users.find((u) => u.id === selectedCreatorId) : null) ||
+    (selectedCreatorId
+      ? users.find(
+          (u) =>
+            u.id === selectedCreatorId ||
+            (u.originalId && u.originalId === selectedCreatorId) ||
+            (u.username && u.username.toLowerCase() === selectedCreatorId.toLowerCase())
+        )
+      : null) ||
     currentUser;
 
   const [activeTab, setActiveTab] = useState<TabType>("reels");
@@ -550,7 +559,21 @@ export default function AndroidProfileView({
                 >
                   <img src={p.imageUrl} alt={p.name} className="w-full aspect-square rounded-xl object-cover mb-2" />
                   <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{p.name}</h4>
-                  <p className="text-xs font-black text-amber-600 mt-1">${p.price.toFixed(2)}</p>
+                  <div className="flex items-center justify-between gap-1 mt-1.5 pt-1.5 border-t border-slate-100 flex-wrap">
+                    <p className="text-xs font-black text-amber-600">${p.price.toFixed(2)}</p>
+                    <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                      Number(p.shippingCost || 0) > 0
+                        ? "bg-amber-50 text-amber-800 border-amber-200"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    }`}>
+                      <Truck className="w-2.5 h-2.5" />
+                      <span>
+                        {Number(p.shippingCost || 0) > 0
+                          ? `+$${Number(p.shippingCost).toFixed(2)}`
+                          : "Gratis"}
+                      </span>
+                    </span>
+                  </div>
                 </div>
               ))
             )}
@@ -654,9 +677,20 @@ export default function AndroidProfileView({
                           <div className="p-2.5">
                             <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{p.name}</h4>
                             <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5">{p.description}</p>
-                            <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100">
+                            <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100 gap-1 flex-wrap">
                               <span className="text-xs font-black text-amber-600">${p.price.toFixed(2)}</span>
-                              <span className="text-[9px] font-bold text-slate-400">Ver detalles</span>
+                              <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                Number(p.shippingCost || 0) > 0
+                                  ? "bg-slate-50 text-slate-700 border-slate-200"
+                                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              }`}>
+                                <Truck className="w-2.5 h-2.5" />
+                                <span>
+                                  {Number(p.shippingCost || 0) > 0
+                                    ? `+$${Number(p.shippingCost).toFixed(2)}`
+                                    : "Gratis"}
+                                </span>
+                              </span>
                             </div>
                           </div>
                         </div>

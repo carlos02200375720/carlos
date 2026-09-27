@@ -129,7 +129,7 @@ function PublicationCover({ reel }: { reel: Reel }) {
   );
 }
 
-interface ProfileViewProps {
+export interface PerfilProps {
   currentUser: User;
   selectedCreatorId: string | null; // Null means we view our own private admin profile
   users: User[];
@@ -145,7 +145,9 @@ interface ProfileViewProps {
   socket?: WebSocket | null;
 }
 
-export default function ProfileView({
+export type ProfileViewProps = PerfilProps;
+
+export default function Perfil({
   currentUser,
   selectedCreatorId,
   users,
@@ -159,7 +161,7 @@ export default function ProfileView({
   onPublishSuccess,
   onLogout,
   socket,
-}: ProfileViewProps) {
+}: PerfilProps) {
   // Determine if we are looking at public creator profile or our private dashboard
   const isSelf =
     selectedCreatorId === null ||
@@ -1588,15 +1590,22 @@ export default function ProfileView({
                                           {prod.name}
                                         </h4>
 
-                                        <div className="flex items-baseline space-x-2 mt-1">
+                                        <div className="flex items-center flex-wrap gap-2 mt-1">
                                           <span className="font-display font-black text-sm sm:text-base text-amber-600">
                                             ${Number(prod.price || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                           </span>
-                                          {prod.shippingCost !== undefined && (
-                                            <span className="text-[10px] text-slate-500 font-medium">
-                                              {prod.shippingCost === 0 ? "Envío gratis" : `Envío: $${prod.shippingCost}`}
+                                          <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                                            Number(prod.shippingCost || 0) > 0
+                                              ? "bg-amber-50 text-amber-800 border-amber-200"
+                                              : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                          }`}>
+                                            <Truck className="w-3 h-3" />
+                                            <span>
+                                              {Number(prod.shippingCost || 0) > 0
+                                                ? `Envío: $${Number(prod.shippingCost).toFixed(2)}`
+                                                : "Envío Gratis"}
                                             </span>
-                                          )}
+                                          </span>
                                         </div>
                                       </div>
 
@@ -3366,8 +3375,22 @@ export default function ProfileView({
                               <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate">{prod.name}</h4>
                               <p className="text-[10px] sm:text-xs text-slate-500 line-clamp-2 mt-0.5 leading-relaxed">{prod.description}</p>
                             </div>
-                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
-                              <span className="text-xs sm:text-sm font-black font-mono text-emerald-600">${prod.price.toFixed(2)}</span>
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 gap-2 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs sm:text-sm font-black font-mono text-emerald-600">${prod.price.toFixed(2)}</span>
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                                  Number(prod.shippingCost || 0) > 0
+                                    ? "bg-slate-100 text-slate-700 border-slate-200"
+                                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                }`}>
+                                  <Truck className="w-2.5 h-2.5" />
+                                  <span>
+                                    {Number(prod.shippingCost || 0) > 0
+                                      ? `+$${Number(prod.shippingCost).toFixed(2)} envío`
+                                      : "Envío gratis"}
+                                  </span>
+                                </span>
+                              </div>
                               <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-md">Ver detalles →</span>
                             </div>
                           </div>

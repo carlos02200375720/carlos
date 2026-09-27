@@ -31,7 +31,7 @@ export default function SocialPanel({
   const [chatInput, setChatInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [navBarHeight, setNavBarHeight] = useState(64);
+  const navBarHeight = 0;
 
   // Auto-scroll private chat to bottom
   useEffect(() => {
@@ -39,22 +39,6 @@ export default function SocialPanel({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, activeChatUser]);
-
-  useEffect(() => {
-    const navBar = document.getElementById("bottom-nav-bar");
-    if (navBar) {
-      setNavBarHeight(navBar.offsetHeight);
-      const observer = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          setNavBarHeight(entry.target.clientHeight);
-        }
-      });
-      observer.observe(navBar);
-      return () => observer.disconnect();
-    } else {
-      setNavBarHeight(0);
-    }
-  }, [activeChatUser]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,7 +131,7 @@ export default function SocialPanel({
       {/* Header */}
       {!activeChatUser && (
         <div
-          className="p-4 border-0 flex items-center gap-3 bg-white shrink-0"
+          className="p-4 pl-14 md:pl-4 border-0 flex items-center gap-3 bg-white shrink-0"
           style={{
             paddingTop: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))"
           }}

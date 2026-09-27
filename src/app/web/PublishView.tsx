@@ -662,7 +662,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
             sellerUsername: currentUser.username,
             sellerName: currentUser.name,
             sellerAvatar: currentUser.avatar,
-            shippingCost: parseFloat(prodShipping) || 0,
+            shippingCost: Math.max(0, parseFloat(String(prodShipping).replace(",", ".")) || 0),
             images: photoUrls,
             videos: videoUrl ? [videoUrl] : [],
             variants: prodVariants,
@@ -1340,6 +1340,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                 <label className="block text-xs font-bold text-slate-700 mb-1">Envío ($)</label>
                 <input
                   type="number"
+                  min="0"
                   placeholder="Gratis (0.00)"
                   step="0.01"
                   value={prodShipping}
@@ -1352,6 +1353,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                 <label className="block text-xs font-bold text-slate-700 mb-1">Cantidad (Stock) *</label>
                 <input
                   type="number"
+                  min="0"
                   placeholder="Disponible"
                   value={prodQuantity}
                   onChange={(e) => setProdQuantity(e.target.value)}
@@ -1359,6 +1361,20 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                   required
                 />
               </div>
+            </div>
+
+            {/* Configured Shipping Preview Panel */}
+            <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 flex items-center justify-between text-xs">
+              <div className="flex items-center space-x-2 text-slate-800 font-bold">
+                <Truck className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Precio de envío configurado para el panel:</span>
+              </div>
+              <span className="px-2.5 py-1 rounded-lg bg-white text-emerald-700 font-extrabold border border-emerald-200 font-mono shadow-2xs">
+                {(() => {
+                  const num = parseFloat(String(prodShipping).replace(",", "."));
+                  return !Number.isNaN(num) && num > 0 ? `$${num.toFixed(2)}` : "GRATIS ($0.00)";
+                })()}
+              </span>
             </div>
 
             {/* Product Variants (Talla / Color) */}
