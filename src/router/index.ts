@@ -28,12 +28,16 @@ export function slugifyProductName(name?: string): string {
 }
 
 /**
- * Extracts the product ID from a `/shop/:slugAndId` parameter
+ * Extracts the product ID from a `/tienda/:id` parameter (also supports legacy slug-id format)
  */
 export function extractProductIdFromShopParam(rawParam: string): string {
-  const decoded = decodeURIComponent(rawParam).trim();
-  // Match canonical prod_xxx suffix (e.g. "auriculares-bluetooth-prod_abc123")
-  const prodMatch = decoded.match(/(?:^|-)(prod_[a-zA-Z0-9_]+)$/i);
+  let decoded = rawParam.trim();
+  try {
+    decoded = decodeURIComponent(decoded).trim();
+  } catch {}
+
+  // Match canonical prod_xxx suffix (e.g. "prod_abc123" or legacy "auriculares-bluetooth-prod_abc123")
+  const prodMatch = decoded.match(/(?:^|-)(prod_[a-zA-Z0-9_-]+)$/i);
   if (prodMatch) {
     return prodMatch[1];
   }
@@ -41,11 +45,6 @@ export function extractProductIdFromShopParam(rawParam: string): string {
   const oidMatch = decoded.match(/(?:^|-)([a-f0-9]{24})$/i);
   if (oidMatch) {
     return oidMatch[1];
-  }
-  // If format is slug-id where id is after the last hyphen
-  const lastDash = decoded.lastIndexOf('-');
-  if (lastDash > 0) {
-    return decoded.slice(lastDash + 1);
   }
   return decoded;
 }
@@ -68,12 +67,25 @@ export function slugifyPublicationName(name?: string): string {
   return slug || 'publicacion';
 }
 
+export interface InicioReelLike {
+  id?: string;
+  _id?: string;
+  title?: string;
+  description?: string;
+  caption?: string;
+  creatorName?: string;
+}
+
 /**
- * Extracts the publication/reel ID from a `/inicio/:slugAndId` parameter
+ * Extracts the publication ID from a `/inicio/:id` route segment
  */
 export function extractReelIdFromInicioParam(rawParam: string): string {
-  const decoded = decodeURIComponent(rawParam).trim();
-  // Match canonical reel_xxx or pub_xxx suffix (e.g. "nueva-coleccion-reel_abc123")
+  let decoded = rawParam.trim();
+  try {
+    decoded = decodeURIComponent(decoded).trim();
+  } catch {}
+
+  // Match canonical reel_xxx or pub_xxx suffix (e.g. "reel_abc123" or "slug-reel_abc123")
   const reelMatch = decoded.match(/(?:^|-)((?:reel|pub)_[a-zA-Z0-9_-]+)$/i);
   if (reelMatch) {
     return reelMatch[1];
@@ -83,72 +95,67 @@ export function extractReelIdFromInicioParam(rawParam: string): string {
   if (oidMatch) {
     return oidMatch[1];
   }
-  // If format is slug-id where id is after the last hyphen
-  const lastDash = decoded.lastIndexOf('-');
-  if (lastDash > 0) {
-    return decoded.slice(lastDash + 1);
-  }
   return decoded;
 }
 
 /**
- * Returns the publication URL path `/inicio/:nombre-de-la-publicacion-:id`
+ * Finds a publication/reel in a list by matching its ID
+ */
+export function findReelByInicioParam<T extends InicioReelLike>(
+  reels: T[],
+  rawParam?: string | null
+): T | undefined {
+  if (!rawParam || !Array.isArray(reels) || reels.length === 0) return undefined;
+  const cleanParam = rawParam.trim();
+  if (!cleanParam) return undefined;
+
+  const extractedId = extractReelIdFromInicioParam(cleanParam);
+
+  return reels.find((r) => {
+    if (!r) return false;
+    return (
+      r.id === cleanParam ||
+      r._id === cleanParam ||
+      r.id === extractedId ||
+      r._id === extractedId
+    );
+  });
+}
+
+/**
+ * Returns the publication URL path `/inicio/:id` using the publication ID.
  */
 export function getInicioPath(
-  reelOrId?:
-    | string
-    | { id: string; title?: string; description?: string; caption?: string; creatorName?: string }
-    | null,
-  publicationName?: string
+  reelOrId?: string | InicioReelLike | null
 ): string {
   if (!reelOrId) return '/inicio';
   if (typeof reelOrId === 'object') {
-    const id = (reelOrId.id || '').trim();
+    const id = (reelOrId.id || reelOrId._id || '').trim();
     if (!id) return '/inicio';
-    const rawName = (
-      reelOrId.title ||
-      reelOrId.description ||
-      reelOrId.caption ||
-      publicationName ||
-      reelOrId.creatorName ||
-      ''
-    ).trim();
-    if (rawName) {
-      return `/inicio/${slugifyPublicationName(rawName)}-${encodeURIComponent(id)}`;
-    }
     return `/inicio/${encodeURIComponent(id)}`;
   }
 
   const id = (reelOrId || '').trim();
   if (!id) return '/inicio';
-  const rawName = (publicationName || '').trim();
-  if (rawName) {
-    return `/inicio/${slugifyPublicationName(rawName)}-${encodeURIComponent(id)}`;
-  }
   return `/inicio/${encodeURIComponent(id)}`;
 }
 
 /**
- * Returns the product detail URL path `/tienda/:nombre-del-producto-:id`
+ * Returns the product detail URL path `/tienda/:id` using the product ID.
  */
 export function getProductPath(
-  productOrId: string | { id: string; name?: string },
-  productName?: string
+  productOrId?: string | { id?: string; _id?: string; name?: string } | null,
+  _productName?: string
 ): string {
-  if (typeof productOrId === 'object' && productOrId !== null) {
-    const id = (productOrId.id || '').trim();
-    const name = (productOrId.name || productName || '').trim();
-    if (name) {
-      return `/tienda/${slugifyProductName(name)}-${encodeURIComponent(id)}`;
-    }
+  if (!productOrId) return '/tienda';
+  if (typeof productOrId === 'object') {
+    const id = (productOrId.id || productOrId._id || '').trim();
+    if (!id) return '/tienda';
     return `/tienda/${encodeURIComponent(id)}`;
   }
 
   const id = (productOrId || '').trim();
-  const name = (productName || '').trim();
-  if (name) {
-    return `/tienda/${slugifyProductName(name)}-${encodeURIComponent(id)}`;
-  }
+  if (!id) return '/tienda';
   return `/tienda/${encodeURIComponent(id)}`;
 }
 
@@ -244,14 +251,17 @@ export function parseRoute(pathname: string): AppRoute {
     return { type: 'store', sellerId: decodeURIComponent(storeMatch[1]) };
   }
 
-  // /inicio or /inicio/:nombre-de-la-publicacion-y-su-id (also supports legacy /reel/:reelId or /reels/:reelId)
+  // /inicio or /inicio/:id (also supports legacy /reel/:reelId or /reels/:reelId)
   if (normalized.toLowerCase() === '/inicio' || normalized.toLowerCase() === '/reels') {
     return { type: 'inicio' };
   }
 
   const inicioMatch = normalized.match(/^\/(?:inicio|reel|reels)\/([^/]+)$/i);
   if (inicioMatch) {
-    const rawSegment = decodeURIComponent(inicioMatch[1]);
+    let rawSegment = inicioMatch[1];
+    try {
+      rawSegment = decodeURIComponent(rawSegment);
+    } catch {}
     return {
       type: 'inicio',
       reelSlug: rawSegment,
@@ -314,12 +324,12 @@ export function useCurrentRoute(): AppRoute {
 export function routeToPath(route: AppRoute): string {
   switch (route.type) {
     case 'product':
-      return getProductPath(route.productId, route.productSlug);
+      return getProductPath(route.productId);
     case 'store':
       return `/perfil/${encodeURIComponent(route.sellerId)}`;
     case 'inicio':
     case 'reels':
-      return route.reelId ? getInicioPath(route.reelId, route.reelSlug) : '/inicio';
+      return route.reelId ? getInicioPath(route.reelId) : '/inicio';
     case 'shop':
       return '/tienda';
     case 'checkout':
@@ -377,10 +387,10 @@ export function navigateTo(path: string, options?: { replace?: boolean }) {
 }
 
 /**
- * Get full public shareable URL for a product (/shop/:nombre-del-producto-:id)
+ * Get full public shareable URL for a product (/tienda/:id)
  */
 export function getProductShareUrl(
-  productOrId: string | { id: string; name?: string },
+  productOrId: string | { id?: string; _id?: string; name?: string },
   productName?: string
 ): string {
   const path = getProductPath(productOrId, productName);
@@ -402,24 +412,18 @@ export function getProfileShareUrl(username: string): string {
 }
 
 /**
- * Get full public shareable URL for a home publication (/inicio/:nombre-de-la-publicacion-:id)
+ * Get full public shareable URL for a home publication (/inicio/:id)
  */
 export function getInicioShareUrl(
-  reelOrId:
-    | string
-    | { id: string; title?: string; description?: string; caption?: string; creatorName?: string },
-  publicationName?: string
+  reelOrId: string | InicioReelLike
 ): string {
-  const path = getInicioPath(reelOrId, publicationName);
+  const path = getInicioPath(reelOrId);
   if (typeof window === 'undefined') return path;
   return `${window.location.origin}${path}`;
 }
 
 export function getReelShareUrl(
-  reelOrId:
-    | string
-    | { id: string; title?: string; description?: string; caption?: string; creatorName?: string },
-  publicationName?: string
+  reelOrId: string | InicioReelLike
 ): string {
-  return getInicioShareUrl(reelOrId, publicationName);
+  return getInicioShareUrl(reelOrId);
 }

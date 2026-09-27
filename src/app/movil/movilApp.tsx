@@ -5,7 +5,7 @@ import Inicio from "./Inicio";
 import Tienda from "./Tienda";
 import SocialPanel from "./SocialPanel";
 import Perfil from "./Perfil";
-import AndroidLoginView from "./LoginView";
+import AndroidLoginView from "./login";
 import { motion, AnimatePresence } from "motion/react";
 import { sessionState } from "../../utils/sessionState";
 import { navigateTo, getProfilePath, getProductPath, getInicioPath } from "../../router";
@@ -200,8 +200,25 @@ export default function AndroidApp({
                 products={products}
                 bottomNavHeight={navBarHeight}
                 cart={cart}
+                totalUnreads={totalUnreads}
                 isLoading={isInitialLoading}
                 onRefreshReels={refreshReels}
+                onNavigateToTab={(tab) => {
+                  setSelectedCreatorProfileId(null);
+                  setActiveTab(tab);
+                  if (tab === 'profile') {
+                    navigateTo(getProfilePath(currentUser));
+                  } else if (tab === 'inicio' || tab === 'reels') {
+                    refreshReels();
+                    navigateTo('/inicio');
+                  } else if (tab === 'shop') {
+                    navigateTo('/tienda');
+                  } else if (tab === 'messages') {
+                    navigateTo('/messages');
+                  } else if (tab === 'admin') {
+                    navigateTo('/admin');
+                  }
+                }}
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}
                 onNavigateToShop={() => {
@@ -267,10 +284,14 @@ export default function AndroidApp({
                 }}
                 onSelectProduct={(p) => {
                   setDirectSelectedProduct(p);
+                  setIsProductDetailOpen(true);
+                  setShopInitialStep('detail');
                   navigateTo(getProductPath(p));
                 }}
                 onBackToCatalog={() => {
                   setDirectSelectedProduct(null);
+                  setIsProductDetailOpen(false);
+                  setShopInitialStep('catalog');
                   navigateTo('/tienda');
                 }}
                 cartDrawerRequest={cartDrawerRequest}

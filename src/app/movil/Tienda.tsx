@@ -4,7 +4,7 @@ import { ShoppingBag, Search, Plus, Minus, Trash2, X, Check, ArrowRight, Sparkle
 import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
 import { AndroidVideoPlayer } from "./components/movilvideoPlay";
-import { navigateTo, getProductPath } from "../../router";
+import { navigateTo, getProductPath, parseRoute } from "../../router";
 
 export interface AndroidShopProps {
   products: Product[];
@@ -186,9 +186,25 @@ export default function Tienda({
   const [isCategoryVisible, setIsCategoryVisible] = useState(true);
   const isCategoryVisibleRef = useRef(true);
   const infiniteLoaderRef = useRef<HTMLDivElement>(null);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(
-    selectedProductDirectly || initialSelectedProduct || null
-  );
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(() => {
+    if (selectedProductDirectly || initialSelectedProduct) {
+      return selectedProductDirectly || initialSelectedProduct || null;
+    }
+    if (typeof window !== 'undefined') {
+      const parsed = parseRoute(window.location.pathname);
+      if (parsed.type === 'product' && Array.isArray(products)) {
+        return (
+          products.find(
+            (p) =>
+              p.id === parsed.productId ||
+              (p as any)._id === parsed.productId ||
+              (parsed.productSlug && p.id === parsed.productSlug)
+          ) || null
+        );
+      }
+    }
+    return null;
+  });
   const [detailGalleryIndex, setDetailGalleryIndex] = useState(0);
   const [isCartOpen, setIsCartOpen] = useState(() => {
     if (initialStep === 'cart') return true;
@@ -283,22 +299,40 @@ export default function Tienda({
     }
   }, [initialStep, onClearInitialStep]);
 
-  // Synchronize Cart, Checkout, and Thank You page state with browser URL (/tienda/carrito, /tienda/verificacion, /tienda/gracia) on Back/Forward navigation
+  // Synchronize Product Detail, Cart, Checkout, and Thank You page state with browser URL (/tienda/:id, /tienda/carrito, /tienda/verificacion, /tienda/gracia) on Back/Forward navigation
   useEffect(() => {
     const syncStepFromUrl = () => {
-      const cleanPath = window.location.pathname.trim().replace(/\/+$/, '');
-      if (/^\/(?:tienda\/|shop\/)?(?:carrito|cart)$/i.test(cleanPath)) {
+      const parsed = parseRoute(window.location.pathname);
+      if (parsed.type === 'cart') {
         setIsCartOpen(true);
         setShowCheckoutPage(false);
         setShowThankYouPage(false);
-      } else if (/^\/(?:tienda\/|shop\/)?(?:verificacion|checkout)$/i.test(cleanPath)) {
+      } else if (parsed.type === 'checkout') {
         setIsCartOpen(false);
         setShowThankYouPage(false);
         setShowCheckoutPage(true);
-      } else if (/^\/(?:tienda\/|shop\/)?(?:gracia|gracias|thankyou|thank-you)$/i.test(cleanPath)) {
+      } else if (parsed.type === 'thankyou') {
         setIsCartOpen(false);
         setShowCheckoutPage(false);
         setShowThankYouPage(true);
+      } else if (parsed.type === 'product') {
+        setIsCartOpen(false);
+        setShowCheckoutPage(false);
+        setShowThankYouPage(false);
+        const matched = (products || []).find(
+          (p) =>
+            p.id === parsed.productId ||
+            (p as any)._id === parsed.productId ||
+            (parsed.productSlug && p.id === parsed.productSlug)
+        );
+        if (matched) {
+          setSelectedProduct(matched);
+        }
+      } else if (parsed.type === 'shop') {
+        setIsCartOpen(false);
+        setShowCheckoutPage(false);
+        setShowThankYouPage(false);
+        setSelectedProduct(null);
       } else {
         setIsCartOpen(false);
         setShowCheckoutPage(false);
@@ -311,7 +345,7 @@ export default function Tienda({
       window.removeEventListener('popstate', syncStepFromUrl);
       window.removeEventListener('app-route-change', syncStepFromUrl);
     };
-  }, []);
+  }, [products]);
 
   const openCartPage = () => {
     setIsCartOpen(true);
@@ -544,6 +578,13 @@ export default function Tienda({
   React.useEffect(() => {
     if (selectedProductDirectly) {
       setSelectedProduct(selectedProductDirectly);
+      setIsCartOpen(false);
+      setShowCheckoutPage(false);
+      setShowThankYouPage(false);
+      const targetPath = getProductPath(selectedProductDirectly);
+      if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+        navigateTo(targetPath, { replace: true });
+      }
     }
   }, [selectedProductDirectly]);
 
@@ -1466,7 +1507,11 @@ export default function Tienda({
                         onClick={() => {
                           setSelectedProduct(item.product);
                           setIsCartOpen(false);
-                          onSelectProduct?.(item.product);
+                          if (onSelectProduct) {
+                            onSelectProduct(item.product);
+                          } else {
+                            navigateTo(getProductPath(item.product));
+                          }
                         }}
                         className="cursor-pointer"
                       >
@@ -1484,7 +1529,11 @@ export default function Tienda({
                           onClick={() => {
                             setSelectedProduct(item.product);
                             setIsCartOpen(false);
-                            onSelectProduct?.(item.product);
+                            if (onSelectProduct) {
+                              onSelectProduct(item.product);
+                            } else {
+                              navigateTo(getProductPath(item.product));
+                            }
                           }}
                           className="text-[12px] font-black text-slate-900 line-clamp-1 cursor-pointer hover:text-amber-600 transition-colors"
                         >
@@ -1589,7 +1638,7 @@ export default function Tienda({
           style={{ paddingTop: "max(10px, env(safe-area-inset-top))" }}
         >
           <div className="max-w-md mx-auto w-full px-3.5 py-2.5 flex items-center justify-between pointer-events-none">
-            {/* Botón de regreso - 100% transparente, sin fondo negro */}
+            {/* Botón de regreso - 100% transparente, sin fondo negro ni sombra */}
             <button
               type="button"
               id="android-detail-back-btn"
@@ -1597,12 +1646,16 @@ export default function Tienda({
                 setSelectedProduct(null);
                 clearDirectProduct?.();
                 onClearInitialProduct?.();
-                onBackToCatalog?.();
+                if (onBackToCatalog) {
+                  onBackToCatalog();
+                } else {
+                  navigateTo('/tienda');
+                }
               }}
-              className="pointer-events-auto p-2 bg-transparent text-white active:scale-90 transition-transform flex items-center justify-center cursor-pointer border-0 shadow-none outline-none group"
+              className="pointer-events-auto p-2 bg-transparent text-amber-500 active:scale-90 transition-transform flex items-center justify-center cursor-pointer border-0 shadow-none outline-none group"
               title="Volver a la tienda"
             >
-              <ArrowRight className="w-6 h-6 rotate-180 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] group-hover:scale-110 transition-transform" />
+              <ArrowRight className="w-6 h-6 rotate-180 text-amber-500 group-hover:scale-110 transition-transform" />
             </button>
 
             <div className="flex-1" />
@@ -1617,30 +1670,30 @@ export default function Tienda({
                   onToggleSave(selectedProduct.id);
                 }
               }}
-              className="pointer-events-auto relative p-2 bg-transparent text-white active:scale-90 transition-transform flex items-center justify-center cursor-pointer border-0 shadow-none outline-none group mr-1"
+              className="pointer-events-auto relative p-2 bg-transparent text-amber-500 active:scale-90 transition-transform flex items-center justify-center cursor-pointer border-0 shadow-none outline-none group mr-1"
               title={(savedReelIds || []).includes(selectedProduct.id) ? "Guardado en publicaciones" : "Guardar en publicaciones"}
               aria-label="Guardar producto en publicaciones"
             >
               <Bookmark
-                className={`w-6 h-6 transition-all duration-200 drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] ${
+                className={`w-6 h-6 transition-all duration-200 ${
                   (savedReelIds || []).includes(selectedProduct.id)
-                    ? "fill-amber-400 text-amber-400 scale-105"
-                    : "text-white group-hover:text-amber-200"
+                    ? "fill-amber-500 text-amber-500 scale-105"
+                    : "text-amber-500 group-hover:text-amber-400"
                 }`}
               />
             </button>
 
-            {/* Icono del carrito - 100% transparente, sin fondo negro con ondas expansivas */}
+            {/* Icono del carrito - 100% transparente, sin fondo negro ni sombra */}
             <button
               type="button"
               id="android-detail-cart-btn"
               onClick={openCartPage}
-              className="pointer-events-auto relative p-2 bg-transparent text-white active:scale-90 transition-transform flex items-center justify-center cursor-pointer border-0 shadow-none outline-none group"
+              className="pointer-events-auto relative p-2 bg-transparent text-amber-500 active:scale-90 transition-transform flex items-center justify-center cursor-pointer border-0 shadow-none outline-none group"
               title="Ver carrito"
             >
               <ShoppingBag
-                className={`w-6 h-6 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] group-hover:scale-110 transition-all duration-300 ${
-                  isCartShockwave ? "scale-115 !text-amber-300 drop-shadow-[0_0_10px_rgba(251,191,36,0.9)]" : ""
+                className={`w-6 h-6 text-amber-500 group-hover:scale-110 transition-all duration-300 ${
+                  isCartShockwave ? "scale-115 !text-amber-400" : ""
                 }`}
               />
               {(cart.length > 0 || isCartShockwave) && (
@@ -2437,19 +2490,19 @@ export default function Tienda({
           }}
         >
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar productos..."
-              className="w-full pl-9 pr-7 py-2 bg-slate-100 hover:bg-slate-100/80 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
+              className="w-full pl-9 pr-8 py-2 bg-slate-100 hover:bg-slate-100/80 border border-slate-200 rounded-full text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -2624,7 +2677,11 @@ export default function Tienda({
                 key={`${p._renderKey || p.id}-${pIdx}`}
                 onClick={() => {
                   setSelectedProduct(p);
-                  onSelectProduct?.(p);
+                  if (onSelectProduct) {
+                    onSelectProduct(p);
+                  } else {
+                    navigateTo(getProductPath(p));
+                  }
                 }}
                 className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between active:scale-[0.98] transition-transform cursor-pointer shadow-sm hover:border-amber-300"
               >

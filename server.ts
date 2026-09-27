@@ -296,6 +296,17 @@ async function startServer() {
       server: { middlewareMode: true },
       appType: "spa",
     });
+    // Rewrite SPA deep-link routes that may contain dots or extensions (e.g. /inicio/https://storage.googleapis.com/.../master.m3u8)
+    // so Vite's htmlFallbackMiddleware serves index.html instead of treating them as missing static files
+    app.use((req, res, next) => {
+      if (
+        req.method === "GET" &&
+        /^\/(inicio|reel|reels|perfil|tienda|carrito|checkout|gracias|store|product|admin|mensajes|crear)(\/|$)/i.test(req.path)
+      ) {
+        req.url = "/index.html";
+      }
+      next();
+    });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");

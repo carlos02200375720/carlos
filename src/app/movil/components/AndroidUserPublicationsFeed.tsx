@@ -5,7 +5,7 @@ import { Reel, Product, Comment, User } from "../../../types";
 import { motion, AnimatePresence } from "motion/react";
 import { getMediaUrl } from "../../../config";
 import { androidApiFetch } from "../api";
-import { AndroidProgressBar } from "./AndroidProgressBar";
+import { AndroidProgressBar } from "./barraprogreso";
 
 interface AndroidUserPublicationsFeedProps {
   user: User;

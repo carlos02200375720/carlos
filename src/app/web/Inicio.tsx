@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { apiFetch, getMediaUrl } from "../../config";
 import { ReelProgressBar } from "./components/ReelProgressBar";
 import Hls from "hls.js";
-import { getInicioShareUrl, navigateTo, getProfilePath } from "../../router";
+import { getInicioShareUrl, getInicioPath, findReelByInicioParam, navigateTo, getProfilePath } from "../../router";
 import { isSuperAdmin } from "../../superAdmin";
 
 export interface InicioProps {
@@ -138,43 +138,109 @@ export default function Inicio({
     setMediaAspectRatios((prev) => prev[reelId] === ratio ? prev : { ...prev, [reelId]: ratio });
   }, []);
 
-  const lastSyncedReelIdRef = useRef<string | null>(null);
+  const lastSeenInitialReelIdPropRef = useRef<string | null>(null);
+  const internalScrolledReelIdsRef = useRef<Set<string>>(new Set());
+  const isProgrammaticScrollRef = useRef<boolean>(false);
+  const programmaticScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onActiveReelChangeRef = useRef(onActiveReelChange);
+  onActiveReelChangeRef.current = onActiveReelChange;
 
-  // Auto-scroll to initialReelId if deep-linked via URL, or sync first reel to URL
+  // Auto-scroll to initialReelId ONLY when externally deep-linked via URL, never overwriting user scroll
   useEffect(() => {
     if (displayedReels.length === 0) return;
-    if (initialReelId && lastSyncedReelIdRef.current !== initialReelId) {
-      const idx = displayedReels.findIndex((r) => r.id === initialReelId);
-      if (idx !== -1) {
-        lastSyncedReelIdRef.current = initialReelId;
-        if (idx !== activeReelIndex) {
-          setActiveReelIndex(idx);
-          if (containerRef.current) {
-            const childHeight = containerRef.current.clientHeight;
-            if (childHeight) {
-              containerRef.current.scrollTo({ top: idx * childHeight, behavior: 'instant' });
-            }
-          }
+
+    if (!initialReelId) {
+      if (!lastSeenInitialReelIdPropRef.current) {
+        const activeReel = displayedReels[activeIndexRef.current] || displayedReels[0];
+        if (activeReel?.id) {
+          lastSeenInitialReelIdPropRef.current = activeReel.id;
+          internalScrolledReelIdsRef.current.add(activeReel.id);
+          const targetPath = getInicioPath(activeReel.id);
+          navigateTo(targetPath, { replace: true });
+          onActiveReelChangeRef.current?.(activeReel.id);
         }
       }
-    } else if (!initialReelId && displayedReels[activeReelIndex]?.id && lastSyncedReelIdRef.current !== displayedReels[activeReelIndex].id) {
-      lastSyncedReelIdRef.current = displayedReels[activeReelIndex].id;
-      onActiveReelChange?.(displayedReels[activeReelIndex].id);
+      return;
     }
-  }, [initialReelId, displayedReels.length]);
+
+    const matched = findReelByInicioParam(displayedReels, initialReelId);
+    const idx = matched ? displayedReels.findIndex((r) => r.id === matched.id) : -1;
+    if (idx === -1) return;
+
+    const resolvedId = displayedReels[idx].id;
+
+    // If initialReelId prop has not changed since we last processed it, or came from user scroll, do not re-scroll
+    if (
+      lastSeenInitialReelIdPropRef.current === initialReelId ||
+      lastSeenInitialReelIdPropRef.current === resolvedId
+    ) {
+      return;
+    }
+
+    lastSeenInitialReelIdPropRef.current = resolvedId;
+
+    if (
+      internalScrolledReelIdsRef.current.has(initialReelId) ||
+      internalScrolledReelIdsRef.current.has(resolvedId) ||
+      idx === activeIndexRef.current
+    ) {
+      internalScrolledReelIdsRef.current.delete(initialReelId);
+      internalScrolledReelIdsRef.current.delete(resolvedId);
+      return;
+    }
+
+    activeIndexRef.current = idx;
+    setActiveReelIndex(idx);
+    setActiveVideoElement(null);
+    setIsPlaying(true);
+
+    const scrollToTarget = () => {
+      if (!containerRef.current) return;
+      const childHeight = containerRef.current.clientHeight;
+      if (childHeight > 0) {
+        isProgrammaticScrollRef.current = true;
+        if (programmaticScrollTimeoutRef.current) {
+          clearTimeout(programmaticScrollTimeoutRef.current);
+        }
+        containerRef.current.scrollTo({ top: idx * childHeight, behavior: 'instant' });
+        programmaticScrollTimeoutRef.current = setTimeout(() => {
+          isProgrammaticScrollRef.current = false;
+        }, 150);
+      }
+    };
+
+    scrollToTarget();
+    requestAnimationFrame(scrollToTarget);
+
+    const targetPath = getInicioPath(resolvedId);
+    navigateTo(targetPath, { replace: true });
+    onActiveReelChangeRef.current?.(resolvedId);
+  }, [initialReelId, displayedReels]);
+
+  useEffect(() => {
+    return () => {
+      if (programmaticScrollTimeoutRef.current) {
+        clearTimeout(programmaticScrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (isProgrammaticScrollRef.current) return;
     const container = e.currentTarget;
     const childHeight = container.clientHeight;
     if (!childHeight) return;
     const index = Math.round(container.scrollTop / childHeight);
-    if (index !== activeReelIndex && index >= 0 && index < displayedReels.length) {
+    if (index !== activeIndexRef.current && index >= 0 && index < displayedReels.length) {
+      activeIndexRef.current = index;
       setActiveReelIndex(index);
       setActiveVideoElement(null);
       setIsPlaying(true);
-      if (displayedReels[index]) {
-        lastSyncedReelIdRef.current = displayedReels[index].id;
-        onActiveReelChange?.(displayedReels[index].id);
+      const nextReel = displayedReels[index];
+      if (nextReel?.id) {
+        internalScrolledReelIdsRef.current.add(nextReel.id);
+        navigateTo(getInicioPath(nextReel.id), { replace: true });
+        onActiveReelChangeRef.current?.(nextReel.id);
       }
     }
   };
@@ -341,7 +407,7 @@ export default function Inicio({
         </div>
       </header>
 
-      <div ref={containerRef} onScroll={handleScroll} className="w-full h-full min-h-0 flex-1 overflow-y-scroll snap-y snap-mandatory scroll-smooth no-scrollbar relative" style={{ scrollbarWidth: "none", scrollSnapType: "y mandatory" }}>
+      <div ref={containerRef} onScroll={handleScroll} className="w-full h-full min-h-0 flex-1 overflow-y-scroll snap-y snap-mandatory no-scrollbar relative" style={{ scrollbarWidth: "none", scrollSnapType: "y mandatory" }}>
         {displayedReels.length === 0 ? (
           <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 p-8 text-center"><Play className="w-12 h-12 stroke-1 text-slate-600 mb-3 animate-pulse" /><p className="font-display font-medium text-slate-300">No hay videos disponibles</p><p className="text-xs text-slate-500 mt-1">Sube contenido o inicia una transmisión para empezar</p></div>
         ) : displayedReels.map((reel, index) => {

@@ -4,7 +4,7 @@ import { Product, CartItem, Order, User } from "../../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch } from "../../config";
 import { NativeVideoPlayer } from "./components/VideoPlayer";
-import { getProductShareUrl, getProductPath, navigateTo } from "../../router";
+import { getProductShareUrl, getProductPath, navigateTo, parseRoute } from "../../router";
 
 const CJ_DEST_COUNTRIES = [
   { code: "US", name: "Estados Unidos 🇺🇸" },
@@ -183,15 +183,30 @@ export default function Tienda({
   const [activeStep, setActiveStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>(() => {
     if (initialStep && initialStep !== 'cart') return initialStep;
     if (typeof window !== 'undefined') {
-      const clean = window.location.pathname.replace(/\/+$/, '');
-      if (/^\/(?:tienda\/|shop\/)?(?:verificacion|checkout)$/i.test(clean)) return 'checkout';
-      if (/^\/(?:tienda\/|shop\/)?(?:gracia|gracias|thankyou|thank-you)$/i.test(clean)) return 'thankyou';
+      const parsed = parseRoute(window.location.pathname);
+      if (parsed.type === 'checkout') return 'checkout';
+      if (parsed.type === 'thankyou') return 'thankyou';
+      if (parsed.type === 'product') return 'detail';
     }
     if (selectedProductDirectly) return 'detail';
     return 'catalog';
   });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(() => {
-    return selectedProductDirectly || null;
+    if (selectedProductDirectly) return selectedProductDirectly;
+    if (typeof window !== 'undefined') {
+      const parsed = parseRoute(window.location.pathname);
+      if (parsed.type === 'product' && Array.isArray(products)) {
+        return (
+          products.find(
+            (p) =>
+              p.id === parsed.productId ||
+              (p as any)._id === parsed.productId ||
+              (parsed.productSlug && p.id === parsed.productSlug)
+          ) || null
+        );
+      }
+    }
+    return null;
   });
   const [selectedProductMediaUrl, setSelectedProductMediaUrl] = useState<string>(() => {
     return selectedProductDirectly?.imageUrl || "";
@@ -734,6 +749,10 @@ export default function Tienda({
       setIsGalleryVideoPlaying(true);
       setIsGalleryVideoMuted(true);
       setActiveStep('detail');
+      const targetPath = getProductPath(selectedProductDirectly);
+      if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+        navigateTo(targetPath, { replace: true });
+      }
     }
   }, [selectedProductDirectly]);
 
@@ -758,7 +777,11 @@ export default function Tienda({
       gallerySliderRef.current.scrollLeft = 0;
     }
     setActiveStep('detail');
-    onProductSelect?.(product);
+    if (onProductSelect) {
+      onProductSelect(product);
+    } else {
+      navigateTo(getProductPath(product));
+    }
     onStepChange?.('detail');
   };
 
@@ -766,7 +789,11 @@ export default function Tienda({
     setActiveStep('catalog');
     setSelectedProduct(null);
     clearDirectProduct?.();
-    onBackToCatalog?.();
+    if (onBackToCatalog) {
+      onBackToCatalog();
+    } else {
+      navigateTo('/tienda');
+    }
     onStepChange?.('catalog');
   };
 
@@ -815,18 +842,35 @@ export default function Tienda({
     }
   }, [initialStep, initialSelectedCartIndices, onClearInitialStep]);
 
-  // Synchronize Cart Drawer, Checkout, and Thank You step with browser URL (/tienda/carrito, /tienda/verificacion, /tienda/gracia) on Back/Forward navigation
+  // Synchronize Product Detail, Cart Drawer, Checkout, and Thank You step with browser URL (/tienda/:id, /tienda/carrito, /tienda/verificacion, /tienda/gracia) on Back/Forward navigation
   useEffect(() => {
     const syncStepFromUrl = () => {
-      const cleanPath = window.location.pathname.trim().replace(/\/+$/, '');
-      if (/^\/(?:tienda\/|shop\/)?(?:carrito|cart)$/i.test(cleanPath)) {
+      const parsed = parseRoute(window.location.pathname);
+      if (parsed.type === 'cart') {
         setShowCartDrawer(true);
-      } else if (/^\/(?:tienda\/|shop\/)?(?:verificacion|checkout)$/i.test(cleanPath)) {
+      } else if (parsed.type === 'checkout') {
         setShowCartDrawer(false);
         setActiveStep('checkout');
-      } else if (/^\/(?:tienda\/|shop\/)?(?:gracia|gracias|thankyou|thank-you)$/i.test(cleanPath)) {
+      } else if (parsed.type === 'thankyou') {
         setShowCartDrawer(false);
         setActiveStep('thankyou');
+      } else if (parsed.type === 'product') {
+        setShowCartDrawer(false);
+        setActiveStep('detail');
+        const matched = (products || []).find(
+          (p) =>
+            p.id === parsed.productId ||
+            (p as any)._id === parsed.productId ||
+            (parsed.productSlug && p.id === parsed.productSlug)
+        );
+        if (matched) {
+          setSelectedProduct(matched);
+          setSelectedProductMediaUrl(matched.imageUrl);
+        }
+      } else if (parsed.type === 'shop') {
+        setShowCartDrawer(false);
+        setActiveStep('catalog');
+        setSelectedProduct(null);
       } else {
         setShowCartDrawer(false);
       }
@@ -837,7 +881,7 @@ export default function Tienda({
       window.removeEventListener('popstate', syncStepFromUrl);
       window.removeEventListener('app-route-change', syncStepFromUrl);
     };
-  }, []);
+  }, [products]);
 
   const openCartDrawer = () => {
     setShowCartDrawer(true);

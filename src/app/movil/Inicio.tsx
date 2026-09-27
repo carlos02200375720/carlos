@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Reel, ReelMedia, Product, User, Comment, CartItem } from "../../types";
+import { Reel, ReelMedia, Product, User, Comment, CartItem, NavigationTab } from "../../types";
 import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X, RefreshCw, Video, Minus, Trash2, CreditCard, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { MovilVideoPlay, MovilVideoPlayHandle } from "./components/movilvideoPlay";
-import { AndroidProgressBar } from "./components/AndroidProgressBar";
+import { AndroidProgressBar } from "./components/barraprogreso";
 import { AndroidAuthModal } from "./components/AndroidAuthModal";
+import { MovilHamburgerButton, MovilHamburgerMenu } from "./components/MovilHamburgerMenu";
 import { getMediaUrl } from "../../config";
 import { getInicioShareUrl } from "../../router";
 
@@ -27,6 +28,8 @@ export interface AndroidInicioProps {
   isFeedActive?: boolean;
   onOpenSocial?: () => void;
   unreadCount?: number;
+  totalUnreads?: number;
+  onNavigateToTab?: (tab: NavigationTab) => void;
   onAuthRequired?: (actionDescription?: string) => void;
   onGuestInteraction?: (action: string) => void;
   onRefreshReels?: () => void;
@@ -60,6 +63,9 @@ export default function Inicio({
   users = [],
   onToggleFollowUser,
   isFeedActive = true,
+  unreadCount = 0,
+  totalUnreads = 0,
+  onNavigateToTab,
   onAuthRequired,
   onGuestInteraction,
   onRefreshReels,
@@ -83,7 +89,10 @@ export default function Inicio({
     }
     return 0;
   });
-  const lastSyncedReelIdRef = useRef<string | null>(initialReelId || null);
+  const lastSeenInitialReelIdPropRef = useRef<string | null>(initialReelId || null);
+  const internalSwipedReelIdsRef = useRef<Set<string>>(new Set());
+  const onActiveReelChangeRef = useRef(onActiveReelChange);
+  onActiveReelChangeRef.current = onActiveReelChange;
   const [localMuted, setLocalMuted] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [commentInput, setCommentInput] = useState("");
@@ -94,6 +103,7 @@ export default function Inicio({
   const [imageAspect, setImageAspect] = useState<'vertical' | 'horizontal' | 'square'>('vertical');
   const [progressVideo, setProgressVideo] = useState<HTMLVideoElement | null>(null);
   const [showCartPanel, setShowCartPanel] = useState(false);
+  const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
 
   const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>([]);
 
@@ -187,35 +197,36 @@ export default function Inicio({
 
   useEffect(() => {
     if (!initialReelId || reels.length === 0) return;
-    if (lastSyncedReelIdRef.current === initialReelId) {
-      const currentId = reels[currentIndex]?.id;
-      if (currentId === initialReelId) return;
+    if (lastSeenInitialReelIdPropRef.current === initialReelId) {
+      return;
     }
     const idx = reels.findIndex((r) => r.id === initialReelId);
     if (idx !== -1) {
-      lastSyncedReelIdRef.current = initialReelId;
+      lastSeenInitialReelIdPropRef.current = initialReelId;
+      if (internalSwipedReelIdsRef.current.has(initialReelId)) {
+        internalSwipedReelIdsRef.current.delete(initialReelId);
+        return;
+      }
       if (idx !== currentIndex) {
         setCurrentIndex(idx);
       }
     }
-  }, [initialReelId, reels.length]);
+  }, [initialReelId, reels, currentIndex]);
 
   useEffect(() => {
     setActiveMediaIndex(0);
     setImageAspect(currentReel?.aspectRatio || 'vertical');
-    const activeId = reels[currentIndex]?.id;
+    const activeId = reels[currentIndex]?.id || reels[0]?.id;
     if (!activeId) return;
-    if (initialReelId && lastSyncedReelIdRef.current !== initialReelId) {
+    if (initialReelId && lastSeenInitialReelIdPropRef.current !== initialReelId) {
       const targetIdx = reels.findIndex((r) => r.id === initialReelId);
       if (targetIdx !== -1 && targetIdx !== currentIndex) {
         return;
       }
     }
-    if (lastSyncedReelIdRef.current !== activeId) {
-      lastSyncedReelIdRef.current = activeId;
-      onActiveReelChange?.(activeId);
-    }
-  }, [currentIndex, reels.length]);
+    internalSwipedReelIdsRef.current.add(activeId);
+    onActiveReelChangeRef.current?.(activeId);
+  }, [currentIndex, reels, initialReelId]);
 
   const handleProductSelect = onProductClick || onSelectProduct;
 
@@ -266,13 +277,13 @@ export default function Inicio({
   const nextMedia = nextMediaItems.find((item) => item.type === "video" && !!item.url);
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (showComments || showCartPanel) return;
+    if (showComments || showCartPanel || showHamburgerMenu) return;
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (showComments || showCartPanel) return;
+    if (showComments || showCartPanel || showHamburgerMenu) return;
     const touchEndX = e.changedTouches[0].clientX;
     const touchEndY = e.changedTouches[0].clientY;
     const diffX = touchStartX.current - touchEndX;
@@ -298,14 +309,14 @@ export default function Inicio({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (showComments || showCartPanel) return;
+    if (showComments || showCartPanel || showHamburgerMenu) return;
     isMouseDownRef.current = true;
     mouseStartX.current = e.clientX;
     touchStartY.current = e.clientY;
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
-    if (showComments || showCartPanel || !isMouseDownRef.current) return;
+    if (showComments || showCartPanel || showHamburgerMenu || !isMouseDownRef.current) return;
     isMouseDownRef.current = false;
     const diffX = mouseStartX.current - e.clientX;
     const diffY = touchStartY.current - e.clientY;
@@ -331,19 +342,19 @@ export default function Inicio({
   // Keyboard navigation (ArrowDown / ArrowUp)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (showComments || showCartPanel) return;
+      if (showComments || showCartPanel || showHamburgerMenu) return;
       if (e.key === "ArrowDown") handleNext();
       if (e.key === "ArrowUp") handlePrev();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleNext, handlePrev, showComments, showCartPanel]);
+  }, [handleNext, handlePrev, showComments, showCartPanel, showHamburgerMenu]);
 
   // Infinite mouse wheel scroll navigation
   useEffect(() => {
     let lastWheelTime = 0;
     const handleWheel = (e: WheelEvent) => {
-      if (showComments || showCartPanel) return;
+      if (showComments || showCartPanel || showHamburgerMenu) return;
       const now = Date.now();
       if (now - lastWheelTime < 400) return;
       if (e.deltaY > 25) {
@@ -362,7 +373,7 @@ export default function Inicio({
     return () => {
       if (container) container.removeEventListener("wheel", handleWheel);
     };
-  }, [handleNext, handlePrev, showComments, showCartPanel]);
+  }, [handleNext, handlePrev, showComments, showCartPanel, showHamburgerMenu]);
 
   if (!currentReel) {
     if (isLoading) {
@@ -586,15 +597,32 @@ export default function Inicio({
         style={{ paddingTop: "max(12px, calc(env(safe-area-inset-top, 0px) + 0.75rem))", paddingBottom: "0.75rem" }}
         id="android-reels-fixed-header"
       >
-        <button onClick={() => setShowCartPanel(true)} className="relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto" id="android-reels-cart-btn" title="Ver carrito de compras">
-          <ShoppingBag className="w-5 h-5 text-amber-400 drop-shadow-md" />
-          {totalCartCount > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-mono text-[10px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center border border-slate-950 shadow-md animate-pulse">{totalCartCount}</span>}
-        </button>
+        <div className="flex items-center space-x-2 pointer-events-auto">
+          <MovilHamburgerButton
+            onOpen={() => setShowHamburgerMenu(true)}
+            totalUnreads={totalUnreads || unreadCount || 0}
+          />
+        </div>
         <div className="flex items-center space-x-2 pointer-events-auto">
           {mediaItems.length > 1 && <div className="inline-flex items-center space-x-1 px-1.5 py-1 bg-transparent text-xs font-extrabold text-white drop-shadow-md"><span className="text-amber-400 font-mono font-black">{activeMediaIndex + 1}</span><span className="text-white/70 font-mono">/</span><span className="text-white font-mono font-bold">{mediaItems.length}</span></div>}
-          {isVideo && <button onClick={toggleMute} className="p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto" title={isMuted ? "Activar sonido" : "Silenciar video"} id="android-mute-toggle">{isMuted ? <VolumeX className="w-5 h-5 drop-shadow-md" /> : <Volume2 className="w-5 h-5 drop-shadow-md" />}</button>}
+          <button onClick={() => setShowCartPanel(true)} className="relative p-2.5 rounded-full bg-transparent text-white hover:bg-white/10 transition-colors cursor-pointer drop-shadow-md flex items-center justify-center pointer-events-auto" id="android-reels-cart-btn" title="Ver carrito de compras">
+            <ShoppingBag className="w-5 h-5 text-amber-400 drop-shadow-md" />
+            {totalCartCount > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-mono text-[10px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center border border-slate-950 shadow-md animate-pulse">{totalCartCount}</span>}
+          </button>
         </div>
       </header>
+
+      <MovilHamburgerMenu
+        isOpen={showHamburgerMenu}
+        onOpen={() => setShowHamburgerMenu(true)}
+        onClose={() => setShowHamburgerMenu(false)}
+        currentUser={currentUser}
+        totalUnreads={totalUnreads || unreadCount || 0}
+        onNavigateToTab={onNavigateToTab}
+        onRefreshReels={onRefreshReels}
+        onNavigateToShop={onNavigateToShop}
+        onNavigateToProfile={onNavigateToProfile}
+      />
 
       <div className="absolute right-2.5 sm:right-3.5 bottom-6 sm:bottom-8 z-30 flex flex-col items-center space-y-3.5 select-none p-0" id={`android-reel-interaction-bar-${currentReel.id}`}>
         <div className="flex flex-col items-center"><button onClick={handleCreatorNav} className="relative rounded-full transform hover:scale-110 active:scale-95 transition-transform cursor-pointer drop-shadow-sm" id="android-mobile-creator-avatar-btn"><img src={displayAvatar} alt={displayUsername} className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover" /></button></div>

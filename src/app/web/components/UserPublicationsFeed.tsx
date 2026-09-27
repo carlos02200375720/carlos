@@ -23,6 +23,7 @@ import {
 import { Reel, Product, Comment, User } from "../../../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch, getMediaUrl } from "../../../config";
+import { getInicioShareUrl } from "../../../router";
 import { ReelProgressBar } from "./ReelProgressBar";
 
 interface UserPublicationsFeedProps {
@@ -568,7 +569,7 @@ export default function UserPublicationsFeed({
 
   // Share publication
   const handleShare = async (reel: Reel) => {
-    const shareUrl = `${window.location.origin}/inicio/${encodeURIComponent(reel.id)}`;
+    const shareUrl = getInicioShareUrl(reel);
     if (navigator.share) {
       try {
         await navigator.share({

@@ -199,19 +199,14 @@ export const AndroidProgressBar: React.FC<AndroidProgressBarProps> = React.memo(
         {/* Filled Progress Bar */}
         <div
           ref={fillBarRef}
-          className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 rounded-r-full shadow-[0_0_10px_rgba(245,158,11,0.9)] relative"
+          className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.9)] relative"
           style={{ width: "0%" }}
-        >
-          {/* Scrubber thumb circle */}
-          <div
-            className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 rounded-full bg-amber-300 border border-white/80 shadow-[0_2px_8px_rgba(0,0,0,0.6)] transition-all duration-150 ${
-              isScrubbing ? "w-3.5 h-3.5 scale-125" : "w-2.5 h-2.5 scale-90 group-hover:scale-110 opacity-80 group-hover:opacity-100"
-            }`}
-          />
-        </div>
+        />
       </div>
     </div>
   );
 });
 
 AndroidProgressBar.displayName = "AndroidProgressBar";
+export const BarraProgreso = AndroidProgressBar;
+export default AndroidProgressBar;

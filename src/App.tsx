@@ -7,7 +7,7 @@ import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { isSuperAdmin } from "./superAdmin";
 import { sessionState } from "./utils/sessionState";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
-import { useCurrentRoute, navigateTo, parseRoute, getProfilePath, getProductPath, getInicioPath } from "./router";
+import { useCurrentRoute, navigateTo, parseRoute, getProfilePath, getProductPath, getInicioPath, findReelByInicioParam } from "./router";
 
 const deduplicateById = <T extends { id?: string; _id?: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -297,13 +297,9 @@ export default function App() {
     } else if (currentRoute.type === 'inicio' || currentRoute.type === 'reels') {
       setActiveTab('inicio');
       if (currentRoute.reelId) {
-        const existingReel = reels.find(
-          (r) =>
-            r.id === currentRoute.reelId ||
-            (r as any)._id === currentRoute.reelId ||
-            (currentRoute.reelSlug && r.id === currentRoute.reelSlug) ||
-            (typeof window !== 'undefined' && getInicioPath(r).toLowerCase() === window.location.pathname.toLowerCase())
-        );
+        const existingReel =
+          findReelByInicioParam(reels, currentRoute.reelId) ||
+          findReelByInicioParam(reels, currentRoute.reelSlug);
         if (existingReel) {
           setTargetReelId(existingReel.id);
           const canonicalPath = getInicioPath(existingReel);
@@ -314,9 +310,10 @@ export default function App() {
           setTargetReelId(currentRoute.reelId);
         }
       } else if (reels.length > 0) {
-        const firstReel = reels[0];
-        if (firstReel?.id) {
-          const canonicalPath = getInicioPath(firstReel);
+        const activeOrFirst =
+          (targetReelId && findReelByInicioParam(reels, targetReelId)) || reels[0];
+        if (activeOrFirst?.id) {
+          const canonicalPath = getInicioPath(activeOrFirst);
           if (typeof window !== 'undefined' && window.location.pathname !== canonicalPath) {
             navigateTo(canonicalPath, { replace: true });
           }
@@ -371,7 +368,7 @@ export default function App() {
     } else if (currentRoute.type === 'admin') {
       setActiveTab('admin');
     }
-  }, [currentRoute, products]);
+  }, [currentRoute, products, reels]);
 
   // Keep profile URL synchronized with /perfil/:username of the active user or viewed creator
   useEffect(() => {
@@ -1350,9 +1347,10 @@ export default function App() {
   };
 
   const handleReelLink = (reelId: string) => {
-    setTargetReelId(reelId);
+    const targetReel = findReelByInicioParam(reels, reelId);
+    setTargetReelId(targetReel ? targetReel.id : reelId);
     setActiveTab('inicio');
-    navigateTo(`/inicio/${encodeURIComponent(reelId)}`);
+    navigateTo(getInicioPath(targetReel || reelId));
   };
 
   // Go live action

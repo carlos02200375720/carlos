@@ -6,7 +6,7 @@ import { androidApiFetch } from "./api";
 import AndroidUserPublicationsFeed from "./components/AndroidUserPublicationsFeed";
 import AndroidPublicationCover from "./components/AndroidPublicationCover";
 import AndroidPublishView from "./PublishView";
-import AndroidLoginView from "./LoginView";
+import AndroidLoginView from "./login";
 import { isSuperAdmin } from "../../superAdmin";
 
 export interface AndroidPerfilProps {
