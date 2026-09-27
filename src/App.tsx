@@ -1401,47 +1401,47 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    
-    
-    
-    
+    const guestUser: User = {
+      id: "current_user",
+      username: "invitado",
+      name: "Invitado",
+      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+      bio: "Explorando la plataforma",
+      isOnline: false,
+      followers: 0,
+      following: 0,
+      isGuest: true,
+    };
+
+    sessionState.setAuthenticated(false);
+    sessionState.setUsername(null);
+    sessionState.setUser(null);
     setIsLoggedIn(false);
-    
-    // First notify server to clear session
+    setSelectedCreatorProfileId(null);
+    setCurrentUser(guestUser);
+    setSavedReelIds([]);
+
+    // Notify server to clear session
+    fetch("/api/android/users/current/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }).catch(() => {});
+
     apiFetch("/api/users/current/logout", {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     })
       .then(() => {
-        // Fetch default guest user now that server has reset session
         return apiFetch("/api/users/current_user");
       })
       .then((res) => res.json())
       .then((data) => {
-        if (data && data.user) {
+        if (data && data.user && (data.user.isGuest || data.user.username === "invitado")) {
           setCurrentUser(data.user);
-          setSavedReelIds([]);
-          setActiveTab('inicio');
-          navigateTo('/inicio');
         }
       })
       .catch((err) => {
         console.error("Error setting guest user on logout:", err);
-        // Fallback default guest structure
-        setCurrentUser({
-          id: "current_user",
-          username: "invitado",
-          name: "Invitado",
-          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-          bio: "Explorando la plataforma",
-          isOnline: false,
-          followers: 0,
-          following: 0,
-          isGuest: true,
-        });
-        setSavedReelIds([]);
-        setActiveTab('inicio');
-        navigateTo('/inicio');
       });
   };
 

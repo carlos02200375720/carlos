@@ -216,8 +216,13 @@ export default function WebSidebar({
       <button
         type="button"
         onClick={() => setIsMobileMenuOpen(true)}
-        className="md:hidden fixed left-3 z-50 w-10 h-10 rounded-full bg-slate-900/85 text-white backdrop-blur-md border border-white/15 shadow-lg flex items-center justify-center hover:bg-slate-900 active:scale-95 transition-all cursor-pointer"
-        style={{ top: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.65rem))" }}
+        className="md:hidden fixed left-3 z-50 w-9 h-9 rounded-full bg-slate-900/85 text-white backdrop-blur-md border border-white/15 shadow-lg flex items-center justify-center hover:bg-slate-900 active:scale-95 transition-all cursor-pointer"
+        style={{
+          top:
+            activeTab === 'shop'
+              ? "max(0.55rem, calc(env(safe-area-inset-top, 0px) + 0.45rem))"
+              : "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.65rem))",
+        }}
         id="web-mobile-fixed-hamburger-btn"
         title="Abrir menú de navegación"
       >

@@ -1052,9 +1052,9 @@ export default function Tienda({
       {/* 1. Detail Page Transparent Fixed Header */}
       {activeStep === 'detail' ? (
         <header
-          className="fixed top-0 left-0 right-0 md:left-60 lg:left-64 z-40 flex items-center justify-between px-3 sm:px-5 pb-2.5 sm:pb-3 bg-transparent border-0 pointer-events-none transition-all duration-200"
+          className="fixed top-0 left-0 right-0 md:left-60 lg:left-64 z-40 flex items-center justify-between px-3 sm:px-5 pb-2 bg-transparent border-0 pointer-events-none transition-all duration-200"
           style={{
-            paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 0.85rem))",
+            paddingTop: "max(0.625rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
           }}
           id="product-detail-transparent-header"
         >
@@ -1123,11 +1123,11 @@ export default function Tienda({
             showHeader ? "translate-y-0" : "-translate-y-full"
           }`}
           style={{
-            paddingTop: "max(2.25rem, calc(env(safe-area-inset-top, 0px) + 0.85rem))"
+            paddingTop: "max(0.5rem, calc(env(safe-area-inset-top, 0px) + 0.35rem))"
           }}
         >
           {/* Top Bar: Navigation / Search / Cart */}
-          <div className="px-3 sm:px-5 pb-2.5 sm:pb-3 flex items-center justify-between gap-3 w-full">
+          <div className="px-3 sm:px-5 pb-1.5 sm:pb-2 flex items-center justify-between gap-3 w-full">
             <div className={`flex items-center space-x-2 shrink-0 ${activeStep === 'catalog' ? 'pl-10 md:pl-0' : ''}`}>
               {activeStep !== 'catalog' && (
                 <button

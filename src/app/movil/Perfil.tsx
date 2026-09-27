@@ -81,22 +81,29 @@ export default function Perfil({
       : null) ||
     currentUser;
 
-  const [activeTab, setActiveTab] = useState<TabType>("reels");
+  const isMe = activeUser.id === currentUser.id || activeUser.username === currentUser.username;
+  const isAdmin = (currentUser as any)?.role === "admin" || (currentUser as any)?.isAdmin === true;
+  const isSellerOrAdmin = Boolean(activeUser.canSell === true || isSuperAdmin(activeUser));
+  const canDelete = isMe || isAdmin || !selectedCreatorId;
+  const isGuest = activeUser.isGuest || activeUser.username === "invitado" || activeUser.id === "guest" || (isMe && (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || currentUser.id === "guest"));
+
+  const [activeTab, setActiveTab] = useState<TabType>(() => (isSellerOrAdmin ? "reels" : "saved"));
   const [savedSubTab, setSavedSubTab] = useState<"all" | "products" | "reels">("all");
   const [selectedFeedReelId, setSelectedFeedReelId] = useState<string | null>(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isPublishingOpen, setIsPublishingOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (!isSellerOrAdmin && (activeTab === "reels" || activeTab === "products")) {
+      setActiveTab("saved");
+    }
+  }, [isSellerOrAdmin, activeTab]);
 
   // Edit profile form
   const [editName, setEditName] = useState(activeUser.name);
   const [editBio, setEditBio] = useState(activeUser.bio || "");
   const [editAvatar, setEditAvatar] = useState(activeUser.avatar);
   const [isSaving, setIsSaving] = useState(false);
-
-  const isMe = activeUser.id === currentUser.id || activeUser.username === currentUser.username;
-  const isAdmin = (currentUser as any)?.role === "admin" || (currentUser as any)?.isAdmin === true;
-  const canDelete = isMe || isAdmin || !selectedCreatorId;
-  const isGuest = activeUser.isGuest || activeUser.username === "invitado" || activeUser.id === "guest" || (isMe && (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || currentUser.id === "guest"));
 
   const [publicationToDelete, setPublicationToDelete] = useState<Reel | null>(null);
   const [isDeletingPublication, setIsDeletingPublication] = useState(false);
@@ -346,12 +353,18 @@ export default function Perfil({
           )}
           {isMe ? (
             <button
-              onClick={onLogout}
+              type="button"
+              id="android-profile-logout-btn"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onLogout();
+              }}
               title="Cerrar sesión"
               aria-label="Cerrar sesión"
-              className="w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-rose-200 backdrop-blur-md flex items-center justify-center active:scale-95 cursor-pointer transition-colors shadow-sm"
+              className="z-20 p-2 bg-transparent border-0 shadow-none text-white hover:opacity-80 flex items-center justify-center active:scale-95 cursor-pointer transition-all group"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-5 h-5 text-white group-hover:text-red-400 transition-colors drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]" />
             </button>
           ) : null}
         </div>
@@ -425,49 +438,57 @@ export default function Perfil({
             )}
           </div>
           <p className="text-xs text-amber-600 font-semibold">@{activeUser.username}</p>
-          <p className="text-xs text-slate-600 mt-2 leading-relaxed">{activeUser.bio || "Creador en MallSocial Android"}</p>
+          {activeUser.bio && (
+            <p className="text-xs text-slate-600 mt-2 leading-relaxed">{activeUser.bio}</p>
+          )}
         </div>
 
-        {/* Stats Row */}
-        <div className="flex items-center space-x-6 mt-4 py-3 border-y border-slate-100 bg-slate-50/70 rounded-2xl text-center">
-          <div className="flex-1">
-            <span className="block text-sm font-bold text-slate-900">{userReels.length}</span>
-            <span className="block text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Reels</span>
+        {/* Stats Row - Only for Sellers / Admins */}
+        {isSellerOrAdmin && (
+          <div className="flex items-center space-x-6 mt-4 py-3 border-y border-slate-100 bg-slate-50/70 rounded-2xl text-center">
+            <div className="flex-1">
+              <span className="block text-sm font-bold text-slate-900">{userReels.length}</span>
+              <span className="block text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Reels</span>
+            </div>
+            <div className="flex-1 border-x border-slate-200">
+              <span className="block text-sm font-bold text-slate-900">{typeof activeUser.followers === 'number' ? activeUser.followers : 0}</span>
+              <span className="block text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Seguidores</span>
+            </div>
+            <div className="flex-1">
+              <span className="block text-sm font-bold text-slate-900">{typeof activeUser.following === 'number' ? activeUser.following : 0}</span>
+              <span className="block text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Siguiendo</span>
+            </div>
           </div>
-          <div className="flex-1 border-x border-slate-200">
-            <span className="block text-sm font-bold text-slate-900">{typeof activeUser.followers === 'number' ? activeUser.followers : 0}</span>
-            <span className="block text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Seguidores</span>
-          </div>
-          <div className="flex-1">
-            <span className="block text-sm font-bold text-slate-900">{typeof activeUser.following === 'number' ? activeUser.following : 0}</span>
-            <span className="block text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Siguiendo</span>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200 mt-2 px-2">
-        <button
-          onClick={() => setActiveTab("reels")}
-          title={`Reels (${userReels.length})`}
-          aria-label="Reels"
-          className={`flex-1 py-3 text-xs font-bold flex items-center justify-center border-b-2 transition-all cursor-pointer ${
-            activeTab === "reels" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-400 hover:text-slate-600"
-          }`}
-        >
-          <Grid className="w-5 h-5" />
-        </button>
+        {isSellerOrAdmin && (
+          <button
+            onClick={() => setActiveTab("reels")}
+            title={`Reels (${userReels.length})`}
+            aria-label="Reels"
+            className={`flex-1 py-3 text-xs font-bold flex items-center justify-center border-b-2 transition-all cursor-pointer ${
+              activeTab === "reels" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-400 hover:text-slate-600"
+            }`}
+          >
+            <Grid className="w-5 h-5" />
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab("products")}
-          title={`Tienda (${userProducts.length})`}
-          aria-label="Tienda"
-          className={`flex-1 py-3 text-xs font-bold flex items-center justify-center border-b-2 transition-all cursor-pointer ${
-            activeTab === "products" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-400 hover:text-slate-600"
-          }`}
-        >
-          <ShoppingBag className="w-5 h-5" />
-        </button>
+        {isSellerOrAdmin && (
+          <button
+            onClick={() => setActiveTab("products")}
+            title={`Tienda (${userProducts.length})`}
+            aria-label="Tienda"
+            className={`flex-1 py-3 text-xs font-bold flex items-center justify-center border-b-2 transition-all cursor-pointer ${
+              activeTab === "products" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-400 hover:text-slate-600"
+            }`}
+          >
+            <ShoppingBag className="w-5 h-5" />
+          </button>
+        )}
 
         {isMe && (
           <button
@@ -498,7 +519,7 @@ export default function Perfil({
 
       {/* Tab Content */}
       <div className="p-3">
-        {activeTab === "reels" && (
+        {isSellerOrAdmin && activeTab === "reels" && (
           <div className="grid grid-cols-3 gap-2">
             {userReels.length === 0 ? (
               <div className="col-span-3 py-16 text-center text-xs text-slate-400">
@@ -544,7 +565,7 @@ export default function Perfil({
           </div>
         )}
 
-        {activeTab === "products" && (
+        {isSellerOrAdmin && activeTab === "products" && (
           <div className="grid grid-cols-2 gap-3">
             {userProducts.length === 0 ? (
               <div className="col-span-2 py-16 text-center text-xs text-slate-400">

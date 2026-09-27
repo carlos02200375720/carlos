@@ -228,6 +228,12 @@ export default function Perfil({
   // Dedicated user publications feed state
   const [activeFeedReelId, setActiveFeedReelId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isSelf && !canSell && (activeSubTab === "publish" || activeSubTab === "publications" || activeSubTab === "products" || activeSubTab === "performance")) {
+      setActiveSubTab("saved");
+    }
+  }, [isSelf, canSell, activeSubTab]);
+
   // Whenever the active subtab/tarjeta changes or ProfileView unmounts, dismiss any active reel feed and pause all videos
   useEffect(() => {
     setActiveFeedReelId(null);
@@ -1036,8 +1042,8 @@ export default function Perfil({
                   <BadgeCheck className="w-5 h-5 fill-sky-500 text-white shrink-0" title="Verificado" />
                 )}
               </h2>
-              {/* Followers and Following counters */}
-              {(() => {
+              {/* Followers and Following counters - Only for Sellers / Admins */}
+              {(profileUser.canSell === true || isSuperAdmin(profileUser)) && (() => {
                 const matchedUserInList = users?.find(
                   (u) =>
                     u.id === profileUser.id ||

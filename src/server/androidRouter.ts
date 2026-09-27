@@ -214,6 +214,9 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
 
   // Android Auth: Switch or restore user session
   router.post("/users/current/switch", async (req: Request, res: Response) => {
+    if (req.body?.isNewRegistration) {
+      return handleAndroidRegister(req, res);
+    }
     try {
       const { targetUsername, password } = req.body;
       if (!targetUsername) {
@@ -334,15 +337,21 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
   // Android Auth: Register
   const pendingAndroidRegistrations = new Set<string>();
 
-  router.post("/auth/register", async (req: Request, res: Response) => {
-    const { username, name, email, password, avatar } = req.body;
-    if (!username || !name) {
+  const handleAndroidRegister = async (req: Request, res: Response) => {
+    const { username, targetUsername, name, email, password, avatar, coverPhoto, bio } = req.body;
+    const rawUsername = username || targetUsername;
+    if (!rawUsername || !name) {
       res.status(400).json({ error: "Nombre de usuario y nombre son obligatorios" });
       return;
     }
 
-    const cleanUsername = String(username).trim().toLowerCase().replace("@", "");
+    const cleanUsername = String(rawUsername).trim().toLowerCase().replace(/\s+/g, "").replace("@", "");
     const cleanEmail = String(email || "").trim().toLowerCase();
+
+    if (cleanUsername === "invitado" || cleanUsername === "current_user" || cleanUsername === "usuario_actual") {
+      res.status(400).json({ error: "Nombre de usuario reservado. Elige otro." });
+      return;
+    }
 
     const lockKey = `${cleanUsername}:${cleanEmail}`;
     if (pendingAndroidRegistrations.has(lockKey) || (cleanEmail && pendingAndroidRegistrations.has(cleanEmail)) || pendingAndroidRegistrations.has(cleanUsername)) {
@@ -380,10 +389,10 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         id: newUserId,
         originalId: newUserId,
         username: cleanUsername,
-        name: name.trim(),
+        name: String(name).trim(),
         avatar: avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
-        coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-        bio: "Nuevo creador en MallSocial",
+        coverPhoto: coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+        bio: (bio && String(bio).trim()) || "Nuevo creador en MallSocial",
         followers: 0,
         following: 0,
         followingUserIds: [],
@@ -392,6 +401,11 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         isOnline: true,
         email: cleanEmail || "",
       };
+
+      const isAdminUser = isConfiguredSuperadmin(newUser);
+      newUser.canSell = isAdminUser;
+      newUser.isAdmin = isAdminUser;
+      newUser.role = isAdminUser ? "superadmin" : "user";
 
       if (mongoose.connection.readyState === 1) {
         const mongoUser = new MongoUser({
@@ -415,7 +429,9 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
       if (cleanEmail) pendingAndroidRegistrations.delete(cleanEmail);
       pendingAndroidRegistrations.delete(cleanUsername);
     }
-  });
+  };
+
+  router.post(["/auth/register", "/users/register"], handleAndroidRegister);
 
   // Android: Update profile
   router.post("/users/current/update", async (req: Request, res: Response) => {

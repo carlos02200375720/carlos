@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { User as UserIcon, ShieldCheck, UserPlus, ArrowRight, Sparkles, Check, Smartphone, LogIn, Lock, AlertCircle, Loader2 } from "lucide-react";
+import { User as UserIcon, ShieldCheck, UserPlus, ArrowRight, Sparkles, Check, Play, ShoppingBag, MessageSquare, AlertCircle, Loader2 } from "lucide-react";
 import { User } from "../../types";
 import { androidApiFetch } from "./api";
 import { sessionState } from "../../utils/sessionState";
@@ -110,17 +110,24 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
       return;
     }
 
+    const cleanUsername = regUsername.trim().toLowerCase().replace(/\s+/g, "").replace("@", "");
+    if (cleanUsername === "invitado" || cleanUsername === "current_user" || cleanUsername === "usuario_actual") {
+      setRegisterError("Nombre de usuario reservado. Elige otro.");
+      return;
+    }
+
     setIsRegistering(true);
     try {
-      const res = await androidApiFetch("/users/current/switch", {
+      const res = await androidApiFetch("/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          targetUsername: regUsername.trim(),
-          password: regPassword,
+          username: cleanUsername,
+          targetUsername: cleanUsername,
+          password: regPassword.trim(),
           name: regName.trim(),
           email: regEmail.trim(),
-          bio: regBio.trim(),
+          bio: regBio.trim() || "Creador en la plataforma",
           avatar: regAvatar,
           coverPhoto: regCoverPhoto,
           isNewRegistration: true,
@@ -134,223 +141,354 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
       } else if (data.success && data.user) {
         sessionState.setAuthenticated(true);
         sessionState.setUsername(data.user.username);
-        
         sessionState.setUser(data.user);
+        onRefreshUsers();
         onLoginSuccess(data.user);
       }
     } catch (err: any) {
       setRegisterError("Error de conexión al servidor de Android.");
+    } finally {
       setIsRegistering(false);
     }
   };
 
-  const registeredUsers = users.filter((u) => u.username !== "invitado" && !u.isGuest);
+  const registeredUsers = users.filter((u) => u.id !== "current_user" && u.username !== "invitado" && !u.isGuest);
 
   return (
-    <div className="w-full min-h-screen bg-white text-slate-900 flex flex-col p-4 font-sans select-none pb-24" id="android-login-view">
-      {/* Top Android Header */}
-      <div className="w-full flex items-center justify-between py-4 border-b border-slate-100">
-        <div className="flex items-center space-x-2">
-          <Smartphone className="w-5 h-5 text-amber-500" />
-          <span className="font-bold text-sm text-slate-900">MallSocial · Android</span>
-        </div>
-        <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">
-          Iniciar Sesión
-        </span>
-      </div>
+    <div
+      className="w-full min-h-screen bg-white text-slate-900 flex flex-col px-3 pt-3 pb-24 font-sans select-none overflow-x-hidden no-scrollbar"
+      id="android-login-view"
+      style={{
+        paddingTop: "max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
+      }}
+    >
+      <div className="max-w-md mx-auto w-full bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden flex flex-col">
+        {/* Top Brand Promo Header (matching Web LoginView style) */}
+        <div className="bg-slate-50 p-5 flex flex-col justify-between text-slate-900 relative overflow-hidden border-b border-slate-200">
+          <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 via-amber-100/20 to-white opacity-90 z-0" />
 
-      <div className="max-w-md mx-auto w-full flex-1 flex flex-col justify-center py-6">
-        {/* Android Material Tab Switcher */}
-        <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200 mb-6">
-          <button
-            onClick={() => { setActiveTab("login");  setLoginError(""); }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-              activeTab === "login" ? "bg-amber-500 text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            Iniciar Sesión
-          </button>
-          <button
-            onClick={() => { setActiveTab("register");  setRegisterError(""); }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-              activeTab === "register" ? "bg-amber-500 text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            Crear Cuenta
-          </button>
-        </div>
+          <div className="relative z-10">
+            <div className="flex items-center space-x-2 bg-amber-500/15 border border-amber-500/30 px-3 py-1 rounded-full w-fit">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-amber-700">
+                Plataforma Social
+              </span>
+            </div>
 
-        {activeTab === "login" ? (
-          <div className="space-y-6">
-            <form onSubmit={handleLogin} className="space-y-4">
-              {loginError && (
-                <div className="flex items-center space-x-2 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-                  <span>{loginError}</span>
-                </div>
-              )}
+            <h1 className="font-display font-black text-xl mt-3.5 leading-tight tracking-tight text-slate-900">
+              Sintoniza, Chatea, <span className="text-amber-500">Vende</span>
+            </h1>
+            <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+              Únete a la nueva era del comercio interactivo. Comparte reels de tus productos, interactúa en vivo y gestiona tu propio catálogo.
+            </p>
+          </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Usuario</label>
-                <input
-                  type="text"
-                  placeholder="Tu nombre de usuario"
-                  value={usernameInput}
-                  onChange={(e) => setUsernameInput(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
-                />
+          <div className="grid grid-cols-3 gap-2 mt-4 relative z-10">
+            <div className="flex items-center space-x-1.5 bg-white/90 border border-slate-200/80 rounded-xl p-2">
+              <div className="p-1 bg-amber-500/15 rounded-lg text-amber-600 shrink-0 border border-amber-500/25">
+                <Play className="w-3 h-3 fill-current" />
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Contraseña</label>
-                <input
-                  type="password"
-                  placeholder="Tu contraseña"
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
-                />
+              <span className="text-[10px] font-bold text-slate-800 leading-tight">Reels de Compra</span>
+            </div>
+            <div className="flex items-center space-x-1.5 bg-white/90 border border-slate-200/80 rounded-xl p-2">
+              <div className="p-1 bg-amber-500/15 rounded-lg text-amber-600 shrink-0 border border-amber-500/25">
+                <ShoppingBag className="w-3 h-3" />
               </div>
+              <span className="text-[10px] font-bold text-slate-800 leading-tight">Catálogo Propio</span>
+            </div>
+            <div className="flex items-center space-x-1.5 bg-white/90 border border-slate-200/80 rounded-xl p-2">
+              <div className="p-1 bg-amber-500/15 rounded-lg text-amber-600 shrink-0 border border-amber-500/25">
+                <MessageSquare className="w-3 h-3" />
+              </div>
+              <span className="text-[10px] font-bold text-slate-800 leading-tight">Chat en Vivo</span>
+            </div>
+          </div>
+        </div>
 
+        {/* Forms Section */}
+        <div className="p-5 bg-white flex-1 flex flex-col justify-between">
+          <div>
+            {/* Tab Swapping Header */}
+            <div className="flex border-b border-slate-200 pb-3 mb-5">
               <button
-                type="submit"
-                disabled={isLoggingIn}
-                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-2xl text-sm shadow-md hover:brightness-105 active:scale-[0.98] transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                type="button"
+                onClick={() => {
+                  setActiveTab("login");
+                  setLoginError("");
+                }}
+                className={`text-xs font-bold px-4 py-2 rounded-xl transition-all mr-2 flex items-center space-x-2 cursor-pointer ${
+                  activeTab === "login"
+                    ? "bg-amber-500 text-slate-950 shadow-xs"
+                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                }`}
               >
-                {isLoggingIn ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <LogIn className="w-5 h-5" />
-                    <span>Acceder a Android</span>
-                  </>
-                )}
+                <span>Iniciar Sesión</span>
               </button>
-            </form>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("register");
+                  setRegisterError("");
+                }}
+                className={`text-xs font-bold px-4 py-2 rounded-xl transition-all flex items-center space-x-2 cursor-pointer ${
+                  activeTab === "register"
+                    ? "bg-amber-500 text-slate-950 shadow-xs"
+                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Crear Cuenta</span>
+              </button>
+            </div>
 
-            {/* Quick Switch Profiles on Android */}
-            {registeredUsers.length > 0 && (
-              <div className="pt-4 border-t border-slate-100">
-                <p className="text-xs font-semibold text-slate-600 mb-3">Cuentas disponibles en este servidor:</p>
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {registeredUsers.map((u, uIdx) => (
-                    <div
-                      key={`${u.id}-${uIdx}`}
-                      onClick={() => handleLogin(null as any, u.username, "")}
-                      className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 cursor-pointer active:scale-[0.99] transition-transform"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <img src={u.avatar} alt={u.name} className="w-9 h-9 rounded-full object-cover border border-amber-500/50" />
-                        <div>
-                          <p className="text-xs font-bold text-slate-900">{u.name}</p>
-                          <p className="text-[11px] text-amber-600 font-semibold">@{u.username}</p>
-                        </div>
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-slate-400" />
-                    </div>
-                  ))}
+            {activeTab === "login" ? (
+              <div className="space-y-5">
+                <div>
+                  <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">Bienvenido de vuelta</h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Ingresa tu nombre de usuario para acceder a tu perfil y ventas.
+                  </p>
                 </div>
+
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                      Nombre de usuario
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">@</span>
+                      <input
+                        type="text"
+                        placeholder="tunombre"
+                        value={usernameInput}
+                        onChange={(e) => setUsernameInput(e.target.value)}
+                        className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl pl-8 pr-4 py-3 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                      Contraseña
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-3 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors"
+                    />
+                  </div>
+
+                  {loginError && (
+                    <div className="flex items-center space-x-2 text-[11px] text-rose-600 bg-rose-50 border border-rose-200 px-3.5 py-2.5 rounded-xl font-medium">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                      <span>{loginError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isLoggingIn}
+                    className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 text-slate-950 font-bold rounded-xl text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-md shadow-amber-500/15 active:scale-[0.98]"
+                  >
+                    {isLoggingIn ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <span>Ingresar</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                {/* Quick Switch Profiles */}
+                {registeredUsers.length > 0 && (
+                  <div className="pt-4 border-t border-slate-100">
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Cuentas creadas en este servidor:
+                    </span>
+                    <span className="block text-[9px] text-slate-400 mb-2.5">
+                      Haz clic para seleccionar un usuario, luego escribe su contraseña arriba.
+                    </span>
+                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1 no-scrollbar">
+                      {registeredUsers.map((u, uIdx) => (
+                        <button
+                          key={`${u.id}-${uIdx}`}
+                          type="button"
+                          onClick={() => {
+                            setUsernameInput(u.username);
+                            setPasswordInput("");
+                            setLoginError("");
+                          }}
+                          className="flex items-center space-x-2.5 p-2 bg-slate-50 hover:bg-amber-50/60 border border-slate-200 hover:border-amber-300 rounded-xl text-left transition-all cursor-pointer"
+                        >
+                          <img
+                            src={u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
+                            alt={u.name}
+                            className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <h4 className="text-[11px] font-bold text-slate-900 truncate leading-tight">{u.name}</h4>
+                            <p className="text-[9px] text-amber-600 font-semibold truncate">@{u.username}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4 pb-2">
+                <div>
+                  <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">Comienza como Creador</h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Regístrate para publicar productos, subir reels y chatear.
+                  </p>
+                </div>
+
+                <form onSubmit={handleRegister} className="space-y-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                      Nombre Completo
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Juan Pérez"
+                      value={regName}
+                      onChange={(e) => setRegName(e.target.value)}
+                      className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                      Correo Electrónico (Obligatorio)
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="ejemplo@correo.com"
+                      value={regEmail}
+                      onChange={(e) => setRegEmail(e.target.value)}
+                      className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                      Nombre de usuario (Único)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">@</span>
+                      <input
+                        type="text"
+                        placeholder="juanperez"
+                        value={regUsername}
+                        onChange={(e) => setRegUsername(e.target.value)}
+                        className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl pl-8 pr-4 py-2.5 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                      Contraseña de Perfil
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="Crea una contraseña segura"
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                      className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                      Biografía de Ventas
+                    </label>
+                    <textarea
+                      placeholder="Cuéntanos qué vendes o qué tipo de contenido creas..."
+                      rows={2}
+                      value={regBio}
+                      onChange={(e) => setRegBio(e.target.value)}
+                      className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 resize-none transition-colors"
+                    />
+                  </div>
+
+                  {/* Avatar Preset Selector */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                      Avatar Predeterminado
+                    </label>
+                    <div className="flex space-x-2.5">
+                      {PRESET_AVATARS.map((av, idx) => (
+                        <img
+                          key={idx}
+                          src={av}
+                          alt={`Avatar ${idx}`}
+                          onClick={() => setRegAvatar(av)}
+                          className={`w-10 h-10 rounded-full object-cover cursor-pointer border-2 transition-all ${
+                            regAvatar === av ? "border-amber-500 scale-105 shadow-xs" : "border-slate-200 opacity-70"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Cover Photo Picker */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                      Banner de Perfil
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {PRESET_COVERS.map((cover, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setRegCoverPhoto(cover)}
+                          className={`relative h-10 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                            regCoverPhoto === cover ? "border-amber-500 scale-102" : "border-slate-200 hover:border-slate-300"
+                          }`}
+                        >
+                          <img src={cover} alt="Preset cover" className="w-full h-full object-cover" />
+                          {regCoverPhoto === cover && (
+                            <div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center">
+                              <Check className="w-4 h-4 text-white drop-shadow" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {registerError && (
+                    <div className="flex items-center space-x-2 text-[11px] text-rose-600 bg-rose-50 border border-rose-200 px-3.5 py-2 rounded-xl font-medium">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                      <span>{registerError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isRegistering}
+                    className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 text-slate-950 font-bold rounded-xl text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-md shadow-amber-500/15 active:scale-[0.98]"
+                  >
+                    {isRegistering ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <span>Registrar y Entrar</span>
+                        <Sparkles className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
               </div>
             )}
           </div>
-        ) : (
-          <form onSubmit={handleRegister} className="space-y-4">
-            {registerError && (
-              <div className="flex items-center space-x-2 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-                <span>{registerError}</span>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Nombre Completo</label>
-              <input
-                type="text"
-                placeholder="Ej. Ana Martínez"
-                value={regName}
-                onChange={(e) => setRegName(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Nombre de Usuario</label>
-              <input
-                type="text"
-                placeholder="Ej. anam"
-                value={regUsername}
-                onChange={(e) => setRegUsername(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Correo Electrónico</label>
-              <input
-                type="email"
-                placeholder="correo@ejemplo.com"
-                value={regEmail}
-                onChange={(e) => setRegEmail(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Contraseña</label>
-              <input
-                type="password"
-                placeholder="Crea una contraseña"
-                value={regPassword}
-                onChange={(e) => setRegPassword(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Biografía</label>
-              <input
-                type="text"
-                placeholder="Tu descripción corta"
-                value={regBio}
-                onChange={(e) => setRegBio(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
-              />
-            </div>
-
-            {/* Avatar Preset Selector */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-2">Avatar predeterminado</label>
-              <div className="flex space-x-3">
-                {PRESET_AVATARS.map((av, idx) => (
-                  <img
-                    key={idx}
-                    src={av}
-                    alt={`Avatar ${idx}`}
-                    onClick={() => setRegAvatar(av)}
-                    className={`w-12 h-12 rounded-full object-cover cursor-pointer border-2 transition-all ${
-                      regAvatar === av ? "border-amber-500 scale-105 shadow-sm" : "border-slate-200 opacity-60"
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isRegistering}
-              className="w-full mt-4 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-2xl text-sm shadow-md hover:brightness-105 active:scale-[0.98] transition-all flex items-center justify-center space-x-2 cursor-pointer"
-            >
-              {isRegistering ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  <UserPlus className="w-5 h-5" />
-                  <span>Registrar Cuenta en Android</span>
-                </>
-              )}
-            </button>
-          </form>
-        )}
+        </div>
       </div>
     </div>
   );

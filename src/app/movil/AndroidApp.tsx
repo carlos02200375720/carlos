@@ -367,7 +367,7 @@ export default function AndroidApp({
       {!(activeTab === 'messages' && activeChatUser) && !isLiveViewerOpen && !isProductDetailOpen && !(activeTab === 'shop' && isCartPageOpen) && (
         <div
           id="android-bottom-nav-bar"
-          className={`fixed bottom-0 inset-x-0 pt-1 px-1 z-30 transition-colors shadow-[0_-2px_10px_rgba(0,0,0,0.15)] ${
+          className={`fixed bottom-0 inset-x-0 pt-1 px-1 z-30 transition-colors shadow-none ${
             activeTab === 'shop' || activeTab === 'profile' || activeTab === 'messages'
                ? "bg-white text-slate-900 border-t border-slate-100"
                : "bg-black text-white border-t border-white/5"
