@@ -1052,26 +1052,26 @@ export default function Tienda({
       {/* 1. Detail Page Transparent Fixed Header */}
       {activeStep === 'detail' ? (
         <header
-          className="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-3 sm:px-5 pb-2.5 sm:pb-3 bg-transparent border-0 pointer-events-none transition-all duration-200"
+          className="fixed top-0 left-0 right-0 md:left-60 lg:left-64 z-40 flex items-center justify-between px-3 sm:px-5 pb-2.5 sm:pb-3 bg-transparent border-0 pointer-events-none transition-all duration-200"
           style={{
             paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 0.85rem))",
           }}
           id="product-detail-transparent-header"
         >
-          {/* Botón de Regreso - fondo transparente */}
+          {/* Botón de Regreso - fondo negro semi transparente */}
           <div className="flex items-center">
             <button
               type="button"
               onClick={handleBackToCatalog}
-              className="w-10 h-10 rounded-full bg-transparent text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
+              className="w-10 h-10 rounded-full bg-black/45 hover:bg-black/60 backdrop-blur-sm text-white flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
               aria-label="Regresar al catálogo"
               id="detail-back-button"
             >
-              <ArrowLeft className="w-6 h-6 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]" />
+              <ArrowLeft className="w-5 h-5 text-white" />
             </button>
           </div>
 
-          {/* Botón Guardar Producto y Carrito - fondo transparente */}
+          {/* Botón Guardar Producto y Carrito - fondo negro semi transparente */}
           <div className="flex items-center space-x-2">
             <button
               type="button"
@@ -1083,7 +1083,7 @@ export default function Tienda({
                   toggleFavorite(selectedProduct.id);
                 }
               }}
-              className="w-10 h-10 rounded-full bg-transparent text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
+              className="w-10 h-10 rounded-full bg-black/45 hover:bg-black/60 backdrop-blur-sm text-white flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
               id="detail-save-trigger-btn"
               aria-label="Guardar producto"
               title={
@@ -1093,7 +1093,7 @@ export default function Tienda({
               }
             >
               <Bookmark
-                className={`w-6 h-6 transition-all duration-200 drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] ${
+                className={`w-5 h-5 transition-all duration-200 ${
                   selectedProduct && (savedReelIds.includes(selectedProduct.id) || favorites.includes(selectedProduct.id))
                     ? "fill-amber-400 text-amber-400 scale-105"
                     : "text-white hover:text-amber-200"
@@ -1103,11 +1103,11 @@ export default function Tienda({
             <button
               type="button"
               onClick={openCartDrawer}
-              className="relative w-10 h-10 rounded-full bg-transparent text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
+              className="relative w-10 h-10 rounded-full bg-black/45 hover:bg-black/60 backdrop-blur-sm text-white flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
               id="detail-cart-trigger-btn"
               aria-label="Ver carrito"
             >
-              <ShoppingCart className="w-6 h-6 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]" />
+              <ShoppingCart className="w-5 h-5 text-white" />
               {cartItemCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-extrabold font-mono text-[9px] sm:text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center border-2 border-slate-950 shadow-xs">
                   {cartItemCount}

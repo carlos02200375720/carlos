@@ -234,18 +234,17 @@ export default function App() {
       if (saved === "android" || saved === "web") return saved;
       if (window.location.search.includes("platform=android")) return "android";
       if (window.location.search.includes("platform=web")) return "web";
-      // If direct deep link route is accessed (e.g. /inicio, /product, /store, /shop, /tienda, /perfil, etc.)
-      if (window.location.pathname.match(/^\/(inicio|product|store|creator|reel|reels|shop|tienda|checkout|verificacion|cart|carrito|gracia|gracias|messages|perfil|profile|admin)/i)) {
-        return "web";
-      }
       if ((import.meta as any).env?.VITE_APP_TARGET === "android") return "android";
       if ((import.meta as any).env?.VITE_APP_TARGET === "web") return "web";
       const win = window as any;
-      if (typeof win.Capacitor?.isNativePlatform === "function" && win.Capacitor.isNativePlatform()) {
+      if (
+        (typeof Capacitor?.isNativePlatform === "function" && Capacitor.isNativePlatform()) ||
+        (typeof win.Capacitor?.isNativePlatform === "function" && win.Capacitor.isNativePlatform())
+      ) {
         return "android";
       }
     }
-    return "android";
+    return "web";
   });
 
   const handleSwitchPlatform = useCallback((target: 'android' | 'web') => {
