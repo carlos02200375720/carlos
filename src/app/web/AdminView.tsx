@@ -94,6 +94,7 @@ export default function AdminView({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [isPublishOpen, setIsPublishOpen] = useState(false);
+  const [publishInitialTab, setPublishInitialTab] = useState<"video" | "image" | "carousel" | "product">("product");
 
   // Filter & Search states
   const [userSearch, setUserSearch] = useState("");
@@ -570,12 +571,15 @@ export default function AdminView({
               <span className="hidden xl:inline">{isRefreshing ? "..." : "Sincronizar"}</span>
             </button>
             <button
-              onClick={() => setIsPublishOpen(true)}
+              onClick={() => {
+                setPublishInitialTab("product");
+                setIsPublishOpen(true);
+              }}
               className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-sm active:scale-95"
               id="admin-header-publish-btn"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Publicar</span>
+              <span className="hidden md:inline">Publicar / Vender</span>
             </button>
           </div>
         </div>
@@ -590,6 +594,7 @@ export default function AdminView({
             <div className="w-full max-w-5xl">
               <PublishView
                 currentUser={currentUser}
+                initialTab={publishInitialTab}
                 onBack={() => setIsPublishOpen(false)}
                 onSuccess={() => {
                   onRefreshAll();
@@ -633,12 +638,15 @@ export default function AdminView({
             </button>
 
             <button
-              onClick={() => onNavigateToTab('profile')}
+              onClick={() => {
+                setPublishInitialTab("product");
+                setIsPublishOpen(true);
+              }}
               className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-md shadow-amber-500/20 active:scale-95"
               id="admin-new-content-button"
             >
               <Plus className="w-4 h-4" />
-              <span>Publicar Contenido</span>
+              <span>Publicar / Vender</span>
             </button>
           </div>
         </div>

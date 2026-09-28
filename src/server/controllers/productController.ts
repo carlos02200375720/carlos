@@ -38,13 +38,14 @@ export async function getProducts(req: Request, res: Response): Promise<void> {
         sellerId: p.sellerId || "current_user",
         rating: p.rating || 5,
         shippingCost: p.shippingCost || 0,
+        shippingCapital: p.shippingCapital || 0,
+        shippingProvince: p.shippingProvince || 0,
+        freeShipping: Boolean(p.freeShipping),
         images: p.images || [],
         videos: p.videos || [],
         variants: p.variants || [],
         variantList: p.variantList || [],
         category: p.category || "",
-        cjVid: p.cjVid || undefined,
-        cjPid: p.cjPid || undefined,
         views: p.views || 0,
       }));
       setProducts(parsed);
@@ -86,13 +87,14 @@ export async function getProductById(req: Request, res: Response): Promise<void>
           sellerId: dbProduct.sellerId || "current_user",
           rating: dbProduct.rating || 5,
           shippingCost: dbProduct.shippingCost || 0,
+          shippingCapital: dbProduct.shippingCapital || 0,
+          shippingProvince: dbProduct.shippingProvince || 0,
+          freeShipping: Boolean(dbProduct.freeShipping),
           images: dbProduct.images || [],
           videos: dbProduct.videos || [],
           variants: dbProduct.variants || [],
           variantList: dbProduct.variantList || [],
           category: dbProduct.category || "",
-          cjVid: dbProduct.cjVid || undefined,
-          cjPid: dbProduct.cjPid || undefined,
           views: dbProduct.views || 0,
         };
 
@@ -166,13 +168,14 @@ export async function createProduct(req: any, res: any): Promise<void> {
       imageUrl,
       stock,
       shippingCost,
+      shippingCapital,
+      shippingProvince,
+      freeShipping,
       images,
       videos,
       variants,
       variantList,
       category,
-      cjVid,
-      cjPid,
     } = req.body;
 
     const seller = await resolveAuthenticatedUser(req, "seller");
@@ -186,6 +189,18 @@ export async function createProduct(req: any, res: any): Promise<void> {
       return;
     }
 
+    const isFreeShipping = Boolean(freeShipping);
+    const parsedCapital = Math.max(0, Number(shippingCapital) || 0);
+    const parsedProvince = Math.max(0, Number(shippingProvince) || 0);
+    const parsedBaseShipping =
+      shippingCost !== undefined && shippingCost !== ""
+        ? Math.max(0, Number(shippingCost) || 0)
+        : parsedCapital > 0
+        ? parsedCapital
+        : parsedProvince > 0
+        ? parsedProvince
+        : 0;
+
     const newProduct: Product = {
       id: "prod_" + generateId(),
       name: name || "Producto sin nombre",
@@ -195,14 +210,15 @@ export async function createProduct(req: any, res: any): Promise<void> {
       stock: Number(stock) || 0,
       sellerId: seller.id,
       rating: 5,
-      shippingCost: Number(shippingCost) || 0,
+      shippingCost: parsedBaseShipping,
+      shippingCapital: parsedCapital,
+      shippingProvince: parsedProvince,
+      freeShipping: isFreeShipping,
       images: images || [],
       videos: videos || [],
       variants: variants || [],
       variantList: variantList || [],
       category: category || "",
-      cjVid: cjVid || undefined,
-      cjPid: cjPid || undefined,
       views: 0,
     };
 
@@ -265,6 +281,9 @@ export async function updateProduct(req: any, res: any, next: any): Promise<void
       imageUrl,
       stock,
       shippingCost,
+      shippingCapital,
+      shippingProvince,
+      freeShipping,
       images,
       videos,
       variants,
@@ -285,6 +304,9 @@ export async function updateProduct(req: any, res: any, next: any): Promise<void
     if (imageUrl !== undefined) updateFields.imageUrl = String(imageUrl).trim();
     if (stock !== undefined) updateFields.stock = Math.max(0, parseInt(String(stock), 10) || 0);
     if (shippingCost !== undefined) updateFields.shippingCost = Math.max(0, Number(shippingCost) || 0);
+    if (shippingCapital !== undefined) updateFields.shippingCapital = Math.max(0, Number(shippingCapital) || 0);
+    if (shippingProvince !== undefined) updateFields.shippingProvince = Math.max(0, Number(shippingProvince) || 0);
+    if (freeShipping !== undefined) updateFields.freeShipping = Boolean(freeShipping);
     if (category !== undefined) updateFields.category = String(category).trim();
     if (images !== undefined) updateFields.images = Array.isArray(images) ? images : [];
     if (videos !== undefined) updateFields.videos = Array.isArray(videos) ? videos : [];

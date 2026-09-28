@@ -721,7 +721,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
   // Android Publish / Create Product with auto Companion Reel
   router.post("/products", async (req: Request, res: Response) => {
     try {
-      const { name, description, price, imageUrl, stock, sellerId, shippingCost, images, videos, variants, variantList, category, cjVid, cjPid } = req.body;
+      const { name, description, price, imageUrl, stock, sellerId, shippingCost, shippingCapital, shippingProvince, freeShipping, images, videos, variants, variantList, category } = req.body;
       let resolvedSellerId = sellerId || req.headers["x-user-id"];
       let seller: any = null;
 
@@ -740,8 +740,18 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         };
       }
 
+      const isFreeShipping = Boolean(freeShipping);
       const parsedStock = stock !== undefined && stock !== "" ? Math.max(0, Number(stock)) : 10;
-      const parsedShipping = shippingCost !== undefined && shippingCost !== "" ? Math.max(0, Number(shippingCost) || 0) : 0;
+      const parsedCapital = shippingCapital !== undefined && shippingCapital !== "" ? Math.max(0, Number(shippingCapital) || 0) : 0;
+      const parsedProvince = shippingProvince !== undefined && shippingProvince !== "" ? Math.max(0, Number(shippingProvince) || 0) : 0;
+      const parsedShipping =
+        shippingCost !== undefined && shippingCost !== ""
+          ? Math.max(0, Number(shippingCost) || 0)
+          : parsedCapital > 0
+          ? parsedCapital
+          : parsedProvince > 0
+          ? parsedProvince
+          : 0;
 
       const newProduct: Product = {
         id: "prod_" + generateId(),
@@ -753,13 +763,14 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         sellerId: seller.id,
         rating: 5,
         shippingCost: Number.isNaN(parsedShipping) ? 0 : parsedShipping,
+        shippingCapital: Number.isNaN(parsedCapital) ? 0 : parsedCapital,
+        shippingProvince: Number.isNaN(parsedProvince) ? 0 : parsedProvince,
+        freeShipping: isFreeShipping,
         images: images || [],
         videos: videos || [],
         variants: Array.isArray(variants) ? variants : [],
         variantList: Array.isArray(variantList) ? variantList : [],
         category: category || "",
-        cjVid: cjVid || undefined,
-        cjPid: cjPid || undefined,
         views: 0,
       };
 
@@ -1202,13 +1213,14 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
               sellerUsername: seller ? seller.username : (p.sellerUsername || "vendedor"),
               rating: p.rating || 5,
               shippingCost: p.shippingCost !== undefined ? Number(p.shippingCost) : 0,
+              shippingCapital: p.shippingCapital !== undefined ? Number(p.shippingCapital) : 0,
+              shippingProvince: p.shippingProvince !== undefined ? Number(p.shippingProvince) : 0,
+              freeShipping: Boolean(p.freeShipping),
               category: p.category || "General",
               images: p.images || [],
               videos: p.videos || [],
               variants: p.variants || [],
               variantList: p.variantList || [],
-              cjVid: p.cjVid || undefined,
-              cjPid: p.cjPid || undefined,
               views: p.views || 0,
             };
           });

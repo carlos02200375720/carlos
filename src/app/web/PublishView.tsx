@@ -29,12 +29,13 @@ interface PublishViewProps {
   onBack: () => void;
   onSuccess: () => void;
   userProducts: Product[];
+  initialTab?: PublishType;
 }
 
 type PublishType = "video" | "image" | "carousel" | "product";
 
-export default function PublishView({ currentUser, onBack, onSuccess, userProducts }: PublishViewProps) {
-  const [publishType, setPublishType] = useState<PublishType>("video");
+export default function PublishView({ currentUser, onBack, onSuccess, userProducts, initialTab = "video" }: PublishViewProps) {
+  const [publishType, setPublishType] = useState<PublishType>(initialTab);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -48,7 +49,9 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
   const [prodName, setProdName] = useState("");
   const [prodDescription, setProdDescription] = useState("");
   const [prodPrice, setProdPrice] = useState("");
-  const [prodShipping, setProdShipping] = useState("");
+  const [prodShippingCapital, setProdShippingCapital] = useState("");
+  const [prodShippingProvince, setProdShippingProvince] = useState("");
+  const [prodFreeShipping, setProdFreeShipping] = useState(false);
   const [prodQuantity, setProdQuantity] = useState("");
   const [prodCategory, setProdCategory] = useState("Ropa Femenina");
   const [prodVariants, setProdVariants] = useState<{ name: string; options: string[] }[]>([
@@ -59,40 +62,12 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
   const [newVarName, setNewVarName] = useState("");
   const [newVarValue, setNewVarValue] = useState("");
 
-  // CJ Dropshipping Import states
-  const [cjInputId, setCjInputId] = useState("");
-  const [isImportingCj, setIsImportingCj] = useState(false);
-  const [importedPhotoUrls, setImportedPhotoUrls] = useState<string[]>([]);
-  const [importedCjVid, setImportedCjVid] = useState<string | undefined>(undefined);
-  const [importedCjPid, setImportedCjPid] = useState<string | undefined>(undefined);
-  const [cjLogistics, setCjLogistics] = useState<{
-    variantId?: string;
-    shippingOptions: {
-      carrier: string;
-      aging: string;
-      shippingCost: number;
-    }[];
-  } | null>(null);
-
-  const CJ_DEST_COUNTRIES = [
-    { code: "US", name: "Estados Unidos 🇺🇸" },
-    { code: "ES", name: "España 🇪🇸" },
-    { code: "MX", name: "México 🇲🇽" },
-    { code: "CO", name: "Colombia 🇨🇴" },
-    { code: "CL", name: "Chile 🇨🇱" },
-    { code: "AR", name: "Argentina 🇦🇷" },
-    { code: "FR", name: "Francia 🇫🇷" },
-    { code: "DE", name: "Alemania 🇩🇪" },
-    { code: "GB", name: "Reino Unido 🇬🇧" },
-    { code: "CA", name: "Canadá 🇨🇦" },
-    { code: "BR", name: "Brasil 🇧🇷" },
-    { code: "PE", name: "Perú 🇵🇪" },
-    { code: "EC", name: "Ecuador 🇪🇨" },
-    { code: "DO", name: "República Dominicana 🇩🇴" },
-    { code: "IT", name: "Italia 🇮🇹" },
-    { code: "PT", name: "Portugal 🇵🇹" },
-    { code: "AU", name: "Australia 🇦🇺" },
-  ];
+  // Color variant with image states
+  const [newColorName, setNewColorName] = useState("");
+  const [newColorFile, setNewColorFile] = useState<File | null>(null);
+  const [colorImageFiles, setColorImageFiles] = useState<Record<string, File>>({});
+  const [colorImagePreviews, setColorImagePreviews] = useState<Record<string, string>>({});
+  const [editingColorTarget, setEditingColorTarget] = useState<string | null>(null);
 
   // Media files states
   const [singleVideoFile, setSingleVideoFile] = useState<File | null>(null);
@@ -112,6 +87,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
   const carouselInputRef = useRef<HTMLInputElement>(null);
   const prodPhotosRef = useRef<HTMLInputElement>(null);
   const prodVideoRef = useRef<HTMLInputElement>(null);
+  const newColorImageInputRef = useRef<HTMLInputElement>(null);
+  const existingColorImageInputRef = useRef<HTMLInputElement>(null);
 
   // File extensions checker helper
   const validateFileExtension = (file: File, allowedExtensions: string[]): boolean => {
@@ -349,6 +326,109 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     return uploaded;
   };
 
+  // Add color variant with optional image
+  const handleAddColorVariant = () => {
+    const trimmedColor = newColorName.trim();
+    if (!trimmedColor) return;
+    const colorKey = trimmedColor.toLowerCase();
+
+    // Update or create the "Color" group in prodVariants
+    setProdVariants((prev) => {
+      const colorIdx = prev.findIndex((v) => v.name.trim().toLowerCase() === "color");
+      if (colorIdx >= 0) {
+        const existingOpts = prev[colorIdx].options;
+        const alreadyExists = existingOpts.some((o) => o.trim().toLowerCase() === colorKey);
+        if (alreadyExists) return prev;
+        const updated = [...prev];
+        updated[colorIdx] = {
+          ...updated[colorIdx],
+          options: [...existingOpts, trimmedColor],
+        };
+        return updated;
+      } else {
+        return [...prev, { name: "Color", options: [trimmedColor] }];
+      }
+    });
+
+    if (newColorFile) {
+      const previewUrl = URL.createObjectURL(newColorFile);
+      setColorImageFiles((prev) => ({ ...prev, [colorKey]: newColorFile }));
+      setColorImagePreviews((prev) => ({ ...prev, [colorKey]: previewUrl }));
+      setProdVariantList((prev) => {
+        const filtered = prev.filter((item) => (item.color || item.name || "").trim().toLowerCase() !== colorKey);
+        return [
+          ...filtered,
+          {
+            id: `var_color_${Date.now()}`,
+            name: trimmedColor,
+            color: trimmedColor,
+            price: parseFloat(prodPrice) || 0,
+            imageUrl: previewUrl,
+          },
+        ];
+      });
+    }
+
+    setNewColorName("");
+    setNewColorFile(null);
+    if (newColorImageInputRef.current) {
+      newColorImageInputRef.current.value = "";
+    }
+  };
+
+  // Attach or update image for an existing color option
+  const handleAssignColorImage = (colorName: string, file: File) => {
+    const colorKey = colorName.trim().toLowerCase();
+    const previewUrl = URL.createObjectURL(file);
+    setColorImageFiles((prev) => ({ ...prev, [colorKey]: file }));
+    setColorImagePreviews((prev) => ({ ...prev, [colorKey]: previewUrl }));
+    setProdVariantList((prev) => {
+      const filtered = prev.filter((item) => (item.color || item.name || "").trim().toLowerCase() !== colorKey);
+      return [
+        ...filtered,
+        {
+          id: `var_color_${Date.now()}`,
+          name: colorName.trim(),
+          color: colorName.trim(),
+          price: parseFloat(prodPrice) || 0,
+          imageUrl: previewUrl,
+        },
+      ];
+    });
+  };
+
+  // Remove a single option from a variant group
+  const handleRemoveVariantOption = (variantIndex: number, optionToRemove: string) => {
+    const targetVar = prodVariants[variantIndex];
+    if (!targetVar) return;
+    const isColorVar = targetVar.name.trim().toLowerCase().includes("color");
+    if (isColorVar) {
+      const colorKey = optionToRemove.trim().toLowerCase();
+      setColorImageFiles((prev) => {
+        const next = { ...prev };
+        delete next[colorKey];
+        return next;
+      });
+      setColorImagePreviews((prev) => {
+        const next = { ...prev };
+        delete next[colorKey];
+        return next;
+      });
+      setProdVariantList((prev) =>
+        prev.filter((item) => (item.color || item.name || "").trim().toLowerCase() !== colorKey)
+      );
+    }
+
+    const nextOptions = targetVar.options.filter((o) => o !== optionToRemove);
+    if (nextOptions.length === 0) {
+      handleRemoveVariant(variantIndex);
+    } else {
+      setProdVariants(
+        prodVariants.map((v, idx) => (idx === variantIndex ? { ...v, options: nextOptions } : v))
+      );
+    }
+  };
+
   // Add custom variant
   const handleAddVariant = () => {
     if (!newVarName.trim() || !newVarValue.trim()) return;
@@ -359,7 +439,15 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
     
     if (options.length === 0) return;
 
-    setProdVariants([...prodVariants, { name: newVarName.trim(), options }]);
+    const varNameClean = newVarName.trim();
+    const existingIdx = prodVariants.findIndex((v) => v.name.trim().toLowerCase() === varNameClean.toLowerCase());
+    if (existingIdx >= 0) {
+      const existingOpts = prodVariants[existingIdx].options;
+      const merged = Array.from(new Set([...existingOpts, ...options]));
+      setProdVariants(prodVariants.map((v, i) => (i === existingIdx ? { ...v, options: merged } : v)));
+    } else {
+      setProdVariants([...prodVariants, { name: varNameClean, options }]);
+    }
     setNewVarName("");
     setNewVarValue("");
   };
@@ -367,59 +455,6 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
   // Remove variant
   const handleRemoveVariant = (index: number) => {
     setProdVariants(prodVariants.filter((_, i) => i !== index));
-  };
-
-  // Import CJ Product handler
-  const handleImportCjProduct = async () => {
-    if (!cjInputId.trim()) {
-      setErrorMessage("Por favor ingresa un ID o SKU del producto de CJ Dropshipping.");
-      return;
-    }
-
-    setIsImportingCj(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-
-    try {
-      const res = await apiFetch(`/api/cj/import-product?pid=${encodeURIComponent(cjInputId.trim())}`);
-      const data = await res.json();
-
-      if (!res.ok || !data.success || !data.product) {
-        throw new Error(data.error || "No se pudo importar el producto desde CJ Dropshipping");
-      }
-
-      const p = data.product;
-
-      // Populate form fields for this session (NOT publishing automatically)
-      setProdName(p.name || "");
-      setProdDescription((p.description || "").slice(0, 35));
-      setProdPrice(p.price ? String(p.price) : "");
-      setProdQuantity(p.stock ? String(p.stock) : "50");
-      setProdCategory(p.category || "Electrónica");
-
-      setImportedCjVid(p.cjVariantId || p.logistics?.variantId || cjInputId.trim());
-      setImportedCjPid(p.cjProductId || cjInputId.trim());
-
-      if (p.images && p.images.length > 0) {
-        setImportedPhotoUrls(p.images);
-      }
-
-      if (p.variants && p.variants.length > 0) {
-        setProdVariants(p.variants);
-      }
-
-      if (p.variantList && p.variantList.length > 0) {
-        setProdVariantList(p.variantList);
-      }
-
-      setSuccessMessage("¡Producto importado de CJ con éxito para esta sesión! Los datos se han cargado. Los clientes podrán seleccionar cualquier país de envío al comprar.");
-
-    } catch (err: any) {
-      console.error("Error importando de CJ:", err);
-      setErrorMessage(err.message || "Error al conectar con la API de CJ Dropshipping");
-    } finally {
-      setIsImportingCj(false);
-    }
   };
 
   // Form submit handler
@@ -621,10 +656,35 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
           throw new Error("Por favor, completa los campos requeridos del producto.");
         }
 
+        // Include any pending color in the input field if the user didn't click "+ Añadir Color" yet
+        const effectiveVariants = [...prodVariants.map((v) => ({ ...v, options: [...v.options] }))];
+        const effectiveColorFiles: Record<string, File> = { ...colorImageFiles };
+        if (newColorName.trim()) {
+          const pendingColor = newColorName.trim();
+          const pendingKey = pendingColor.toLowerCase();
+          const cIdx = effectiveVariants.findIndex((v) => v.name.trim().toLowerCase() === "color");
+          if (cIdx >= 0) {
+            if (!effectiveVariants[cIdx].options.some((o) => o.trim().toLowerCase() === pendingKey)) {
+              effectiveVariants[cIdx].options.push(pendingColor);
+            }
+          } else {
+            effectiveVariants.push({ name: "Color", options: [pendingColor] });
+          }
+          if (newColorFile) {
+            effectiveColorFiles[pendingKey] = newColorFile;
+          }
+        }
+
         // Validate product image extensions for uploaded files
         for (const file of productPhotoFiles) {
           if (!validateFileExtension(file, ["png", "jpeg", "jpg", "webp"])) {
             throw new Error(`La foto ${file.name} no tiene una extensión válida (.png, .jpeg, .jpg, .webp)`);
+          }
+        }
+
+        for (const [colorKey, file] of Object.entries(effectiveColorFiles)) {
+          if (!validateFileExtension(file, ["png", "jpeg", "jpg", "webp"])) {
+            throw new Error(`La imagen del color "${colorKey}" (${file.name}) no tiene una extensión válida (.png, .jpeg, .jpg, .webp)`);
           }
         }
 
@@ -633,13 +693,70 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
           throw new Error("El video del producto debe tener una extensión válida");
         }
 
-        // 1. Upload new product photos and combine with imported CJ photos
+        // 1. Upload new product photos
         const uploadedPhotoObjs = await uploadFilesSequentially(productPhotoFiles);
-        const uploadedPhotoUrls = uploadedPhotoObjs.map(p => p.url);
-        const photoUrls = [...importedPhotoUrls, ...uploadedPhotoUrls];
+        const photoUrls = uploadedPhotoObjs.map(p => p.url);
 
-        if (photoUrls.length === 0) {
-          throw new Error("Por favor, selecciona o importa al menos una foto para tu producto.");
+        // 1.b Upload color variant images to GCS
+        const uploadedColorUrlMap: Record<string, string> = {};
+        for (const [colorKey, file] of Object.entries(effectiveColorFiles)) {
+          const uploadedColorRes = await uploadFileToGCS(file);
+          uploadedColorUrlMap[colorKey] = uploadedColorRes.url;
+        }
+
+        // Build final variantList with real uploaded image URLs for colors
+        const finalVariantList: ProductVariantItem[] = [];
+        const seenVariantKeys = new Set<string>();
+
+        const colorGroup = effectiveVariants.find((v) => v.name.trim().toLowerCase().includes("color"));
+        const colorOptions = colorGroup ? colorGroup.options : [];
+
+        colorOptions.forEach((opt, idx) => {
+          const key = opt.trim().toLowerCase();
+          const uploadedUrl = uploadedColorUrlMap[key];
+          const existingItem = prodVariantList.find(
+            (item) => (item.color || item.name || "").trim().toLowerCase() === key
+          );
+          const resolvedImageUrl =
+            uploadedUrl ||
+            (existingItem?.imageUrl && !existingItem.imageUrl.startsWith("blob:") ? existingItem.imageUrl : undefined);
+
+          if (resolvedImageUrl) {
+            seenVariantKeys.add(key);
+            finalVariantList.push({
+              id: existingItem?.id || `var_color_${Date.now()}_${idx}`,
+              name: opt.trim(),
+              color: opt.trim(),
+              price: parseFloat(prodPrice) || 0,
+              imageUrl: resolvedImageUrl,
+            });
+          }
+        });
+
+        // Also keep any other non-blob items from prodVariantList
+        prodVariantList.forEach((item, idx) => {
+          const key = (item.color || item.name || "").trim().toLowerCase();
+          if (!seenVariantKeys.has(key)) {
+            const uploadedUrl = uploadedColorUrlMap[key];
+            const resolvedImageUrl =
+              uploadedUrl || (item.imageUrl && !item.imageUrl.startsWith("blob:") ? item.imageUrl : undefined);
+            if (resolvedImageUrl) {
+              seenVariantKeys.add(key);
+              finalVariantList.push({
+                ...item,
+                id: item.id || `var_item_${Date.now()}_${idx}`,
+                price: item.price || parseFloat(prodPrice) || 0,
+                imageUrl: resolvedImageUrl,
+              });
+            }
+          }
+        });
+
+        const colorPhotoUrls = Object.values(uploadedColorUrlMap).filter(Boolean);
+        const allProductPhotos = Array.from(new Set([...photoUrls, ...colorPhotoUrls]));
+
+        if (allProductPhotos.length === 0) {
+          throw new Error("Por favor, selecciona al menos una foto para tu producto.");
         }
 
         // 2. Upload product video if present
@@ -650,6 +767,10 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         }
 
         // 3. Register Product
+        const parsedCapital = Math.max(0, parseFloat(String(prodShippingCapital).replace(",", ".")) || 0);
+        const parsedProvince = Math.max(0, parseFloat(String(prodShippingProvince).replace(",", ".")) || 0);
+        const isFreeShipping = Boolean(prodFreeShipping);
+
         const response = await apiFetch("/api/products", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -657,21 +778,22 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
             name: prodName,
             description: prodDescription,
             price: parseFloat(prodPrice),
-            imageUrl: photoUrls[0],
+            imageUrl: allProductPhotos[0],
             stock: parseInt(prodQuantity),
             sellerId: currentUser.originalId || currentUser.id,
             sellerOriginalId: currentUser.originalId || "",
             sellerUsername: currentUser.username,
             sellerName: currentUser.name,
             sellerAvatar: currentUser.avatar,
-            shippingCost: Math.max(0, parseFloat(String(prodShipping).replace(",", ".")) || 0),
-            images: photoUrls,
+            shippingCost: isFreeShipping && parsedCapital === 0 ? 0 : parsedCapital,
+            shippingCapital: parsedCapital,
+            shippingProvince: parsedProvince,
+            freeShipping: isFreeShipping,
+            images: allProductPhotos,
             videos: videoUrl ? [videoUrl] : [],
-            variants: prodVariants,
-            variantList: prodVariantList,
-            category: prodCategory,
-            cjVid: importedCjVid,
-            cjPid: importedCjPid
+            variants: effectiveVariants,
+            variantList: finalVariantList,
+            category: prodCategory
           }),
         });
 
@@ -1039,22 +1161,6 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                 />
                 
                 <div className="flex flex-wrap gap-2 mb-3 min-h-[40px] justify-center items-center">
-                  {/* Imported CJ Photos */}
-                  {importedPhotoUrls.map((url, idx) => (
-                    <div key={`imp-${idx}`} className="w-12 h-12 rounded overflow-hidden border-2 border-amber-500/60 relative group shadow-sm">
-                      <img src={url} alt={`Imported ${idx}`} className="w-full h-full object-cover" />
-                      <span className="absolute bottom-0 left-0 right-0 bg-amber-500 text-[8px] font-bold text-slate-950 text-center leading-tight">CJ</span>
-                      <button
-                        type="button"
-                        onClick={() => setImportedPhotoUrls(importedPhotoUrls.filter((_, i) => i !== idx))}
-                        className="absolute top-0 right-0 p-0.5 bg-slate-900/90 text-white rounded cursor-pointer opacity-80 group-hover:opacity-100"
-                        title="Eliminar foto importada"
-                      >
-                        <X className="w-2.5 h-2.5 text-rose-400" />
-                      </button>
-                    </div>
-                  ))}
-
                   {/* Uploaded Local Files */}
                   {productPhotoFiles.map((file, idx) => (
                     <div key={idx} className="w-12 h-12 rounded overflow-hidden border border-slate-150 relative">
@@ -1068,8 +1174,8 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                       </button>
                     </div>
                   ))}
-                  {importedPhotoUrls.length === 0 && productPhotoFiles.length === 0 && (
-                    <span className="text-[10px] text-slate-400 italic">No hay fotos seleccionadas o importadas</span>
+                  {productPhotoFiles.length === 0 && (
+                    <span className="text-[10px] text-slate-400 italic">No hay fotos seleccionadas</span>
                   )}
                 </div>
 
@@ -1183,87 +1289,6 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
         ) : (
           /* PRODUCT SALE MODE */
           <div className="space-y-4">
-            {/* CJ Dropshipping Importer Card */}
-            <div className="p-4 bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 rounded-2xl border border-amber-500/40 text-white shadow-md space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className="p-2 bg-amber-500/20 rounded-xl text-amber-400 border border-amber-500/30">
-                    <Download className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-white flex items-center space-x-2">
-                      <span>Importar Producto de CJ Dropshipping</span>
-                      <span className="text-[9px] bg-amber-500/20 text-amber-300 font-mono px-1.5 py-0.5 rounded border border-amber-500/30">API Directa CJ</span>
-                    </h3>
-                    <p className="text-[10px] text-slate-400">Ingresa el ID o SKU de CJ para extraer la información. Los clientes seleccionarán su país en el checkout y verán todos los transportistas de CJ en tiempo real.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2 pt-1">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    placeholder="Ingresa ID o SKU de CJ (ej: CJ3709637 o 2512100754141607700)..."
-                    value={cjInputId}
-                    onChange={(e) => setCjInputId(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleImportCjProduct();
-                      }
-                    }}
-                    className="w-full text-xs font-mono p-2.5 pr-8 rounded-xl border border-slate-700 bg-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                  />
-                  {cjInputId && (
-                    <button
-                      type="button"
-                      onClick={() => setCjInputId("")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleImportCjProduct}
-                  disabled={isImportingCj}
-                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-2 shrink-0 shadow-sm disabled:opacity-50"
-                >
-                  {isImportingCj ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                      <span>Importando de CJ...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 text-slate-950" />
-                      <span>Importar a esta sesión</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* CJ Global Dynamic Shipping Status Banner */}
-            {importedCjVid && (
-              <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start space-x-3 text-amber-200">
-                <Globe className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                <div className="space-y-1 text-xs">
-                  <div className="font-bold text-white flex items-center space-x-2">
-                    <span>Logística Global Dinámica Activa</span>
-                    <span className="text-[9px] bg-amber-500/20 text-amber-300 font-mono px-1.5 py-0.5 rounded border border-amber-500/30">ID CJ: {importedCjPid}</span>
-                  </div>
-                  <p className="text-[11px] text-slate-300 leading-relaxed">
-                    No necesitas seleccionar un país fijo. Cuando un cliente compre este producto, ingresará su dirección en cualquier país del mundo (EE.UU., España, México, Colombia, Chile, etc.) y la plataforma consultará la API de CJ en tiempo real para mostrarle todas las opciones de envío disponibles para que elija la que prefiera.
-                  </p>
-                </div>
-              </div>
-            )}
-
-
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Nombre del Producto *</label>
@@ -1324,7 +1349,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Precio ($) *</label>
                 <input
@@ -1335,19 +1360,6 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                   onChange={(e) => setProdPrice(e.target.value)}
                   className="w-full text-xs font-sans p-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-slate-400 font-medium"
                   required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Envío ($)</label>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Gratis (0.00)"
-                  step="0.01"
-                  value={prodShipping}
-                  onChange={(e) => setProdShipping(e.target.value)}
-                  className="w-full text-xs font-sans p-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-slate-400 font-medium"
                 />
               </div>
 
@@ -1365,114 +1377,363 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
               </div>
             </div>
 
-            {/* Configured Shipping Preview Panel */}
-            <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 flex items-center justify-between text-xs">
-              <div className="flex items-center space-x-2 text-slate-800 font-bold">
-                <Truck className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Precio de envío configurado para el panel:</span>
+            {/* 3 Campos de Configuración de Envío */}
+            <div className="border border-amber-200/80 rounded-xl p-4 bg-amber-50/40 space-y-3" id="product-shipping-config-panel">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                  <Truck className="w-4 h-4 text-amber-600" />
+                  <span>Configuración de Envío del Producto</span>
+                </span>
+                <span className="text-[10px] text-slate-500 font-medium">Configura las 3 opciones de envío</span>
               </div>
-              <span className="px-2.5 py-1 rounded-lg bg-white text-emerald-700 font-extrabold border border-emerald-200 font-mono shadow-2xs">
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Campo 1: Precio de envío a la capital */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                    1. Precio de envío a la capital ($)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={prodShippingCapital}
+                    onChange={(e) => setProdShippingCapital(e.target.value)}
+                    id="input-shipping-capital"
+                    className="w-full text-xs font-sans p-2.5 rounded-lg border font-medium transition-colors bg-white border-slate-200 text-slate-900 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                {/* Campo 2: Precio de envío a provincia */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                    2. Precio de envío a provincia ($)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={prodShippingProvince}
+                    onChange={(e) => setProdShippingProvince(e.target.value)}
+                    id="input-shipping-province"
+                    className="w-full text-xs font-sans p-2.5 rounded-lg border font-medium transition-colors bg-white border-slate-200 text-slate-900 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                {/* Campo 3: Envío gratis */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                    3. Envío gratis
+                  </label>
+                  <button
+                    type="button"
+                    id="toggle-free-shipping"
+                    onClick={() => setProdFreeShipping(!prodFreeShipping)}
+                    className={`w-full p-2.5 rounded-lg border text-xs font-extrabold flex items-center justify-between transition-all cursor-pointer ${
+                      prodFreeShipping
+                        ? "bg-emerald-500 text-white border-emerald-600 shadow-xs"
+                        : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+                    }`}
+                  >
+                    <span className="flex items-center space-x-1.5">
+                      <CheckCircle2 className={`w-4 h-4 ${prodFreeShipping ? "text-white" : "text-slate-400"}`} />
+                      <span>{prodFreeShipping ? "Envío Gratis Activo" : "Activar Envío Gratis"}</span>
+                    </span>
+                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                      prodFreeShipping ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-600"
+                    }`}>
+                      {prodFreeShipping ? "SÍ ($0)" : "NO"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Configured Shipping Summary Bar */}
+              <div className="p-2.5 rounded-lg bg-white border border-amber-200/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="text-slate-700 font-bold">Botones de envío que verá el cliente:</span>
                 {(() => {
-                  const num = parseFloat(String(prodShipping).replace(",", "."));
-                  return !Number.isNaN(num) && num > 0 ? `$${num.toFixed(2)}` : "GRATIS ($0.00)";
+                  const cap = Math.max(0, parseFloat(String(prodShippingCapital).replace(",", ".")) || 0);
+                  const prov = Math.max(0, parseFloat(String(prodShippingProvince).replace(",", ".")) || 0);
+                  const showFree = prodFreeShipping;
+                  return (
+                    <div className="flex flex-wrap items-center gap-1.5 font-mono font-extrabold text-[11px]">
+                      {cap > 0 && (
+                        <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                          Capital: ${cap.toFixed(2)}
+                        </span>
+                      )}
+                      {prov > 0 && (
+                        <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200">
+                          Provincia: ${prov.toFixed(2)}
+                        </span>
+                      )}
+                      {showFree && (
+                        <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Envío Gratis ($0.00)
+                        </span>
+                      )}
+                      {cap <= 0 && prov <= 0 && !showFree && (
+                        <span className="text-slate-400 font-medium">Sin opciones seleccionadas</span>
+                      )}
+                    </div>
+                  );
                 })()}
-              </span>
+              </div>
             </div>
 
             {/* Product Variants (Talla / Color) */}
-            <div className="border border-slate-100 rounded-xl p-4 bg-slate-50/50 space-y-3">
+            <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-800 flex items-center space-x-1">
+                <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
                   <Tag className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Variantes del Producto (Tallas, Colores, etc.)</span>
+                  <span>Variantes del Producto (Tallas, Colores con Imagen, etc.)</span>
                 </span>
                 <span className="text-[10px] text-slate-500 font-medium">Define las opciones que desees</span>
               </div>
 
-              {/* Active variants list */}
-              {prodVariants.length > 0 && (
-                <div className="space-y-2">
-                  {prodVariants.map((variant, index) => (
-                    <div key={index} className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-150 shadow-sm">
-                      <div className="flex flex-col text-left">
-                        <span className="text-[11px] font-bold text-slate-900">{variant.name}:</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {variant.options.map((opt, idx) => (
-                            <span key={idx} className="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200/60">
-                              {opt}
-                            </span>
-                          ))}
-                        </div>
+              {/* Hidden file input for assigning/changing image of an existing color */}
+              <input
+                type="file"
+                ref={existingColorImageInputRef}
+                accept="image/png, image/jpeg, image/jpg, image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file && editingColorTarget) {
+                    handleAssignColorImage(editingColorTarget, file);
+                  }
+                  setEditingColorTarget(null);
+                  e.target.value = "";
+                }}
+              />
+
+              {/* Dedicated Color Variant Creator with Image Upload */}
+              <div className="bg-white border border-amber-200/90 rounded-xl p-3.5 shadow-2xs space-y-3" id="color-variant-creator-section">
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                  <span className="text-xs font-extrabold text-slate-900 flex items-center space-x-1.5">
+                    <ImageIcon className="w-4 h-4 text-amber-500" />
+                    <span>Crear Variante de Color del Producto (Nombre + Imagen)</span>
+                  </span>
+                  <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md font-bold border border-amber-200/60">
+                    Se mostrará en el detalle del producto
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Escribe el nombre del color (ej: <b>Azul</b>) y carga una imagen que represente ese color (ej: foto de la camisa azul).
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                  {/* 1. Color Name Input */}
+                  <div className="sm:col-span-5">
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                      1. Nombre del Color
+                    </label>
+                    <input
+                      type="text"
+                      id="input-color-variant-name"
+                      placeholder="Ej. Azul, Rojo, Negro, Blanco..."
+                      value={newColorName}
+                      onChange={(e) => setNewColorName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddColorVariant();
+                        }
+                      }}
+                      className="w-full text-xs font-sans p-2.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-amber-500 font-medium"
+                    />
+                  </div>
+
+                  {/* 2. Color Image Upload */}
+                  <div className="sm:col-span-4">
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                      2. Imagen del Color (Opcional)
+                    </label>
+                    <input
+                      type="file"
+                      ref={newColorImageInputRef}
+                      accept="image/png, image/jpeg, image/jpg, image/webp"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) setNewColorFile(file);
+                      }}
+                      className="hidden"
+                    />
+                    {newColorFile ? (
+                      <div className="flex items-center space-x-2 p-1.5 bg-amber-50/60 border border-amber-300 rounded-lg">
+                        <img
+                          src={URL.createObjectURL(newColorFile)}
+                          alt="Color preview"
+                          className="w-8 h-8 rounded-md object-cover border border-amber-200 shrink-0"
+                        />
+                        <span className="text-[10px] font-bold text-slate-700 truncate flex-1">
+                          {newColorFile.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewColorFile(null);
+                            if (newColorImageInputRef.current) newColorImageInputRef.current.value = "";
+                          }}
+                          className="p-1 hover:bg-amber-100 rounded text-rose-500 cursor-pointer"
+                          title="Quitar imagen"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => handleRemoveVariant(index)}
-                        className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer"
-                        title="Eliminar variante"
+                        id="btn-upload-color-variant-image"
+                        onClick={() => newColorImageInputRef.current?.click()}
+                        className="w-full py-2 px-3 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-300 hover:border-amber-500 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Upload className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Cargar imagen del color</span>
                       </button>
-                    </div>
-                  ))}
+                    )}
+                  </div>
+
+                  {/* 3. Add Color Button */}
+                  <div className="sm:col-span-3">
+                    <button
+                      type="button"
+                      id="btn-add-color-variant"
+                      onClick={handleAddColorVariant}
+                      disabled={!newColorName.trim()}
+                      className="w-full py-2.5 px-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-200 disabled:text-slate-400 text-slate-950 rounded-lg flex items-center justify-center space-x-1.5 text-xs font-extrabold transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Añadir Color</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Active variants list */}
+              {prodVariants.length > 0 && (
+                <div className="space-y-2.5">
+                  {prodVariants.map((variant, index) => {
+                    const isColorGroup = variant.name.trim().toLowerCase().includes("color");
+                    return (
+                      <div key={index} className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                            <span>{variant.name}:</span>
+                            {isColorGroup && (
+                              <span className="text-[10px] font-normal text-slate-500">
+                                (Haz clic en "Cargar foto" en cualquier color para asignarle su imagen)
+                              </span>
+                            )}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveVariant(index)}
+                            className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer"
+                            title="Eliminar grupo de variante"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {isColorGroup ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
+                            {variant.options.map((opt, idx) => {
+                              const colorKey = opt.trim().toLowerCase();
+                              const previewImg =
+                                colorImagePreviews[colorKey] ||
+                                prodVariantList.find((item) => (item.color || item.name || "").trim().toLowerCase() === colorKey)?.imageUrl;
+
+                              return (
+                                <div
+                                  key={idx}
+                                  className="flex items-center justify-between gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50/70 hover:border-amber-400 transition-colors"
+                                >
+                                  <div className="flex items-center space-x-2.5 min-w-0">
+                                    {previewImg ? (
+                                      <img
+                                        src={previewImg}
+                                        alt={opt}
+                                        className="w-11 h-11 rounded-lg object-cover border border-amber-300 shrink-0 bg-white"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingColorTarget(opt);
+                                          existingColorImageInputRef.current?.click();
+                                        }}
+                                        className="w-11 h-11 rounded-lg border border-dashed border-slate-300 hover:border-amber-500 bg-white flex flex-col items-center justify-center text-slate-400 hover:text-amber-600 shrink-0 cursor-pointer transition-colors"
+                                        title={`Subir imagen para ${opt}`}
+                                      >
+                                        <ImageIcon className="w-4 h-4" />
+                                        <span className="text-[8px] font-bold mt-0.5">Foto</span>
+                                      </button>
+                                    )}
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-extrabold text-slate-900 truncate">{opt}</p>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingColorTarget(opt);
+                                          existingColorImageInputRef.current?.click();
+                                        }}
+                                        className="text-[10px] font-bold text-amber-600 hover:text-amber-700 underline cursor-pointer flex items-center gap-0.5 mt-0.5"
+                                      >
+                                        <Upload className="w-2.5 h-2.5" />
+                                        <span>{previewImg ? "Cambiar foto" : "Cargar foto"}</span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveVariantOption(index, opt)}
+                                    className="p-1 text-slate-400 hover:text-rose-500 rounded cursor-pointer shrink-0"
+                                    title={`Quitar color ${opt}`}
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            {variant.options.map((opt, idx) => (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-1 rounded-md border border-slate-200/80"
+                              >
+                                <span>{opt}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveVariantOption(index, opt)}
+                                  className="text-slate-400 hover:text-rose-500 cursor-pointer"
+                                  title={`Quitar ${opt}`}
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
-              {/* Extracted Variant Images Preview (Grouped by unique color/image) */}
-              {prodVariantList.length > 0 && (() => {
-                const uniquePreviewMap = new Map<string, ProductVariantItem>();
-                prodVariantList.forEach((item) => {
-                  const key = (item.color || item.name || item.imageUrl || "").trim().toLowerCase();
-                  if (key && !uniquePreviewMap.has(key)) {
-                    uniquePreviewMap.set(key, item);
-                  }
-                });
-                const uniquePreviewList = Array.from(uniquePreviewMap.values());
-
-                return (
-                  <div className="pt-3 border-t border-slate-200/60 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-slate-800 flex items-center space-x-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Imágenes de Colores y Variantes Extraídas ({uniquePreviewList.length})</span>
-                      </span>
-                      <span className="text-[9px] bg-amber-500/20 text-amber-700 font-mono font-bold px-1.5 py-0.5 rounded border border-amber-500/30">CJ API</span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-y-auto p-1 bg-white/70 rounded-xl border border-slate-200/80 no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                      {uniquePreviewList.map((vItem, idx) => (
-                        <div key={idx} className="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200 shadow-2xs hover:border-amber-400 transition-colors">
-                          {vItem.imageUrl ? (
-                            <img
-                              src={vItem.imageUrl}
-                              alt={vItem.name}
-                              className="w-10 h-10 rounded-md object-cover border border-slate-100 shrink-0"
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-md bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center text-[8px] text-slate-400 font-mono">
-                              Sin Foto
-                            </div>
-                          )}
-                          <div className="min-w-0 flex-1 text-left">
-                            <p className="text-[10px] font-extrabold text-slate-900 truncate leading-tight" title={vItem.name}>{vItem.color || vItem.name}</p>
-                            <div className="flex items-center justify-between mt-0.5">
-                              <span className="text-[9px] text-slate-500 font-mono font-bold">${vItem.price?.toFixed(2)}</span>
-                              {vItem.color && <span className="text-[8px] bg-amber-50 text-amber-700 font-semibold px-1 py-0.2 rounded border border-amber-200">{vItem.color}</span>}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* New variant form */}
+              {/* New general variant form (e.g. Talla, Material) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Nombre (ej: Talla, Color, Material)</label>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Otra Variante (ej: Talla, Material)</label>
                   <input
                     type="text"
-                    placeholder="Nombre de la variante"
+                    placeholder="Nombre de la variante (ej. Talla)"
                     value={newVarName}
                     onChange={(e) => setNewVarName(e.target.value)}
                     className="w-full text-xs font-sans p-2 rounded-lg border border-slate-200 bg-white focus:outline-none"
@@ -1483,7 +1744,7 @@ export default function PublishView({ currentUser, onBack, onSuccess, userProduc
                   <div className="flex space-x-1.5">
                     <input
                       type="text"
-                      placeholder="Ej. S, M, L, XL  o  Negro, Rojo"
+                      placeholder="Ej. S, M, L, XL"
                       value={newVarValue}
                       onChange={(e) => setNewVarValue(e.target.value)}
                       className="flex-1 text-xs font-sans p-2 rounded-lg border border-slate-200 bg-white focus:outline-none"

@@ -394,7 +394,7 @@ export default function Tienda({
   });
   const [selectedProductMediaUrl, setSelectedProductMediaUrl] = useState<string>("");
   const [selectedVariants, setSelectedVariants] = useState<{ [key: string]: string }>({});
-  // Normalize imported/CJ variants for the product detail UI.
+  // Normalize variants for the product detail UI.
   const effectiveVariantGroups = React.useMemo(() => {
     if (!selectedProduct) return [];
     if (Array.isArray(selectedProduct.variants) && selectedProduct.variants.length > 0) return selectedProduct.variants;
@@ -489,6 +489,9 @@ export default function Tienda({
         missing.push("Color");
       }
     }
+    if (!selectedShippingOption) {
+      missing.push("Envío");
+    }
     return missing;
   };
 
@@ -544,18 +547,9 @@ export default function Tienda({
       setSelectedProductMediaUrl(selectedProduct.imageUrl || "");
       setSelectedVariants({});
       setOptionsValidationError(null);
-      if (!selectedProduct.cjVid && !selectedProduct.cjPid) {
-        const manualOpt = getManualShippingOption(selectedProduct);
-        setCjShippingOptions([manualOpt]);
-        setSelectedShippingOption(manualOpt);
-      } else {
-        if (selectedProduct.shippingCost !== undefined && Number(selectedProduct.shippingCost) > 0) {
-          setSelectedShippingOption(getManualShippingOption(selectedProduct));
-        } else {
-          setSelectedShippingOption(null);
-        }
-        fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid, true);
-      }
+      const opts = getManualShippingOptions(selectedProduct);
+      setShippingOptions(opts);
+      setSelectedShippingOption(null);
     }
   }, [selectedProduct?.id]);
 
@@ -912,7 +906,7 @@ export default function Tienda({
     return list;
   }, [filteredProducts, displayCount]);
 
-  const CJ_DEST_COUNTRIES = [
+  const DEST_COUNTRIES = [
     { code: "US", name: "Estados Unidos 🇺🇸" },
     { code: "ES", name: "España 🇪🇸" },
     { code: "MX", name: "México 🇲🇽" },
@@ -933,70 +927,62 @@ export default function Tienda({
   ];
 
   const [shippingCountry, setShippingCountry] = useState("ES");
-  const [cjShippingOptions, setCjShippingOptions] = useState<{ carrier: string; aging: string; shippingCost: number }[]>([]);
+  const [shippingOptions, setShippingOptions] = useState<{ carrier: string; aging: string; shippingCost: number }[]>([]);
   const [selectedShippingOption, setSelectedShippingOption] = useState<{ carrier: string; aging: string; shippingCost: number } | null>(null);
-  const [isLoadingFreight, setIsLoadingFreight] = useState(false);
-  const [showShippingModal, setShowShippingModal] = useState(false);
 
-  const getManualShippingOption = (prod: Product | null) => {
-    const rawCost = Number(prod?.shippingCost ?? 0);
-    const cost = !Number.isNaN(rawCost) && rawCost >= 0 ? rawCost : 0;
-    return {
-      carrier: "Envío Estándar del Vendedor",
-      aging: "3-7 días hábiles",
-      shippingCost: cost,
-    };
+  const getManualShippingOptions = (prod: Product | null) => {
+    if (!prod) {
+      return [{ carrier: "Envío Gratis", aging: "1-5 días hábiles", shippingCost: 0 }];
+    }
+    const capCost = Math.max(0, Number(prod.shippingCapital ?? 0) || 0);
+    const provCost = Math.max(0, Number(prod.shippingProvince ?? 0) || 0);
+    const baseCost = Math.max(0, Number(prod.shippingCost ?? 0) || 0);
+
+    const opts: { carrier: string; aging: string; shippingCost: number }[] = [];
+
+    if (capCost > 0) {
+      opts.push({
+        carrier: "Envío a la Capital",
+        aging: "1-3 días hábiles",
+        shippingCost: capCost,
+      });
+    }
+    if (provCost > 0) {
+      opts.push({
+        carrier: "Envío a Provincia",
+        aging: "3-5 días hábiles",
+        shippingCost: provCost,
+      });
+    }
+    if (prod.freeShipping) {
+      opts.push({
+        carrier: "Envío Gratis",
+        aging: "1-5 días hábiles",
+        shippingCost: 0,
+      });
+    }
+
+    if (opts.length === 0) {
+      if (baseCost > 0) {
+        opts.push({
+          carrier: "Envío a la Capital",
+          aging: "1-3 días hábiles",
+          shippingCost: baseCost,
+        });
+      } else {
+        opts.push({
+          carrier: "Envío Gratis",
+          aging: "1-5 días hábiles",
+          shippingCost: 0,
+        });
+      }
+    }
+
+    return opts;
   };
 
-  const fetchCjFreightOptions = async (countryCode: string, targetVid?: string, autoSelect: boolean = false) => {
-    let vidToUse = targetVid || "";
-    let pidToUse = "";
-
-    if (selectedProduct) {
-      if (!vidToUse) {
-        vidToUse = selectedProduct.cjVid || selectedProduct.variantList?.[0]?.vid || selectedProduct.cjPid || "";
-      }
-      pidToUse = selectedProduct.cjPid || "";
-    }
-
-    if (!vidToUse && !pidToUse) {
-      const manualOpt = getManualShippingOption(selectedProduct);
-      setCjShippingOptions([manualOpt]);
-      setSelectedShippingOption(manualOpt);
-      setIsLoadingFreight(false);
-      return;
-    }
-
-    setIsLoadingFreight(true);
-    try {
-      const res = await fetch(`/api/cj/freight-options?vid=${encodeURIComponent(vidToUse)}&pid=${encodeURIComponent(pidToUse)}&destCountry=${encodeURIComponent(countryCode)}`);
-      const data = await res.json();
-
-      const hasManualCost = selectedProduct && selectedProduct.shippingCost !== undefined && Number(selectedProduct.shippingCost) > 0;
-      const manualOpt = hasManualCost ? getManualShippingOption(selectedProduct) : null;
-
-      if (data.success && Array.isArray(data.options) && data.options.length > 0) {
-        const mergedOptions = manualOpt ? [manualOpt, ...data.options] : data.options;
-        setCjShippingOptions(mergedOptions);
-        if (autoSelect || !selectedShippingOption) {
-          setSelectedShippingOption(mergedOptions[0]);
-        }
-      } else {
-        const fallbackOpt = getManualShippingOption(selectedProduct);
-        setCjShippingOptions([fallbackOpt]);
-        if (autoSelect || !selectedShippingOption) {
-          setSelectedShippingOption(fallbackOpt);
-        }
-      }
-    } catch {
-      const fallbackOpt = getManualShippingOption(selectedProduct);
-      setCjShippingOptions([fallbackOpt]);
-      if (autoSelect || !selectedShippingOption) {
-        setSelectedShippingOption(fallbackOpt);
-      }
-    } finally {
-      setIsLoadingFreight(false);
-    }
+  const getManualShippingOption = (prod: Product | null) => {
+    return getManualShippingOptions(prod)[0];
   };
 
   const cartSubtotal = useMemo(() => {
@@ -1938,75 +1924,13 @@ export default function Tienda({
               </div>
             </div>
 
-            {/* Panel de Envío debajo del precio (App Móvil) */}
-            <div
-              className="mt-2 bg-gradient-to-r from-amber-50/80 via-slate-50 to-amber-50/40 p-3 rounded-xl border border-amber-200/70 shadow-2xs"
-              id="android-product-detail-shipping-card"
-            >
-              <div className="flex items-center justify-between gap-2.5 flex-wrap">
-                <div className="flex items-center space-x-2.5 min-w-0 flex-1">
-                  <div className="w-9 h-9 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center text-amber-700 shrink-0">
-                    <Truck className="w-4 h-4 text-amber-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-extrabold text-slate-900">
-                        Envío a {CJ_DEST_COUNTRIES.find(c => c.code === shippingCountry)?.name || shippingCountry}
-                      </span>
-                      <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300/80 font-mono">
-                        {(() => {
-                          const cost = selectedShippingOption
-                            ? selectedShippingOption.shippingCost
-                            : Number(selectedProduct.shippingCost ?? 0);
-                          return cost === 0 ? "GRATIS" : `$${cost.toFixed(2)}`;
-                        })()}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 mt-0.5 truncate">
-                      {selectedShippingOption ? (
-                        <span className="flex items-center gap-1 text-slate-700 font-medium">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 inline" />
-                          <span>{selectedShippingOption.carrier}</span>
-                          {selectedShippingOption.aging && (
-                            <span className="text-slate-500">({selectedShippingOption.aging})</span>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-slate-700 font-medium">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 inline" />
-                          <span>
-                            {Number(selectedProduct.shippingCost ?? 0) > 0
-                              ? `Costo de envío configurado: $${Number(selectedProduct.shippingCost).toFixed(2)}`
-                              : "Envío Gratis configurado"}
-                          </span>
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  id="android-btn-calcular-envio"
-                  onClick={() => {
-                    setShowShippingModal(true);
-                    fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
-                  }}
-                  className="px-3 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0 bg-amber-400 hover:bg-amber-500 text-slate-950"
-                >
-                  <Truck className="w-3.5 h-3.5 text-slate-950 shrink-0" />
-                  <span>Ver envío</span>
-                </button>
-              </div>
-            </div>
-
             {/* Description */}
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line">
               {selectedProduct.description}
             </p>
 
-            {/* Product Variants Selection */}
-            {((selectedProduct.variants && selectedProduct.variants.length > 0) || (selectedProduct.variantList && selectedProduct.variantList.length > 0)) && (() => {
+            {/* Product Options & Shipping Selection */}
+            {(() => {
               const swatchesMap = new Map<string, { name: string; color?: string; imageUrl: string }>();
               if (selectedProduct.variantList) {
                 selectedProduct.variantList.forEach((vItem) => {
@@ -2023,6 +1947,9 @@ export default function Tienda({
               }
               const uniqueSwatches = Array.from(swatchesMap.values());
               const hasOptionGroups = effectiveVariantGroups.length > 0;
+              const configuredShippingButtons = shippingOptions.length > 0
+                ? shippingOptions
+                : getManualShippingOptions(selectedProduct);
 
               return (
                 <div className="mt-4 space-y-3.5 border-t border-slate-100 pt-3" id="android-product-options-section">
@@ -2074,15 +2001,23 @@ export default function Tienda({
                               )}
                             </div>
 
-                            <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-0.5 px-0.5 no-scrollbar scroll-smooth snap-x">
+                            <div className="flex flex-wrap items-center gap-2 pb-1 pt-0.5">
                               {v.options.map((opt, oIdx) => {
                                 const matchingSwatch = uniqueSwatches.find(s =>
                                   s.name.toLowerCase() === opt.toLowerCase() ||
                                   (s.color && s.color.toLowerCase() === opt.toLowerCase()) ||
                                   s.name.toLowerCase().includes(opt.toLowerCase())
                                 );
-                                const imgUrl = matchingSwatch?.imageUrl;
-                                const isSelected = selectedVariants[v.name] === opt || (imgUrl && selectedProductMediaUrl === imgUrl);
+                                const fallbackVariantItem = !matchingSwatch && selectedProduct.variantList
+                                  ? selectedProduct.variantList.find((vItem) =>
+                                      (vItem.color && vItem.color.toLowerCase() === opt.toLowerCase()) ||
+                                      (vItem.name && vItem.name.toLowerCase() === opt.toLowerCase()) ||
+                                      (vItem.color && vItem.color.toLowerCase().includes(opt.toLowerCase())) ||
+                                      (vItem.name && vItem.name.toLowerCase().includes(opt.toLowerCase()))
+                                    )
+                                  : undefined;
+                                const imgUrl = matchingSwatch?.imageUrl || fallbackVariantItem?.imageUrl;
+                                const isSelected = selectedVariants[v.name] === opt || Boolean(imgUrl && selectedProductMediaUrl === imgUrl && !selectedVariants[v.name]);
 
                                 return (
                                   <button
@@ -2094,24 +2029,20 @@ export default function Tienda({
                                       setOptionsValidationError(null);
                                       if (imgUrl) {
                                         setSelectedProductMediaUrl(imgUrl);
-                                      } else if (selectedProduct.variantList) {
-                                        const match = selectedProduct.variantList.find((vItem) =>
-                                          (vItem.name && vItem.name.toLowerCase().includes(opt.toLowerCase())) ||
-                                          (vItem.color && vItem.color.toLowerCase().includes(opt.toLowerCase()))
-                                        );
-                                        if (match && match.imageUrl) {
-                                          setSelectedProductMediaUrl(match.imageUrl);
+                                        const gIdx = productGalleryMedia.indexOf(imgUrl);
+                                        if (gIdx !== -1) {
+                                          scrollToGalleryIndex(gIdx);
                                         }
                                       }
                                     }}
-                                    className={`group snap-start flex items-center justify-center p-0 overflow-hidden rounded-xl border transition-all cursor-pointer w-14 h-14 shrink-0 relative ${
+                                    className={`group flex items-center gap-2 p-1.5 pr-3 rounded-xl border transition-all cursor-pointer relative ${
                                       isSelected
-                                        ? "bg-slate-950 border-slate-950 ring-2 ring-amber-500 shadow-md scale-[1.05]"
-                                        : "bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 shadow-2xs"
+                                        ? "bg-slate-950 text-white border-slate-950 ring-2 ring-amber-500 shadow-md scale-[1.02]"
+                                        : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 shadow-2xs"
                                     }`}
                                   >
                                     {imgUrl ? (
-                                      <div className="w-full h-full overflow-hidden relative">
+                                      <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 border border-slate-200/60 bg-slate-100">
                                         <img
                                           src={imgUrl}
                                           alt={opt}
@@ -2119,11 +2050,10 @@ export default function Tienda({
                                           referrerPolicy="no-referrer"
                                         />
                                       </div>
-                                    ) : (
-                                      <div className="w-full h-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                                        {opt.slice(0, 3)}
-                                      </div>
-                                    )}
+                                    ) : null}
+                                    <span className={`text-xs font-extrabold capitalize ${!imgUrl ? "px-1.5 py-0.5" : ""}`}>
+                                      {opt}
+                                    </span>
                                   </button>
                                 );
                               })}
@@ -2186,7 +2116,7 @@ export default function Tienda({
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-0.5 px-0.5 no-scrollbar scroll-smooth snap-x">
+                      <div className="flex flex-wrap items-center gap-2 pb-1 pt-0.5">
                         {uniqueSwatches.map((swatch, sIdx) => {
                           const isSelected = selectedProductMediaUrl === swatch.imageUrl || selectedVariants["Color"] === swatch.name;
                           return (
@@ -2198,51 +2128,76 @@ export default function Tienda({
                                 setSelectedProductMediaUrl(swatch.imageUrl);
                                 setSelectedVariants(prev => ({ ...prev, Color: swatch.name }));
                                 setOptionsValidationError(null);
+                                const gIdx = productGalleryMedia.indexOf(swatch.imageUrl);
+                                if (gIdx !== -1) {
+                                  scrollToGalleryIndex(gIdx);
+                                }
                               }}
-                              className={`group snap-start flex items-center justify-center p-0 overflow-hidden rounded-xl border transition-all cursor-pointer w-14 h-14 shrink-0 relative ${
+                              className={`group flex items-center gap-2 p-1.5 pr-3 rounded-xl border transition-all cursor-pointer relative ${
                                 isSelected
-                                  ? "bg-slate-950 border-slate-950 ring-2 ring-amber-500 shadow-md scale-[1.05]"
-                                  : "bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 shadow-2xs"
+                                  ? "bg-slate-950 text-white border-slate-950 ring-2 ring-amber-500 shadow-md scale-[1.02]"
+                                  : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 shadow-2xs"
                               }`}
                             >
-                              <div className="w-full h-full overflow-hidden">
+                              <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 border border-slate-200/60 bg-slate-100">
                                 <img src={swatch.imageUrl} alt={swatch.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" referrerPolicy="no-referrer" />
                               </div>
+                              <span className="text-xs font-extrabold capitalize">{swatch.name}</span>
                             </button>
                           );
                         })}
                       </div>
                     </div>
                   ) : null}
+
+                  {/* Shipping Options as Buttons (like Size/Color) */}
+                  <div className="space-y-1.5 text-left" id="android-product-shipping-options-group">
+                    <div className="flex items-center space-x-1.5 text-[11px] font-bold">
+                      <span className="text-slate-600">Envío:</span>
+                      {selectedShippingOption ? (
+                        <span className="text-slate-900 font-extrabold bg-slate-100 px-2 py-0.5 rounded-md">
+                          {selectedShippingOption.carrier} ({selectedShippingOption.shippingCost === 0 ? "GRATIS" : `$${selectedShippingOption.shippingCost.toFixed(2)}`})
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
+                          Selecciona un envío
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {configuredShippingButtons.map((option, sIdx) => {
+                        const isSelected =
+                          selectedShippingOption?.carrier === option.carrier &&
+                          selectedShippingOption?.shippingCost === option.shippingCost;
+                        return (
+                          <button
+                            key={sIdx}
+                            type="button"
+                            onClick={() => {
+                              setSelectedShippingOption(option);
+                              setOptionsValidationError(null);
+                              if (selectedProduct) {
+                                selectedProduct.shippingCost = option.shippingCost;
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                              isSelected
+                                ? "bg-slate-950 text-white border-slate-950 shadow-sm ring-2 ring-amber-500/30"
+                                : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                            }`}
+                          >
+                            <span>{option.carrier}:</span>
+                            <span className={`font-mono ${isSelected ? "text-amber-400" : "text-emerald-700"}`}>
+                              {option.shippingCost === 0 ? "GRATIS ($0.00)" : `$${option.shippingCost.toFixed(2)}`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               );
             })()}
-
-            {/* Shipping Information Banner */}
-            <div
-              onClick={() => {
-                setShowShippingModal(true);
-                fetchCjFreightOptions(shippingCountry, selectedProduct.cjVid || selectedProduct.cjPid);
-              }}
-              className="mt-4 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 p-3 flex items-center justify-between text-xs cursor-pointer transition-colors"
-              id="android-shipping-info-banner"
-            >
-              <div className="flex items-center space-x-2 text-slate-700 font-bold">
-                <Truck className="w-4 h-4 text-amber-500 shrink-0" />
-                <span>Envío a tu País ({shippingCountry}):</span>
-              </div>
-              <span className="text-[11px] font-extrabold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/80 flex items-center space-x-1 font-mono">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>
-                  {(() => {
-                    const cost = selectedShippingOption
-                      ? selectedShippingOption.shippingCost
-                      : Number(selectedProduct.shippingCost ?? 0);
-                    return cost === 0 ? "GRATIS" : `$${cost.toFixed(2)}`;
-                  })()}
-                </span>
-              </span>
-            </div>
           </div>
         </div>
 
@@ -2334,148 +2289,6 @@ export default function Tienda({
             })()}
           </div>
         </div>
-
-        {/* Bottom Sheet Modal for Shipping Panel in Mobile */}
-        <AnimatePresence>
-          {showShippingModal && selectedProduct && (
-            <div
-              className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm p-0"
-              onClick={() => setShowShippingModal(false)}
-              id="android-shipping-modal-overlay"
-            >
-              <motion.div
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 25, stiffness: 220 }}
-                onClick={(e) => e.stopPropagation()}
-                className="w-full max-w-lg bg-white rounded-t-3xl shadow-2xl border-t border-slate-200 flex flex-col max-h-[85vh] overflow-hidden text-slate-900 relative"
-                id="android-shipping-modal-panel"
-              >
-                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
-                  <div className="flex items-center space-x-2">
-                    <div className="p-1.5 bg-amber-500/15 rounded-lg text-amber-600">
-                      <Globe className="w-4 h-4" />
-                    </div>
-                    <h3 className="font-bold text-sm text-slate-900 leading-tight">Panel de Envío</h3>
-                  </div>
-                  <button
-                    onClick={() => setShowShippingModal(false)}
-                    className="p-1 rounded-full hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
-                      <Globe className="w-4 h-4 text-amber-500" />
-                      <span>País de Destino:</span>
-                    </label>
-                    <select
-                      value={shippingCountry}
-                      onChange={(e) => {
-                        const newCountry = e.target.value;
-                        setShippingCountry(newCountry);
-                        fetchCjFreightOptions(newCountry, selectedProduct.cjVid || selectedProduct.cjPid);
-                      }}
-                      className="w-full bg-slate-50 border-2 border-slate-200 focus:border-amber-500 rounded-2xl p-3 text-xs font-extrabold text-slate-800 outline-none"
-                    >
-                      {CJ_DEST_COUNTRIES.map((c, cIdx) => (
-                        <option key={`${c.code}-${cIdx}`} value={c.code}>
-                          {c.name} ({c.code})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100">
-                    <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5 mb-3">
-                      <Truck className="w-4 h-4 text-amber-500" />
-                      <span>
-                        {selectedProduct.cjVid || selectedProduct.cjPid
-                          ? "Opciones de Envío Disponibles:"
-                          : "Envío Configurado del Producto:"}
-                      </span>
-                    </h4>
-
-                    {isLoadingFreight ? (
-                      <div className="py-8 flex flex-col items-center justify-center space-y-2 text-center">
-                        <Loader2 className="w-7 h-7 text-amber-500 animate-spin" />
-                        <p className="text-xs font-bold text-slate-600">Cargando tarifas de envío...</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {(cjShippingOptions.length > 0 ? cjShippingOptions : [getManualShippingOption(selectedProduct)]).map((option, idx) => {
-                          const isSelected = (selectedShippingOption?.carrier || "Envío Estándar del Vendedor") === option.carrier;
-                          return (
-                            <div
-                              key={idx}
-                              onClick={() => {
-                                setSelectedShippingOption(option);
-                                if (selectedProduct) {
-                                  selectedProduct.shippingCost = option.shippingCost;
-                                }
-                              }}
-                              className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
-                                isSelected
-                                  ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/30 shadow-sm"
-                                  : "bg-white hover:bg-slate-50 border-slate-200"
-                              }`}
-                            >
-                              <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                                <div className={`p-2 rounded-xl mt-0.5 shrink-0 ${isSelected ? "bg-amber-500 text-slate-950" : "bg-slate-100 text-slate-600"}`}>
-                                  <Truck className="w-4 h-4" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-xs font-extrabold text-slate-900 block truncate">
-                                    {option.carrier}
-                                  </span>
-                                  <p className="text-[11px] text-slate-500 font-medium mt-0.5 truncate">
-                                    ⏱️ Entrega: <span className="font-bold text-slate-800">{option.aging}</span>
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <span className="text-xs font-black font-mono text-slate-900 block">
-                                  {option.shippingCost === 0 ? "GRATIS" : `$${option.shippingCost.toFixed(2)}`}
-                                </span>
-                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full inline-block mt-1 ${
-                                  isSelected ? "bg-amber-500 text-slate-950 font-black" : "bg-slate-100 text-slate-600"
-                                }`}>
-                                  {isSelected ? "Seleccionado" : "Elegir"}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div
-                  className="py-2.5 px-4 border-t border-slate-200 bg-slate-50/95"
-                  style={{ paddingBottom: "max(0.75rem, calc(env(safe-area-inset-bottom, 0px) + 0.35rem))" }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setShowShippingModal(false)}
-                    className="w-full py-2.5 rounded-xl font-extrabold text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer shadow-sm"
-                  >
-                    Confirmar envío ({(() => {
-                      const cost = selectedShippingOption
-                        ? selectedShippingOption.shippingCost
-                        : Number(selectedProduct.shippingCost ?? 0);
-                      return cost === 0 ? "GRATIS" : `$${cost.toFixed(2)}`;
-                    })()})
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
       </div>
     );
   }
@@ -2703,11 +2516,11 @@ export default function Tienda({
                 <div className="flex items-center justify-between mt-0 px-2.5 pb-2.5 pt-2 border-t border-slate-100 gap-1">
                   <div className="flex flex-col">
                     <span className="text-xs font-black text-amber-500">${p.price.toFixed(2)}</span>
-                    <span className="text-[9px] font-bold text-emerald-700">
-                      {p.shippingCost && Number(p.shippingCost) > 0
-                        ? `Envío: $${Number(p.shippingCost).toFixed(2)}`
-                        : "Envío Gratis"}
-                    </span>
+                    {Boolean(p.freeShipping) && (
+                      <span className="text-[9px] font-bold text-emerald-700">
+                        Envío Gratis
+                      </span>
+                    )}
                   </div>
                   <button
                     type="button"

@@ -4,7 +4,6 @@ import { uploadSingleSafe } from "../middleware/upload";
 import * as userController from "../controllers/userController";
 import * as reelController from "../controllers/reelController";
 import * as productController from "../controllers/productController";
-import * as cjController from "../controllers/cjController";
 import * as cartController from "../controllers/cartController";
 import * as orderController from "../controllers/orderController";
 import * as chatController from "../controllers/chatController";
@@ -82,10 +81,6 @@ export function createApiRouter(): Router {
   router.post("/reels/:id/comment", reelController.commentReel);
   router.post("/reels/:id/view", reelController.viewReel);
   router.post("/reels/:id/share", reelController.shareReel);
-
-  // CJ Dropshipping routes
-  router.get("/cj/freight-options", cjController.getFreightOptions);
-  router.get("/cj/import-product", cjController.importProduct);
 
   // Products routes
   router.get("/products", productController.getProducts);

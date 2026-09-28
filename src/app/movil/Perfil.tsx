@@ -700,18 +700,12 @@ export default function Perfil({
                             <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5">{p.description}</p>
                             <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100 gap-1 flex-wrap">
                               <span className="text-xs font-black text-amber-600">${p.price.toFixed(2)}</span>
-                              <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded border ${
-                                Number(p.shippingCost || 0) > 0
-                                  ? "bg-slate-50 text-slate-700 border-slate-200"
-                                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              }`}>
-                                <Truck className="w-2.5 h-2.5" />
-                                <span>
-                                  {Number(p.shippingCost || 0) > 0
-                                    ? `+$${Number(p.shippingCost).toFixed(2)}`
-                                    : "Gratis"}
+                              {p.freeShipping && (
+                                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">
+                                  <Truck className="w-2.5 h-2.5" />
+                                  <span>Envío Gratis</span>
                                 </span>
-                              </span>
+                              )}
                             </div>
                           </div>
                         </div>

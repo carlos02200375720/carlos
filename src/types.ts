@@ -93,9 +93,10 @@ export interface Product {
   sellerAvatar?: string;
   rating: number;
   shippingCost?: number;
+  shippingCapital?: number;
+  shippingProvince?: number;
+  freeShipping?: boolean;
   selectedCarrier?: string;
-  cjVid?: string;
-  cjPid?: string;
   images?: string[]; // Multiple photos of products
   videos?: string[]; // Video of products
   variants?: {

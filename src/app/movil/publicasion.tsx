@@ -1,14 +1,18 @@
 import React, { useRef, useState } from "react";
-import { User, Product } from "../../types";
+import { User, Product, ProductVariantItem } from "../../types";
 import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
   Image as ImageIcon,
   Loader2,
+  Plus,
   ShoppingBag,
+  Tag,
+  Trash2,
   Upload,
   Video,
+  X,
 } from "lucide-react";
 import { androidApiFetch } from "./api";
 import AndroidVideoUploadPreview from "./components/AndroidVideoUploadPreview";
@@ -44,12 +48,135 @@ export default function AndroidPublishView({
   // Product state
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
-  const [shippingCost, setShippingCost] = useState("");
+  const [shippingCapital, setShippingCapital] = useState("");
+  const [shippingProvince, setShippingProvince] = useState("");
+  const [freeShipping, setFreeShipping] = useState(false);
   const [stock, setStock] = useState("10");
   const [category, setCategory] = useState("Ropa Femenina");
   const [productDescription, setProductDescription] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // Product variants & color images state
+  const [prodVariants, setProdVariants] = useState<{ name: string; options: string[] }[]>([
+    { name: "Talla", options: ["S", "M", "L"] },
+    { name: "Color", options: ["Negro", "Blanco"] }
+  ]);
+  const [prodVariantList, setProdVariantList] = useState<ProductVariantItem[]>([]);
+  const [newColorName, setNewColorName] = useState("");
+  const [newColorFile, setNewColorFile] = useState<File | null>(null);
+  const [colorImageFiles, setColorImageFiles] = useState<Record<string, File>>({});
+  const [colorImagePreviews, setColorImagePreviews] = useState<Record<string, string>>({});
+  const [editingColorTarget, setEditingColorTarget] = useState<string | null>(null);
+  const [newVarName, setNewVarName] = useState("");
+  const [newVarValue, setNewVarValue] = useState("");
+  const newColorImageInputRef = useRef<HTMLInputElement>(null);
+  const existingColorImageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAddColorVariant = () => {
+    const trimmedColor = newColorName.trim();
+    if (!trimmedColor) return;
+    const colorKey = trimmedColor.toLowerCase();
+
+    setProdVariants((prev) => {
+      const colorIdx = prev.findIndex((v) => v.name.trim().toLowerCase() === "color");
+      if (colorIdx >= 0) {
+        const existingOpts = prev[colorIdx].options;
+        if (existingOpts.some((o) => o.trim().toLowerCase() === colorKey)) return prev;
+        const updated = [...prev];
+        updated[colorIdx] = { ...updated[colorIdx], options: [...existingOpts, trimmedColor] };
+        return updated;
+      }
+      return [...prev, { name: "Color", options: [trimmedColor] }];
+    });
+
+    if (newColorFile) {
+      const previewUrl = URL.createObjectURL(newColorFile);
+      setColorImageFiles((prev) => ({ ...prev, [colorKey]: newColorFile }));
+      setColorImagePreviews((prev) => ({ ...prev, [colorKey]: previewUrl }));
+      setProdVariantList((prev) => [
+        ...prev.filter((item) => (item.color || item.name || "").trim().toLowerCase() !== colorKey),
+        {
+          id: `var_color_${Date.now()}`,
+          name: trimmedColor,
+          color: trimmedColor,
+          price: parseFloat(String(price).replace(",", ".")) || 0,
+          imageUrl: previewUrl,
+        },
+      ]);
+    }
+
+    setNewColorName("");
+    setNewColorFile(null);
+    if (newColorImageInputRef.current) newColorImageInputRef.current.value = "";
+  };
+
+  const handleAssignColorImage = (colorName: string, file: File) => {
+    const colorKey = colorName.trim().toLowerCase();
+    const previewUrl = URL.createObjectURL(file);
+    setColorImageFiles((prev) => ({ ...prev, [colorKey]: file }));
+    setColorImagePreviews((prev) => ({ ...prev, [colorKey]: previewUrl }));
+    setProdVariantList((prev) => [
+      ...prev.filter((item) => (item.color || item.name || "").trim().toLowerCase() !== colorKey),
+      {
+        id: `var_color_${Date.now()}`,
+        name: colorName.trim(),
+        color: colorName.trim(),
+        price: parseFloat(String(price).replace(",", ".")) || 0,
+        imageUrl: previewUrl,
+      },
+    ]);
+  };
+
+  const handleRemoveVariant = (index: number) => {
+    setProdVariants(prodVariants.filter((_, i) => i !== index));
+  };
+
+  const handleRemoveVariantOption = (variantIndex: number, optionToRemove: string) => {
+    const targetVar = prodVariants[variantIndex];
+    if (!targetVar) return;
+    if (targetVar.name.trim().toLowerCase().includes("color")) {
+      const colorKey = optionToRemove.trim().toLowerCase();
+      setColorImageFiles((prev) => {
+        const next = { ...prev };
+        delete next[colorKey];
+        return next;
+      });
+      setColorImagePreviews((prev) => {
+        const next = { ...prev };
+        delete next[colorKey];
+        return next;
+      });
+      setProdVariantList((prev) =>
+        prev.filter((item) => (item.color || item.name || "").trim().toLowerCase() !== colorKey)
+      );
+    }
+    const nextOptions = targetVar.options.filter((o) => o !== optionToRemove);
+    if (nextOptions.length === 0) {
+      handleRemoveVariant(variantIndex);
+    } else {
+      setProdVariants(prodVariants.map((v, idx) => (idx === variantIndex ? { ...v, options: nextOptions } : v)));
+    }
+  };
+
+  const handleAddVariant = () => {
+    if (!newVarName.trim() || !newVarValue.trim()) return;
+    const options = newVarValue
+      .split(",")
+      .map((o) => o.trim())
+      .filter((o) => o.length > 0);
+    if (options.length === 0) return;
+    const varNameClean = newVarName.trim();
+    const existingIdx = prodVariants.findIndex((v) => v.name.trim().toLowerCase() === varNameClean.toLowerCase());
+    if (existingIdx >= 0) {
+      const merged = Array.from(new Set([...prodVariants[existingIdx].options, ...options]));
+      setProdVariants(prodVariants.map((v, i) => (i === existingIdx ? { ...v, options: merged } : v)));
+    } else {
+      setProdVariants([...prodVariants, { name: varNameClean, options }]);
+    }
+    setNewVarName("");
+    setNewVarValue("");
+  };
 
   const selectVideo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -204,12 +331,71 @@ export default function AndroidPublishView({
     setSuccess(null);
 
     try {
-      let imageUrl = "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80";
-      if (image) imageUrl = (await upload(image)).url;
+      const effectiveVariants = [...prodVariants.map((v) => ({ ...v, options: [...v.options] }))];
+      const effectiveColorFiles: Record<string, File> = { ...colorImageFiles };
+      if (newColorName.trim()) {
+        const pendingColor = newColorName.trim();
+        const pendingKey = pendingColor.toLowerCase();
+        const cIdx = effectiveVariants.findIndex((v) => v.name.trim().toLowerCase() === "color");
+        if (cIdx >= 0) {
+          if (!effectiveVariants[cIdx].options.some((o) => o.trim().toLowerCase() === pendingKey)) {
+            effectiveVariants[cIdx].options.push(pendingColor);
+          }
+        } else {
+          effectiveVariants.push({ name: "Color", options: [pendingColor] });
+        }
+        if (newColorFile) {
+          effectiveColorFiles[pendingKey] = newColorFile;
+        }
+      }
+
+      const uploadedColorUrlMap: Record<string, string> = {};
+      for (const [colorKey, file] of Object.entries(effectiveColorFiles)) {
+        const uploadedRes = await upload(file);
+        if (uploadedRes?.url) {
+          uploadedColorUrlMap[colorKey] = uploadedRes.url;
+        }
+      }
+
+      let imageUrl = "";
+      if (image) {
+        imageUrl = (await upload(image)).url;
+      } else if (Object.values(uploadedColorUrlMap).length > 0) {
+        imageUrl = Object.values(uploadedColorUrlMap)[0];
+      } else {
+        imageUrl = "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80";
+      }
       if (!imageUrl) throw new Error("El backend no devolvió la URL de la imagen.");
 
-      const parsedShipping = parseFloat(String(shippingCost).replace(",", "."));
-      const effectiveShippingCost = !Number.isNaN(parsedShipping) && parsedShipping >= 0 ? parsedShipping : 0;
+      const parsedPrice = parseFloat(String(price).replace(",", ".")) || 0;
+      const finalVariantList: ProductVariantItem[] = [];
+      const seenVariantKeys = new Set<string>();
+      const colorGroup = effectiveVariants.find((v) => v.name.trim().toLowerCase().includes("color"));
+      const colorOptions = colorGroup ? colorGroup.options : [];
+
+      colorOptions.forEach((opt, idx) => {
+        const key = opt.trim().toLowerCase();
+        const uploadedUrl = uploadedColorUrlMap[key];
+        const existingItem = prodVariantList.find((item) => (item.color || item.name || "").trim().toLowerCase() === key);
+        const resolvedImageUrl =
+          uploadedUrl || (existingItem?.imageUrl && !existingItem.imageUrl.startsWith("blob:") ? existingItem.imageUrl : undefined);
+        if (resolvedImageUrl) {
+          seenVariantKeys.add(key);
+          finalVariantList.push({
+            id: existingItem?.id || `var_color_${Date.now()}_${idx}`,
+            name: opt.trim(),
+            color: opt.trim(),
+            price: parsedPrice,
+            imageUrl: resolvedImageUrl,
+          });
+        }
+      });
+
+      const allImages = Array.from(new Set([imageUrl, ...Object.values(uploadedColorUrlMap)].filter(Boolean)));
+
+      const parsedCapital = Math.max(0, parseFloat(String(shippingCapital).replace(",", ".")) || 0);
+      const parsedProvince = Math.max(0, parseFloat(String(shippingProvince).replace(",", ".")) || 0);
+      const isFreeShipping = Boolean(freeShipping);
       const parsedStock = parseInt(String(stock), 10);
       const effectiveStock = !Number.isNaN(parsedStock) && parsedStock >= 0 ? parsedStock : 10;
 
@@ -218,13 +404,18 @@ export default function AndroidPublishView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          price: parseFloat(String(price).replace(",", ".")) || 0,
-          shippingCost: effectiveShippingCost,
+          price: parsedPrice,
+          shippingCost: isFreeShipping && parsedCapital === 0 ? 0 : parsedCapital,
+          shippingCapital: parsedCapital,
+          shippingProvince: parsedProvince,
+          freeShipping: isFreeShipping,
           stock: effectiveStock,
           description: productDescription.trim(),
           category,
           imageUrl,
-          images: [imageUrl],
+          images: allImages,
+          variants: effectiveVariants,
+          variantList: finalVariantList,
           sellerId: currentUser.originalId || currentUser.id,
           sellerName: currentUser.name,
           sellerUsername: currentUser.username,
@@ -462,8 +653,8 @@ export default function AndroidPublishView({
               />
             </div>
 
-            {/* Product Price, Shipping Cost & Stock */}
-            <div className="grid grid-cols-3 gap-3">
+            {/* Product Price & Stock */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Precio ($) <span className="text-amber-500">*</span>
@@ -475,21 +666,6 @@ export default function AndroidPublishView({
                   min="0"
                   step="0.01"
                   placeholder="0.00"
-                  className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Envío ($)
-                </label>
-                <input
-                  value={shippingCost}
-                  onChange={(e) => setShippingCost(e.target.value)}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Gratis (0.00)"
                   className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 transition-colors"
                 />
               </div>
@@ -510,15 +686,100 @@ export default function AndroidPublishView({
               </div>
             </div>
 
-            {/* Configured Shipping Preview Panel */}
-            <div className="p-3 rounded-xl bg-slate-900/90 border border-amber-500/30 flex items-center justify-between text-xs">
-              <span className="text-slate-300 font-semibold">Costo de envío configurado:</span>
-              <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-400 font-extrabold border border-amber-500/40 font-mono">
+            {/* 3 Campos de Configuración de Envío */}
+            <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-amber-500/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-400">Configuración de Envío (3 campos)</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* 1. Precio de envío a la capital */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    1. Precio de envío a la capital ($)
+                  </label>
+                  <input
+                    value={shippingCapital}
+                    onChange={(e) => setShippingCapital(e.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="w-full p-3 rounded-xl border text-sm transition-colors bg-slate-950 border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                {/* 2. Precio de envío a provincia */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    2. Precio de envío a provincia ($)
+                  </label>
+                  <input
+                    value={shippingProvince}
+                    onChange={(e) => setShippingProvince(e.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="w-full p-3 rounded-xl border text-sm transition-colors bg-slate-950 border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                {/* 3. Envío gratis */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    3. Envío gratis
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setFreeShipping(!freeShipping)}
+                    className={`w-full p-3 rounded-xl border text-xs font-extrabold flex items-center justify-between transition-all cursor-pointer ${
+                      freeShipping
+                        ? "bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm"
+                        : "bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700"
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{freeShipping ? "Envío Gratis Activo" : "Activar Envío Gratis"}</span>
+                    </span>
+                    <span className="font-mono text-[10px]">
+                      {freeShipping ? "SÍ ($0)" : "NO"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="text-slate-400 font-semibold">Botones de envío:</span>
                 {(() => {
-                  const num = parseFloat(String(shippingCost).replace(",", "."));
-                  return !Number.isNaN(num) && num > 0 ? `$${num.toFixed(2)} USD` : "GRATIS ($0.00)";
+                  const cap = Math.max(0, parseFloat(String(shippingCapital).replace(",", ".")) || 0);
+                  const prov = Math.max(0, parseFloat(String(shippingProvince).replace(",", ".")) || 0);
+                  const showFree = freeShipping;
+                  return (
+                    <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
+                      {cap > 0 && (
+                        <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-400 font-extrabold border border-amber-500/40">
+                          Capital: ${cap.toFixed(2)}
+                        </span>
+                      )}
+                      {prov > 0 && (
+                        <span className="px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 font-extrabold border border-indigo-500/40">
+                          Provincia: ${prov.toFixed(2)}
+                        </span>
+                      )}
+                      {showFree && (
+                        <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-400 font-extrabold border border-emerald-500/40">
+                          Envío Gratis ($0.00)
+                        </span>
+                      )}
+                      {cap <= 0 && prov <= 0 && !showFree && (
+                        <span className="text-slate-500">Sin opciones seleccionadas</span>
+                      )}
+                    </div>
+                  );
                 })()}
-              </span>
+              </div>
             </div>
 
             {/* Product Category */}
@@ -565,6 +826,216 @@ export default function AndroidPublishView({
                 rows={3}
                 className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 transition-colors resize-none"
               />
+            </div>
+
+            {/* Product Variants (Colores con Imagen y Tallas) */}
+            <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                  <Tag className="w-4 h-4" />
+                  <span>Variantes del Producto (Colores con Imagen, Tallas)</span>
+                </span>
+              </div>
+
+              <input
+                type="file"
+                ref={existingColorImageInputRef}
+                accept="image/png, image/jpeg, image/jpg, image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file && editingColorTarget) {
+                    handleAssignColorImage(editingColorTarget, file);
+                  }
+                  setEditingColorTarget(null);
+                  e.target.value = "";
+                }}
+              />
+
+              {/* Dedicated Color Variant Creator with Image */}
+              <div className="p-3 rounded-xl bg-slate-950 border border-amber-500/30 space-y-2.5">
+                <span className="text-[11px] font-extrabold text-white block">
+                  Crear Variante de Color (Nombre + Imagen del Color)
+                </span>
+                <p className="text-[10px] text-slate-400">
+                  Ej: Escribe "Azul" y carga una imagen que represente ese color para el detalle del producto.
+                </p>
+
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Nombre del color (Ej. Azul, Rojo, Negro...)"
+                    value={newColorName}
+                    onChange={(e) => setNewColorName(e.target.value)}
+                    className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-500"
+                  />
+
+                  <input
+                    type="file"
+                    ref={newColorImageInputRef}
+                    accept="image/png, image/jpeg, image/jpg, image/webp"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) setNewColorFile(file);
+                    }}
+                    className="hidden"
+                  />
+
+                  <div className="flex items-center gap-2">
+                    {newColorFile ? (
+                      <div className="flex-1 flex items-center gap-2 p-1.5 bg-slate-900 border border-amber-500/40 rounded-xl">
+                        <img
+                          src={URL.createObjectURL(newColorFile)}
+                          alt="Color preview"
+                          className="w-8 h-8 rounded-lg object-cover shrink-0"
+                        />
+                        <span className="text-[10px] text-slate-200 font-bold truncate flex-1">{newColorFile.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewColorFile(null);
+                            if (newColorImageInputRef.current) newColorImageInputRef.current.value = "";
+                          }}
+                          className="p-1 text-rose-400 hover:text-rose-300"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => newColorImageInputRef.current?.click()}
+                        className="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-800 border border-dashed border-slate-700 hover:border-amber-500 rounded-xl text-xs font-bold text-slate-300 flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Cargar imagen del color</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleAddColorVariant}
+                      disabled={!newColorName.trim()}
+                      className="py-2.5 px-3.5 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 rounded-xl text-xs font-extrabold flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Añadir Color</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Active variants list */}
+              {prodVariants.length > 0 && (
+                <div className="space-y-2">
+                  {prodVariants.map((variant, index) => {
+                    const isColorGroup = variant.name.trim().toLowerCase().includes("color");
+                    return (
+                      <div key={index} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white">{variant.name}:</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveVariant(index)}
+                            className="text-slate-500 hover:text-rose-400 p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {isColorGroup ? (
+                          <div className="grid grid-cols-2 gap-2">
+                            {variant.options.map((opt, idx) => {
+                              const colorKey = opt.trim().toLowerCase();
+                              const previewImg =
+                                colorImagePreviews[colorKey] ||
+                                prodVariantList.find((item) => (item.color || item.name || "").trim().toLowerCase() === colorKey)?.imageUrl;
+                              return (
+                                <div key={idx} className="flex items-center justify-between gap-1.5 p-1.5 rounded-lg bg-slate-900 border border-slate-800">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    {previewImg ? (
+                                      <img src={previewImg} alt={opt} className="w-9 h-9 rounded-md object-cover border border-amber-500/40 shrink-0" />
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingColorTarget(opt);
+                                          existingColorImageInputRef.current?.click();
+                                        }}
+                                        className="w-9 h-9 rounded-md border border-dashed border-slate-700 bg-slate-950 flex items-center justify-center text-slate-400 shrink-0"
+                                      >
+                                        <ImageIcon className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                    <div className="min-w-0">
+                                      <p className="text-[11px] font-bold text-white truncate">{opt}</p>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingColorTarget(opt);
+                                          existingColorImageInputRef.current?.click();
+                                        }}
+                                        className="text-[9px] font-bold text-amber-400 underline"
+                                      >
+                                        {previewImg ? "Cambiar foto" : "Cargar foto"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveVariantOption(index, opt)}
+                                    className="text-slate-500 hover:text-rose-400 p-1 shrink-0"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {variant.options.map((opt, idx) => (
+                              <span key={idx} className="inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-slate-900 text-slate-300 px-2 py-1 rounded border border-slate-800">
+                                <span>{opt}</span>
+                                <button type="button" onClick={() => handleRemoveVariantOption(index, opt)} className="text-slate-500 hover:text-rose-400">
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Add another variant (e.g. Talla) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-800">
+                <input
+                  type="text"
+                  placeholder="Otra variante (ej: Talla)"
+                  value={newVarName}
+                  onChange={(e) => setNewVarName(e.target.value)}
+                  className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-500"
+                />
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="Opciones (ej: S, M, L)"
+                    value={newVarValue}
+                    onChange={(e) => setNewVarValue(e.target.value)}
+                    className="flex-1 p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddVariant}
+                    className="px-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl flex items-center justify-center"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

@@ -1600,18 +1600,12 @@ export default function Perfil({
                                           <span className="font-display font-black text-sm sm:text-base text-amber-600">
                                             ${Number(prod.price || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                           </span>
-                                          <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border ${
-                                            Number(prod.shippingCost || 0) > 0
-                                              ? "bg-amber-50 text-amber-800 border-amber-200"
-                                              : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                          }`}>
-                                            <Truck className="w-3 h-3" />
-                                            <span>
-                                              {Number(prod.shippingCost || 0) > 0
-                                                ? `Envío: $${Number(prod.shippingCost).toFixed(2)}`
-                                                : "Envío Gratis"}
+                                          {prod.freeShipping && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200">
+                                              <Truck className="w-3 h-3" />
+                                              <span>Envío Gratis</span>
                                             </span>
-                                          </span>
+                                          )}
                                         </div>
                                       </div>
 
@@ -3384,18 +3378,12 @@ export default function Perfil({
                             <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 gap-2 flex-wrap">
                               <div className="flex items-center gap-2">
                                 <span className="text-xs sm:text-sm font-black font-mono text-emerald-600">${prod.price.toFixed(2)}</span>
-                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                                  Number(prod.shippingCost || 0) > 0
-                                    ? "bg-slate-100 text-slate-700 border-slate-200"
-                                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                }`}>
-                                  <Truck className="w-2.5 h-2.5" />
-                                  <span>
-                                    {Number(prod.shippingCost || 0) > 0
-                                      ? `+$${Number(prod.shippingCost).toFixed(2)} envío`
-                                      : "Envío gratis"}
+                                {prod.freeShipping && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">
+                                    <Truck className="w-2.5 h-2.5" />
+                                    <span>Envío Gratis</span>
                                   </span>
-                                </span>
+                                )}
                               </div>
                               <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-md">Ver detalles →</span>
                             </div>
