@@ -100,7 +100,31 @@ export async function createOrder(req: Request, res: Response): Promise<void> {
   const cleanBuyerEmail = buyerEmail ? String(buyerEmail).trim().toLowerCase() : "";
   const derivedUsername = cleanNameForUsername(buyerName, cleanBuyerEmail);
 
-  if ((cleanBuyerEmail && cleanBuyerEmail.includes("@")) || (buyerName && String(buyerName).trim())) {
+  const isRequesterGuest =
+    (!userId || userId === "current_user" || userId === "user_guest" || userId === "invitado") &&
+    (!buyerUsername || buyerUsername === "invitado" || buyerUsername === "guest");
+
+  if (!isRequesterGuest) {
+    // Buyer is already logged into a registered account — never show auto-created account message
+    let loggedInUser: any = buyerUser;
+    if (!loggedInUser && mongoose.connection.readyState === 1) {
+      const orLookup: any[] = [];
+      if (userId && userId !== "current_user") orLookup.push({ id: userId });
+      if (buyerUsername && buyerUsername !== "invitado") orLookup.push({ username: String(buyerUsername).toLowerCase() });
+      if (cleanBuyerEmail) orLookup.push({ email: cleanBuyerEmail });
+      if (orLookup.length > 0) {
+        loggedInUser = await MongoUser.findOne({ $or: orLookup, id: { $ne: "current_user" } }).catch(() => null);
+      }
+    }
+    if (loggedInUser) {
+      assignedBuyerId = loggedInUser.id;
+      assignedBuyerUsername = loggedInUser.username || assignedBuyerUsername;
+      assignedBuyerName = buyerName?.trim() || loggedInUser.name || assignedBuyerName;
+      assignedBuyerEmail = cleanBuyerEmail || loggedInUser.email || assignedBuyerEmail;
+      assignedBuyerAvatar = loggedInUser.avatar || assignedBuyerAvatar;
+    }
+    autoCreatedUserSummary = null;
+  } else if ((cleanBuyerEmail && cleanBuyerEmail.includes("@")) || (buyerName && String(buyerName).trim())) {
     let existingUser: any = null;
     if (mongoose.connection.readyState === 1) {
       await MongoUser.deleteMany({ id: "current_user" }).catch(() => {});
@@ -133,15 +157,16 @@ export async function createOrder(req: Request, res: Response): Promise<void> {
     }
 
     if (existingUser) {
+      // User ALREADY has an account in the database: link order & session, but created = false (do not show new-user message)
       const cleanExistingUsername =
         existingUser.username && !existingUser.username.includes("@")
           ? existingUser.username
           : derivedUsername;
       const cleanExistingName =
-        buyerName && String(buyerName).trim() && String(buyerName).trim().toLowerCase() !== "invitado"
-          ? String(buyerName).trim()
-          : existingUser.name && !existingUser.name.includes("@")
+        existingUser.name && !existingUser.name.includes("@")
           ? existingUser.name
+          : buyerName && String(buyerName).trim() && String(buyerName).trim().toLowerCase() !== "invitado"
+          ? String(buyerName).trim()
           : cleanExistingUsername;
 
       existingUser.username = cleanExistingUsername;
@@ -193,31 +218,22 @@ export async function createOrder(req: Request, res: Response): Promise<void> {
         memoryUsers.push(syncedUser);
       }
 
-      const isRequesterGuest =
-        !userId ||
-        userId === "current_user" ||
-        userId === "user_guest" ||
-        userId === "invitado" ||
-        buyerUsername === "invitado";
-
-      if (isRequesterGuest) {
-        setActiveOriginalUserId(existingUser.id);
-        autoCreatedUserSummary = {
-          created: true,
-          email: assignedBuyerEmail,
-          username: cleanExistingUsername,
-          name: cleanExistingName,
-          tempPassword: existingUser.password || "123",
-          user: {
-            ...syncedUser,
-            id: "current_user",
-            originalId: existingUser.id,
-            isGuest: false,
-          },
-          message:
-            "Tu pedido ha sido vinculado automáticamente a tu perfil registrado.",
-        };
-      }
+      setActiveOriginalUserId(existingUser.id);
+      autoCreatedUserSummary = {
+        created: false,
+        email: assignedBuyerEmail,
+        username: cleanExistingUsername,
+        name: cleanExistingName,
+        tempPassword: existingUser.password || "123",
+        user: {
+          ...syncedUser,
+          id: "current_user",
+          originalId: existingUser.id,
+          isGuest: false,
+        },
+        message:
+          "Tu pedido ha sido vinculado automáticamente a tu perfil registrado.",
+      };
     } else {
       const chosenUsername = derivedUsername;
       const newUserId = "user_" + generateId();

@@ -1133,8 +1133,8 @@ export default function App() {
   // Cart persistence is server-side only. Guest carts remain in React memory for this session.
   const getCartUserId = (userObj?: User) => {
     const target = userObj || currentUser;
-    if (target && target.username && target.username !== "invitado" && !target.isGuest && target.id !== "current_user") {
-      return target.originalId || target.id || target.username;
+    if (target && target.username && target.username !== "invitado" && !target.isGuest) {
+      return target.originalId || (target.id !== "current_user" ? target.id : null) || target.username;
     }
     return null;
   };
