@@ -33,7 +33,8 @@ export interface AndroidShopProps {
     address: string,
     shippingCost: number,
     onComplete: (newOrder: Order) => void,
-    itemsToCheckout?: CartItem[]
+    itemsToCheckout?: CartItem[],
+    buyerInfo?: { buyerName?: string; buyerEmail?: string; buyerPhone?: string }
   ) => void;
   onNavigateToHistory?: () => void;
   onToggleDetailView?: (open: boolean) => void;
@@ -1063,9 +1064,19 @@ export default function Tienda({
     const shippingAddress = checkoutForm.shippingAddress || "Dirección Android Principal";
 
     if (onCheckout) {
-      onCheckout(shippingAddress, cartShippingTotal, (newOrder) => {
-        finalizeOrder(shippingAddress, effectiveCheckoutItems);
-      }, effectiveCheckoutItems);
+      onCheckout(
+        shippingAddress,
+        cartShippingTotal,
+        (newOrder) => {
+          finalizeOrder(shippingAddress, effectiveCheckoutItems);
+        },
+        effectiveCheckoutItems,
+        {
+          buyerName: checkoutForm.fullName.trim(),
+          buyerEmail: checkoutForm.email.trim().toLowerCase(),
+          buyerPhone: checkoutForm.phone.trim(),
+        }
+      );
       return;
     }
 
@@ -1180,7 +1191,7 @@ export default function Tienda({
             </div>
           </div>
 
-          <div className="mt-6 flex flex-col items-center">
+          <div className="mt-6 flex flex-col sm:flex-row gap-3 items-center justify-center">
             <button
               onClick={() => {
                 setShowThankYouPage(false);
@@ -1189,12 +1200,27 @@ export default function Tienda({
                 setIsCartOpen(false);
                 navigateTo('/tienda');
               }}
-              className="w-full max-w-xs py-3.5 bg-gradient-to-r from-amber-300 to-orange-500 text-slate-950 font-black rounded-2xl shadow-xl shadow-orange-900/40 flex items-center justify-center space-x-2 active:scale-95 transition-transform"
-              style={{ marginBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
+              className="w-full max-w-xs py-3.5 bg-gradient-to-r from-amber-300 to-orange-500 text-slate-950 font-black rounded-2xl shadow-xl shadow-orange-900/40 flex items-center justify-center space-x-2 active:scale-95 transition-transform cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
-              <span>Volver al catálogo</span>
+              <span>Seguir Comprando</span>
             </button>
+            {onNavigateToHistory && (
+              <button
+                onClick={() => {
+                  setShowThankYouPage(false);
+                  setShowCheckoutPage(false);
+                  setSelectedProduct(null);
+                  setIsCartOpen(false);
+                  onNavigateToHistory();
+                }}
+                className="w-full max-w-xs py-3.5 bg-slate-900 hover:bg-slate-800 border border-white/20 text-white font-black rounded-2xl shadow-xl flex items-center justify-center space-x-2 active:scale-95 transition-transform cursor-pointer"
+                style={{ marginBottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span>Historial de Pedidos</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

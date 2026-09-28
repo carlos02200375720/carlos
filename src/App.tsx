@@ -354,13 +354,22 @@ export default function App() {
     } else if (currentRoute.type === 'profile') {
       setActiveTab('profile');
       if (currentRoute.userId) {
+        const cleanRouteUser = decodeURIComponent(currentRoute.userId).toLowerCase().replace(/^@/, '');
+        const sessionUser = sessionState.getUser();
+        const sessionUsername = (sessionState.getUsername() || sessionUser?.username || '').toLowerCase().replace(/^@/, '');
+        const currentUsername = (currentUser?.username || '').toLowerCase().replace(/^@/, '');
+        const currentEmail = (currentUser?.email || sessionUser?.email || '').toLowerCase();
         const isOwnUser =
-          currentUser &&
-          !currentUser.isGuest &&
-          currentUser.username !== 'invitado' &&
-          (currentRoute.userId.toLowerCase() === currentUser.username?.toLowerCase() ||
-            currentRoute.userId === currentUser.id ||
-            (Boolean(currentUser.originalId) && currentRoute.userId === currentUser.originalId));
+          Boolean(
+            (currentUser && !currentUser.isGuest && currentUser.username !== 'invitado') ||
+            (sessionUsername && sessionUsername !== 'invitado')
+          ) &&
+          (cleanRouteUser === currentUsername ||
+            cleanRouteUser === sessionUsername ||
+            (Boolean(currentEmail) && cleanRouteUser === currentEmail) ||
+            currentRoute.userId === currentUser?.id ||
+            (Boolean(currentUser?.originalId) && currentRoute.userId === currentUser.originalId) ||
+            (Boolean(sessionUser?.originalId) && currentRoute.userId === sessionUser.originalId));
         setSelectedCreatorProfileId(isOwnUser ? null : currentRoute.userId);
       } else {
         setSelectedCreatorProfileId(null);
@@ -986,6 +995,11 @@ export default function App() {
   };
 
   const handleToggleSaveReel = (reelId: string) => {
+    if (!currentUser || currentUser.username === "invitado" || currentUser.isGuest || !currentUser.username) {
+      setGuestInteractionAlert("Para guardar en tu perfil, por favor inicia sesión o regístrate en la app.");
+      return;
+    }
+
     const isSaved = savedReelIds.includes(reelId);
     const newSavedIds = isSaved
       ? savedReelIds.filter((id) => id !== reelId)
@@ -1255,10 +1269,33 @@ export default function App() {
       .then((data) => {
         if (!data.error) {
           if (data.autoCreatedUser?.user) {
+            const registeredUser: User = {
+              ...data.autoCreatedUser.user,
+              id: "current_user",
+              originalId: data.autoCreatedUser.user.originalId || data.autoCreatedUser.user.id,
+              isGuest: false,
+            };
+            setCurrentUser(registeredUser);
+            setIsLoggedIn(true);
+            sessionState.setAuthenticated(true);
+            sessionState.setUsername(registeredUser.username);
+            sessionState.setUser(registeredUser);
             setUsers((prev) => {
-              const existingIdx = prev.findIndex((u) => u.id === data.autoCreatedUser.user.id || u.username === data.autoCreatedUser.username);
-              if (existingIdx >= 0) return prev;
-              return [...prev, data.autoCreatedUser.user];
+              const listUser = {
+                ...registeredUser,
+                id: registeredUser.originalId || registeredUser.id,
+              };
+              const existingIdx = prev.findIndex(
+                (u) =>
+                  u.id === listUser.id ||
+                  (u.username && registeredUser.username && u.username.toLowerCase() === registeredUser.username.toLowerCase())
+              );
+              if (existingIdx >= 0) {
+                const next = [...prev];
+                next[existingIdx] = listUser;
+                return next;
+              }
+              return [...prev, listUser];
             });
           }
           // If partial checkout, only remove the selected items that were purchased

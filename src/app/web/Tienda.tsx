@@ -150,6 +150,7 @@ export interface ShopProps {
   onStepChange?: (step: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou') => void;
   savedReelIds?: string[];
   onToggleSave?: (id: string) => void;
+  onGuestInteraction?: (action: string) => void;
 }
 
 export type TiendaProps = ShopProps;
@@ -178,6 +179,7 @@ export default function Tienda({
   onStepChange,
   savedReelIds = [],
   onToggleSave,
+  onGuestInteraction,
 }: ShopProps) {
   // Navigation states: 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'thankyou'
   const [activeStep, setActiveStep] = useState<'catalog' | 'detail' | 'checkout' | 'payment' | 'thankyou'>(() => {
@@ -586,9 +588,8 @@ export default function Tienda({
   const [email, setEmail] = useState("carlos@example.com");
   const [phone, setPhone] = useState("+34 612 345 678");
   const [address, setAddress] = useState("Avenida de la Constitución 142, Piso 4B");
-  const [country, setCountry] = useState("España 🇪🇸");
-  const [city, setCity] = useState("Madrid");
-  const [postalCode, setPostalCode] = useState("28001");
+  const [country, setCountry] = useState("República Dominicana 🇩🇴");
+  const [city, setCity] = useState("Santo Domingo");
   const [cardNumber, setCardNumber] = useState("4152 8391 0023 9482");
   const [expiry, setExpiry] = useState("09/29");
   const [cvv, setCvv] = useState("384");
@@ -600,9 +601,8 @@ export default function Tienda({
       setEmail("");
       setPhone("");
       setAddress("");
-      setCountry("España 🇪🇸");
+      setCountry("República Dominicana 🇩🇴");
       setCity("");
-      setPostalCode("");
       setCardNumber("");
       setExpiry("");
       setCvv("");
@@ -611,9 +611,8 @@ export default function Tienda({
       setEmail(currentUser?.email || "carlos@example.com");
       setPhone("+34 612 345 678");
       setAddress("Avenida de la Constitución 142, Piso 4B");
-      setCountry("España 🇪🇸");
-      setCity("Madrid");
-      setPostalCode("28001");
+      setCountry("República Dominicana 🇩🇴");
+      setCity("Santo Domingo");
       setCardNumber("4152 8391 0023 9482");
       setExpiry("09/29");
       setCvv("384");
@@ -914,7 +913,7 @@ export default function Tienda({
   };
 
   const executePayment = () => {
-    if (!name.trim() || !email.trim() || !phone.trim() || !address.trim() || !city.trim() || !postalCode.trim() || !cardNumber.trim()) {
+    if (!name.trim() || !email.trim() || !phone.trim() || !address.trim() || !city.trim() || !cardNumber.trim()) {
       setIsFormValid(false);
       return;
     }
@@ -923,7 +922,7 @@ export default function Tienda({
 
     // Simulate Payment Gateway loading
     setTimeout(() => {
-      const fullShippingAddress = `${address}, ${city}, ${postalCode}, ${country} (Tel: ${phone}, Email: ${email})`;
+      const fullShippingAddress = `${address}, ${city}, ${country} (Tel: ${phone}, Email: ${email})`;
       const totalShippingCost = effectiveCheckoutItems.reduce((acc, item) => {
         const shippingFee = item.selectedShippingCost !== undefined 
           ? item.selectedShippingCost 
@@ -1065,20 +1064,20 @@ export default function Tienda({
           }}
           id="product-detail-transparent-header"
         >
-          {/* Botón de Regreso - fondo negro semi transparente */}
+          {/* Botón de Regreso - sin fondo ni sombra, icono negro */}
           <div className="flex items-center">
             <button
               type="button"
               onClick={handleBackToCatalog}
-              className="w-10 h-10 rounded-full bg-black/45 hover:bg-black/60 backdrop-blur-sm text-white flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
+              className="w-10 h-10 rounded-full bg-transparent text-black flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
               aria-label="Regresar al catálogo"
               id="detail-back-button"
             >
-              <ArrowLeft className="w-5 h-5 text-white" />
+              <ArrowLeft className="w-5 h-5 text-black" />
             </button>
           </div>
 
-          {/* Botón Guardar Producto y Carrito - fondo negro semi transparente */}
+          {/* Botón Guardar Producto y Carrito - sin fondo ni sombra, iconos negros */}
           <div className="flex items-center space-x-2">
             <button
               type="button"
@@ -1090,7 +1089,7 @@ export default function Tienda({
                   toggleFavorite(selectedProduct.id);
                 }
               }}
-              className="w-10 h-10 rounded-full bg-black/45 hover:bg-black/60 backdrop-blur-sm text-white flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
+              className="w-10 h-10 rounded-full bg-transparent text-black flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
               id="detail-save-trigger-btn"
               aria-label="Guardar producto"
               title={
@@ -1102,21 +1101,21 @@ export default function Tienda({
               <Bookmark
                 className={`w-5 h-5 transition-all duration-200 ${
                   selectedProduct && (savedReelIds.includes(selectedProduct.id) || favorites.includes(selectedProduct.id))
-                    ? "fill-amber-400 text-amber-400 scale-105"
-                    : "text-white hover:text-amber-200"
+                    ? "fill-amber-500 text-amber-500 scale-105"
+                    : "text-black"
                 }`}
               />
             </button>
             <button
               type="button"
               onClick={openCartDrawer}
-              className="relative w-10 h-10 rounded-full bg-black/45 hover:bg-black/60 backdrop-blur-sm text-white flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
+              className="relative w-10 h-10 rounded-full bg-transparent text-black flex items-center justify-center hover:scale-105 transition-all active:scale-95 pointer-events-auto cursor-pointer border-0 shadow-none outline-none"
               id="detail-cart-trigger-btn"
               aria-label="Ver carrito"
             >
-              <ShoppingCart className="w-5 h-5 text-white" />
+              <ShoppingCart className="w-5 h-5 text-black" />
               {cartItemCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-extrabold font-mono text-[9px] sm:text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center border-2 border-slate-950 shadow-xs">
+                <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-extrabold font-mono text-[9px] sm:text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center border-2 border-white shadow-none">
                   {cartItemCount}
                 </span>
               )}
@@ -1309,7 +1308,7 @@ export default function Tienda({
                           onClick={() => handleProductSelect(product)}
                           id={`prod-card-${product.id}`}
                         >
-                          {/* Image Header with Badge */}
+                          {/* Image Header */}
                           <div className="relative aspect-square w-full bg-white overflow-hidden flex items-center justify-center">
                             <img
                               src={product.imageUrl}
@@ -1317,10 +1316,6 @@ export default function Tienda({
                               referrerPolicy="no-referrer"
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                             />
-                            <div className="absolute top-2 left-2 sm:top-3 sm:left-3 bg-slate-950/80 backdrop-blur-md px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg border border-white/10 flex items-center space-x-1">
-                              <Star className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-amber-400 text-amber-400" />
-                              <span className="text-white text-[10px] sm:text-xs font-bold font-mono">{product.rating}</span>
-                            </div>
                           </div>
 
                           {/* Info */}
@@ -1335,10 +1330,48 @@ export default function Tienda({
                               <p className="text-[10px] sm:text-xs text-slate-500 mt-1 line-clamp-1 sm:line-clamp-2 leading-relaxed">{product.description}</p>
                             </div>
                             
-                            <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-1">
-                              <span className="text-sm sm:text-base font-extrabold font-mono text-slate-900">${product.price.toFixed(2)}</span>
+                            <div className="mt-3 pt-2 border-t border-slate-100 flex flex-col items-start gap-0.5">
+                              <div className="w-full flex items-center justify-between">
+                                <span className="text-sm sm:text-base font-extrabold font-mono text-slate-900">${product.price.toFixed(2)}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const isGuest = !currentUser || currentUser.username === "invitado" || currentUser.isGuest || !currentUser.username;
+                                    if (isGuest) {
+                                      if (onGuestInteraction) {
+                                        onGuestInteraction("guardar este producto en tu perfil");
+                                      } else if (onToggleSave) {
+                                        onToggleSave(product.id);
+                                      }
+                                      return;
+                                    }
+                                    if (onToggleSave) {
+                                      onToggleSave(product.id);
+                                    } else {
+                                      toggleFavorite(product.id);
+                                    }
+                                  }}
+                                  className="bg-transparent border-0 p-0 shadow-none outline-none flex items-center justify-center transition-transform active:scale-90 cursor-pointer"
+                                  id={`card-save-btn-${product.id}`}
+                                  aria-label="Guardar producto"
+                                  title={
+                                    savedReelIds.includes(product.id) || favorites.includes(product.id)
+                                      ? "Guardado"
+                                      : "Guardar producto"
+                                  }
+                                >
+                                  <Bookmark
+                                    className={`w-4 h-4 sm:w-4.5 sm:h-4.5 transition-colors duration-200 ${
+                                      savedReelIds.includes(product.id) || favorites.includes(product.id)
+                                        ? "fill-amber-500 text-amber-500"
+                                        : "text-slate-400 hover:text-amber-500"
+                                    }`}
+                                  />
+                                </button>
+                              </div>
                               {Boolean(product.freeShipping) && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+                                <span className="text-[10px] font-bold bg-transparent text-emerald-700 leading-tight">
                                   Envío Gratis
                                 </span>
                               )}
@@ -1488,8 +1521,8 @@ export default function Tienda({
                   </div>
 
                   {/* Media Thumbnails list (including photos and videos) */}
-                  <div className="px-4 md:px-0 space-y-4">
-                    {productGalleryMedia.length > 1 && (
+                  {productGalleryMedia.length > 1 && (
+                    <div className="px-4 md:px-0 space-y-4">
                       <div
                         ref={thumbnailTrackRef}
                         className="flex space-x-2 overflow-x-auto py-1 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden scroll-smooth"
@@ -1506,7 +1539,7 @@ export default function Tienda({
                               type="button"
                               onClick={() => scrollToGalleryIndex(idx)}
                               className={`w-12 h-12 rounded-lg overflow-hidden border-2 shrink-0 relative cursor-pointer transition-all ${
-                                isSelected ? "border-amber-500 scale-105 shadow-xs" : "border-slate-200 opacity-70 hover:opacity-100"
+                                isSelected ? "border-slate-950 scale-105 shadow-xs" : "border-slate-200 opacity-70 hover:opacity-100"
                               }`}
                             >
                               {isVideo ? (
@@ -1531,24 +1564,8 @@ export default function Tienda({
                           );
                         })}
                       </div>
-                    )}
-                    
-                    {/* Security badges */}
-                    <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 grid grid-cols-3 gap-2 text-center text-[10px] text-slate-500 font-semibold">
-                      <div className="flex flex-col items-center">
-                        <ShieldCheck className="w-5 h-5 text-emerald-500 mb-1" />
-                        <span>Pago Seguro</span>
-                      </div>
-                      <div className="flex flex-col items-center border-x border-slate-200/60">
-                        <Truck className="w-5 h-5 text-amber-500 mb-1" />
-                        <span>Envío Rápido</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <Star className="w-5 h-5 text-amber-400 fill-amber-400/20 mb-1" />
-                        <span>Garantía Oficial</span>
-                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Product Specs info */}
@@ -1573,27 +1590,6 @@ export default function Tienda({
                     
                     {/* Rating Stars & Price Section */}
                     <div className="flex items-center justify-between gap-3 mt-3 flex-wrap bg-slate-50/80 p-3 rounded-xl border border-slate-100">
-                      <div className="flex items-center space-x-3 flex-wrap gap-y-1">
-                        <div className="flex items-center space-x-1.5">
-                          <div className="flex items-center text-amber-400">
-                            {[...Array(5)].map((_, i) => (
-                              <Star key={i} className="w-4 h-4 fill-amber-400" />
-                            ))}
-                          </div>
-                          <span className="text-xs font-bold text-slate-700">{selectedProduct.rating} (Verificado)</span>
-                        </div>
-
-                        {/* Views Badge */}
-                        <div
-                          className="flex items-center space-x-1 text-xs font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80"
-                          id="product-detail-views-badge"
-                          title="Visualizaciones en la página de detalle"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-sky-600" />
-                          <span>{selectedProduct.views ?? 0} {selectedProduct.views === 1 ? "visualización" : "visualizaciones"}</span>
-                        </div>
-                      </div>
-
                       <div className="flex items-center gap-2.5">
                         <span className="text-2xl sm:text-3xl font-black font-mono text-slate-950 tracking-tight" id="product-detail-price">
                           ${selectedProduct.price.toFixed(2)}
@@ -1674,7 +1670,7 @@ export default function Tienda({
                                     <div className="flex items-center space-x-1.5 text-[11px] font-bold">
                                       <span className="text-slate-600">{v.name}:</span>
                                       {selectedColorVal ? (
-                                        <span className="text-amber-600 font-extrabold capitalize bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80">
+                                        <span className="text-slate-900 font-extrabold capitalize bg-slate-100 px-2 py-0.5 rounded-md">
                                           {selectedColorVal}
                                         </span>
                                       ) : (
@@ -1728,7 +1724,7 @@ export default function Tienda({
                                               imgUrl ? "w-18" : "px-3.5 py-2"
                                             } ${
                                               isSelected 
-                                                ? "bg-slate-950 text-white border-slate-950 ring-2 ring-amber-500 shadow-md scale-[1.03]" 
+                                                ? "bg-slate-950 text-white border-slate-950 shadow-md scale-[1.03]" 
                                                 : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 shadow-2xs"
                                             }`}
                                           >
@@ -1743,7 +1739,7 @@ export default function Tienda({
                                                   />
                                                 </div>
                                                 <span className={`text-[10px] font-extrabold truncate max-w-full mt-1 px-0.5 leading-tight ${
-                                                  isSelected ? "text-amber-400" : "text-slate-700"
+                                                  isSelected ? "text-white" : "text-slate-700"
                                                 }`}>
                                                   {opt}
                                                 </span>
@@ -1790,7 +1786,7 @@ export default function Tienda({
                                           }}
                                           className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
                                             isSelected 
-                                              ? "bg-slate-950 text-white border-slate-950 shadow-sm ring-2 ring-amber-500/30" 
+                                              ? "bg-slate-950 text-white border-slate-950 shadow-sm" 
                                               : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
                                           }`}
                                         >
@@ -1808,7 +1804,7 @@ export default function Tienda({
                               <div className="flex items-center space-x-1.5 text-[11px] font-bold">
                                 <span className="text-slate-600">Color:</span>
                                 {(selectedVariants["Color"] || (uniqueSwatches.find(s => s.imageUrl === selectedProductMediaUrl)?.name)) ? (
-                                  <span className="text-amber-600 font-extrabold capitalize bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80">
+                                  <span className="text-slate-900 font-extrabold capitalize bg-slate-100 px-2 py-0.5 rounded-md">
                                     {selectedVariants["Color"] || (uniqueSwatches.find(s => s.imageUrl === selectedProductMediaUrl)?.name)}
                                   </span>
                                 ) : (
@@ -1836,7 +1832,7 @@ export default function Tienda({
                                       }}
                                       className={`group snap-start flex flex-col items-center justify-between p-1 overflow-hidden rounded-xl border transition-all cursor-pointer w-18 shrink-0 relative ${
                                         isSelected
-                                          ? "bg-slate-950 text-white border-slate-950 ring-2 ring-amber-500 shadow-md scale-[1.03]"
+                                          ? "bg-slate-950 text-white border-slate-950 shadow-md scale-[1.03]"
                                           : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 shadow-2xs"
                                       }`}
                                     >
@@ -1844,7 +1840,7 @@ export default function Tienda({
                                         <img src={swatch.imageUrl} alt={swatch.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" referrerPolicy="no-referrer" />
                                       </div>
                                       <span className={`text-[10px] font-extrabold truncate max-w-full mt-1 px-0.5 leading-tight ${
-                                        isSelected ? "text-amber-400" : "text-slate-700"
+                                        isSelected ? "text-white" : "text-slate-700"
                                       }`}>
                                         {swatch.name}
                                       </span>
@@ -1887,7 +1883,7 @@ export default function Tienda({
                                     }}
                                     className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center gap-1.5 ${
                                       isSelected
-                                        ? "bg-slate-950 text-white border-slate-950 shadow-sm ring-2 ring-amber-500/30"
+                                        ? "bg-slate-950 text-white border-slate-950 shadow-sm"
                                         : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
                                     }`}
                                   >
@@ -1979,7 +1975,7 @@ export default function Tienda({
               {/* Product Description Section - Positioned below the main product container */}
               {selectedProduct.description && (
                 <div 
-                  className="mt-6 md:mt-8 bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-7 shadow-2xs mx-0 md:mx-6"
+                  className="mt-6 md:mt-8 bg-white rounded-2xl border-0 p-5 sm:p-7 mx-0 md:mx-6"
                   id="product-detail-description-container"
                 >
                   <div className="flex items-center gap-2 pb-3 mb-4 border-b border-slate-100">
@@ -1993,6 +1989,24 @@ export default function Tienda({
                   </div>
                 </div>
               )}
+
+              {/* Security badges - Positioned below the product description at the footer */}
+              <div className="px-4 md:px-6 mt-4 pb-10">
+                <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 grid grid-cols-3 gap-2 text-center text-[10px] text-slate-500 font-semibold">
+                  <div className="flex flex-col items-center">
+                    <ShieldCheck className="w-5 h-5 text-emerald-500 mb-1" />
+                    <span>Pago Seguro</span>
+                  </div>
+                  <div className="flex flex-col items-center border-x border-slate-200/60">
+                    <Truck className="w-5 h-5 text-amber-500 mb-1" />
+                    <span>Envío Rápido</span>
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <Star className="w-5 h-5 text-amber-400 fill-amber-400/20 mb-1" />
+                    <span>Garantía Oficial</span>
+                  </div>
+                </div>
+              </div>
             </>
           )}
 
@@ -2075,7 +2089,7 @@ export default function Tienda({
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">País</label>
                         <div className="relative">
@@ -2100,20 +2114,9 @@ export default function Tienda({
                         <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Ciudad</label>
                         <input
                           type="text"
-                          placeholder="Ej: Madrid"
+                          placeholder="Ej: Santo Domingo"
                           value={city}
                           onChange={(e) => setCity(e.target.value)}
-                          className="w-full bg-slate-50/70 border border-slate-200 text-xs rounded-xl p-3 font-semibold text-slate-800 focus:outline-none focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Código Postal</label>
-                        <input
-                          type="text"
-                          placeholder="Ej: 28001"
-                          value={postalCode}
-                          onChange={(e) => setPostalCode(e.target.value)}
                           className="w-full bg-slate-50/70 border border-slate-200 text-xs rounded-xl p-3 font-semibold text-slate-800 focus:outline-none focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
                         />
                       </div>
@@ -2392,9 +2395,16 @@ export default function Tienda({
                     Seguir Comprando
                   </button>
                   <button
+                    type="button"
+                    id="thankyou-order-history-btn"
                     onClick={() => {
-                      onNavigateToHistory();
+                      if (completedOrder?.autoCreatedUser?.user && onLoginSuccess) {
+                        onLoginSuccess(completedOrder.autoCreatedUser.user);
+                      } else {
+                        onNavigateToHistory();
+                      }
                       setActiveStep('catalog');
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                     className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl text-xs transition-colors cursor-pointer"
                   >

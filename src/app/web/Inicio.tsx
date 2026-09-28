@@ -307,19 +307,6 @@ export default function Inicio({
     });
   };
 
-  const currentReel = displayedReels[activeReelIndex];
-  const viewedReelsRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (currentReel?.id && !viewedReelsRef.current.has(currentReel.id)) {
-      viewedReelsRef.current.add(currentReel.id);
-      apiFetch(`/api/reels/${currentReel.id}/view`, { method: "POST" })
-        .then((res) => res.json())
-        .then((data) => { if (data.success && data.views !== undefined) currentReel.views = data.views; })
-        .catch((err) => console.error("Error updating views:", err));
-    }
-  }, [currentReel?.id]);
-
   const [taggedProductsMap, setTaggedProductsMap] = useState<Record<string, Product>>({});
 
   useEffect(() => {
@@ -331,6 +318,21 @@ export default function Inicio({
         .catch(() => {});
     });
   }, [reels]);
+
+  const currentReel = displayedReels[activeReelIndex];
+  const currentReelProduct = currentReel?.productId ? taggedProductsMap[currentReel.productId] : null;
+  const currentReelMediaItems = currentReel ? resolveReelMediaItems(currentReel, currentReelProduct) : [];
+  const viewedReelsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (currentReel?.id && !viewedReelsRef.current.has(currentReel.id)) {
+      viewedReelsRef.current.add(currentReel.id);
+      apiFetch(`/api/reels/${currentReel.id}/view`, { method: "POST" })
+        .then((res) => res.json())
+        .then((data) => { if (data.success && data.views !== undefined) currentReel.views = data.views; })
+        .catch((err) => console.error("Error updating views:", err));
+    }
+  }, [currentReel?.id]);
 
   const [containerHeight, setContainerHeight] = useState<number>(0);
 
@@ -389,14 +391,14 @@ export default function Inicio({
           </button>
         </div>
         <div className="flex items-center space-x-2 pointer-events-auto">
-          {currentReel && ((currentReel.media?.length || currentReel.images?.length || 0) > 1) && (
+          {currentReel && currentReelMediaItems.length > 1 && (
             <div className="inline-flex items-center space-x-1 px-1.5 py-1 bg-transparent text-xs font-extrabold text-white drop-shadow-md" id={`carousel-counter-${currentReel.id}`}>
               <span className="text-amber-400 font-mono font-black">
                 {(carouselIndices[`${currentReel.id}_${activeReelIndex}`] ?? 0) + 1}
               </span>
               <span className="text-white/70 font-mono">/</span>
               <span className="text-white font-mono font-bold">
-                {currentReel.media?.length || currentReel.images?.length || 1}
+                {currentReelMediaItems.length}
               </span>
             </div>
           )}
@@ -415,65 +417,46 @@ export default function Inicio({
           const reelProduct = reel.productId ? taggedProductsMap[reel.productId] : null;
           const isLiked = Boolean(currentUser && ((currentUser.originalId && (reel.likedBy || []).includes(currentUser.originalId)) || (currentUser.id && currentUser.id !== "current_user" && (reel.likedBy || []).includes(currentUser.id)) || (currentUser.username && currentUser.username !== "invitado" && (reel.likedBy || []).includes(currentUser.username))));
 
-          const reelMediaItems: ReelMedia[] =
-            Array.isArray(reel.media) && reel.media.length > 0
-              ? reel.media.map((item) =>
-                  item.type === "video"
-                    ? { ...item, url: reel.hlsUrl || reel.videoUrl || item.url, hlsUrl: reel.hlsUrl || item.hlsUrl, thumbnailUrl: item.thumbnailUrl || reel.thumbnailUrl || undefined }
-                    : item
-                )
-              : reel.videoUrl && reel.videoUrl.trim() !== ""
-                ? [{ type: "video", url: reel.hlsUrl || reel.videoUrl, hlsUrl: reel.hlsUrl, thumbnailUrl: reel.thumbnailUrl || undefined }]
-            : (reel.images && reel.images.length > 0)
-            ? reel.images.map((img, i) => ({ type: "image", url: img, order: i }))
-            : [{ type: "image", url: reel.thumbnailUrl || "" }];
+          const reelMediaItems: ReelMedia[] = resolveReelMediaItems(reel, reelProduct);
 
           const currentMediaIdx = carouselIndices[`${reel.id}_${index}`] ?? 0;
           const currentMedia = reelMediaItems[currentMediaIdx] || reelMediaItems[0];
           const isMediaVideo = currentMedia?.type === "video" && !!currentMedia.url;
 
           return (
-            <div key={`${reel.id}_${index}`} className="w-full shrink-0 snap-start snap-always relative flex items-center justify-center bg-slate-950 overflow-hidden py-0 md:py-1 lg:py-1.5 px-0 md:px-3 lg:px-4" style={{ height: containerHeight > 0 ? `${containerHeight}px` : "100%", minHeight: containerHeight > 0 ? `${containerHeight}px` : "100%", maxHeight: containerHeight > 0 ? `${containerHeight}px` : "100%", scrollSnapAlign: "start", scrollSnapStop: "always" }}>
+            <div key={`${reel.id}_${index}`} className="w-full shrink-0 snap-start snap-always relative flex items-center justify-center bg-slate-950 overflow-hidden py-0 md:py-1 px-0 md:px-2 lg:px-4" style={{ height: containerHeight > 0 ? `${containerHeight}px` : "100%", minHeight: containerHeight > 0 ? `${containerHeight}px` : "100%", maxHeight: containerHeight > 0 ? `${containerHeight}px` : "100%", scrollSnapAlign: "start", scrollSnapStop: "always" }}>
               <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-                <div className="relative flex items-end justify-center md:gap-3.5 lg:gap-5 w-full md:w-auto h-full md:max-h-[920px] lg:max-h-[980px] xl:max-h-[1050px] 2xl:max-h-[1140px] my-auto">
-                  <div className="relative w-full h-full md:w-auto md:aspect-[9/16] md:h-full md:max-w-[520px] lg:max-w-[580px] xl:max-w-[640px] 2xl:max-w-[700px] md:rounded-2xl md:border md:border-white/15 md:shadow-[0_16px_50px_rgba(0,0,0,0.9)] overflow-hidden flex items-center justify-center bg-black select-none shrink-0" id={`reel-card-${reel.id}`}>
+                <div className="relative flex items-end justify-center md:gap-3.5 lg:gap-5 w-full md:w-auto h-full md:max-h-full my-auto">
+                  <div className="relative w-full h-full md:w-[540px] lg:w-[680px] xl:w-[780px] 2xl:w-[880px] md:max-w-[calc(100vw-340px)] md:h-full md:rounded-2xl md:border md:border-white/15 md:shadow-[0_16px_50px_rgba(0,0,0,0.9)] overflow-hidden flex items-center justify-center bg-black select-none shrink-0" id={`reel-card-${reel.id}`}>
                     <div className="hidden md:flex absolute top-3.5 right-3.5 z-30 items-center space-x-2"><button type="button" onClick={handleToggleMute} className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md hover:bg-black/70 active:scale-95 text-white flex items-center justify-center transition-all border border-white/20 cursor-pointer shadow-lg" title={isMuted ? "Activar sonido" : "Silenciar video"} id={`desktop-frame-mute-btn-${reel.id}`}>{isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}</button></div>
                     <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none z-10" />
 
-                    {/* Left/Right navigation for multi-media publication sequence */}
-                    {reelMediaItems.length > 1 && (
-                      <>
-                        {currentMediaIdx > 0 && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCarouselIndices((prev) => ({ ...prev, [`${reel.id}_${index}`]: currentMediaIdx - 1 }));
-                            }}
-                            className="absolute left-2.5 top-1/2 -translate-y-1/2 z-30 w-8 h-8 rounded-full bg-black/50 backdrop-blur-xs text-white flex items-center justify-center hover:bg-black/75 active:scale-90 transition-all cursor-pointer border border-white/20 shadow-lg"
-                            title="Elemento anterior"
-                          >
-                            <ChevronLeft className="w-5 h-5" />
-                          </button>
-                        )}
-                        {currentMediaIdx < reelMediaItems.length - 1 && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCarouselIndices((prev) => ({ ...prev, [`${reel.id}_${index}`]: currentMediaIdx + 1 }));
-                            }}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 z-30 w-8 h-8 rounded-full bg-black/50 backdrop-blur-xs text-white flex items-center justify-center hover:bg-black/75 active:scale-90 transition-all cursor-pointer border border-white/20 shadow-lg"
-                            title="Elemento siguiente"
-                          >
-                            <ChevronRight className="w-5 h-5" />
-                          </button>
-                        )}
-                      </>
-                    )}
-
-                    {/* Media element: Video or Image */}
-                    {isMediaVideo ? (
+                    {/* Media element: Carousel (horizontal scroll) or Single Video/Image */}
+                    {reelMediaItems.length > 1 ? (
+                      <ReelCarousel
+                        reel={reel}
+                        reelIndex={index}
+                        mediaItems={reelMediaItems}
+                        activeSlideIndex={currentMediaIdx}
+                        isCurrentReel={isCurrent}
+                        shouldPreload={isCurrent || index === activeReelIndex + 1}
+                        isPlaying={isPlaying}
+                        isMuted={isMuted}
+                        mediaAspectRatio={mediaAspectRatios[reel.id]}
+                        onIndexChange={(newIdx) =>
+                          setCarouselIndices((prev) =>
+                            prev[`${reel.id}_${index}`] === newIdx
+                              ? prev
+                              : { ...prev, [`${reel.id}_${index}`]: newIdx }
+                          )
+                        }
+                        onTogglePlay={() => setIsPlaying((prev) => !prev)}
+                        onVideoClick={handleVideoClick}
+                        onDoubleTap={handleDoubleTap}
+                        onAspectRatioDetected={handleAspectRatioDetected}
+                        onRegisterRef={handleRegisterRef}
+                      />
+                    ) : isMediaVideo ? (
                       <div className="w-full h-full relative flex items-center justify-center bg-slate-950 overflow-hidden">
                         {reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") && !reel.thumbnailUrl.includes("1618005182384") && (
                           <img
@@ -565,9 +548,9 @@ export default function Inicio({
                     <AnimatePresence>{likedAnim === reel.id && <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: [1, 1.3, 1], opacity: [0, 1, 0] }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }} className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-30"><Heart className="w-24 h-24 text-rose-500 fill-rose-500 drop-shadow-lg" /></motion.div>}</AnimatePresence>
                     {!isPlaying && isCurrent && isMediaVideo && <div className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-10 bg-black/20 rounded-full w-16 h-16 bg-opacity-40"><Play className="w-8 h-8 text-white fill-white translate-x-0.5" /></div>}
 
-                    <div className="absolute left-4 sm:left-6 bottom-4 sm:bottom-6 right-20 sm:right-24 md:right-6 lg:right-8 z-20 flex flex-col space-y-3 max-w-xl">
+                    <div className="absolute left-4 sm:left-6 bottom-[26px] sm:bottom-6 right-20 sm:right-24 md:right-6 lg:right-8 z-20 flex flex-col space-y-3 max-w-xl">
                       <div className="text-white bg-transparent p-3 rounded-xl drop-shadow-md" style={{ marginLeft: "-15px", marginBottom: "-10px" }}><h3 className="font-display font-bold text-base sm:text-lg tracking-wide flex items-center space-x-2.5"><span className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm" onClick={() => { const target = (reel.creatorUsername && reel.creatorUsername !== "invitado") ? reel.creatorUsername : (reel.creatorId && reel.creatorId !== "current_user" ? reel.creatorId : (reel.creatorName || "current_user")); onCreatorClick(target); }}>@{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}</span>{(() => { const isSelf = currentUser.id === reel.creatorId || reel.creatorId === "current_user" || (currentUser.originalId && currentUser.originalId === reel.creatorId) || (currentUser.username && reel.creatorUsername && currentUser.username.toLowerCase() === reel.creatorUsername.toLowerCase()); if (isSelf) return null; const targetId = reel.creatorId || reel.creatorUsername; const isFollowing = Boolean(currentUser.followingUserIds?.some((id) => id === reel.creatorId || id === reel.creatorUsername || (reel.creatorUsername && id.toLowerCase() === reel.creatorUsername.toLowerCase()) || (reel.creatorId && id.toLowerCase() === reel.creatorId.toLowerCase()))); return <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (currentUser.username === "invitado" || currentUser.isGuest) onGuestInteraction("seguir a creadores"); else if (onToggleFollowUser) onToggleFollowUser(targetId); }} id={`follow-creator-btn-${reel.id}`} className={`text-xs font-bold px-3 py-1 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-sm ${isFollowing ? "text-white/80 border-white/60 hover:text-rose-300 hover:border-rose-400 hover:bg-rose-500/10" : "text-white border-white hover:bg-white/15 active:scale-95 font-extrabold"}`}>{isFollowing ? "Siguiendo" : "+ Seguir"}</button>; })()}</h3><p className="text-sm sm:text-base text-white/95 font-medium mt-1.5 line-clamp-3 leading-relaxed drop-shadow-sm">{reel.description || ""}</p></div>
-                      {reelProduct && <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} onClick={() => onProductClick(reelProduct)} className="bg-black/10 backdrop-blur-md border border-white/15 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/20 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg overflow-hidden" id={`tagged-product-${reel.id}`} style={{ marginLeft: "-4px", width: "285.606px", height: "68.3438px" }}><div className="w-20 shrink-0 h-full relative overflow-hidden bg-black/10 border-r border-white/10">{reelProduct.imageUrl ? <img src={reelProduct.imageUrl} alt={reelProduct.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-800 text-amber-400"><ShoppingBag className="w-5 h-5" /></div>}</div><div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-black/10"><span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center"><ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado</span><h4 className="text-xs font-bold truncate text-slate-100">{reelProduct.name}</h4><div className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-400 font-mono">${reelProduct.price.toFixed(2)}</span><span className="text-[9px] text-amber-400 font-semibold">Ver detalles →</span></div></div></motion.div>}
+                      {reelProduct && <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} onClick={() => onProductClick(reelProduct)} className="bg-black/45 border border-white/20 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/55 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg overflow-hidden mb-0.5 sm:mb-0" id={`tagged-product-${reel.id}`} style={{ marginLeft: "-4px", width: "285.606px", height: "68.3438px" }}><div className="w-20 shrink-0 h-full relative overflow-hidden bg-transparent border-r border-white/15">{reelProduct.imageUrl ? <img src={reelProduct.imageUrl} alt={reelProduct.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-800/60 text-amber-400"><ShoppingBag className="w-5 h-5" /></div>}</div><div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-transparent"><span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center"><ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado</span><h4 className="text-xs font-bold truncate text-slate-100">{reelProduct.name}</h4><div className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-400 font-mono">${reelProduct.price.toFixed(2)}</span><span className="text-[9px] text-amber-400 font-semibold">Ver detalles →</span></div></div></motion.div>}
                     </div>
 
                     {isCurrent && isMediaVideo && <ReelProgressBar video={activeVideoElement || videoRefs.current[index]} isActive={isCurrent} />}
@@ -750,26 +733,572 @@ export default function Inicio({
   );
 }
 
-function ReelCarousel({ images, onDoubleClick, onIndexChange }: { images: string[]; onDoubleClick: () => void; onIndexChange?: (index: number) => void; }) {
+function resolveReelMediaItems(reel: Reel, reelProduct?: Product | null): ReelMedia[] {
+  const isVideoUrl = (u: string) =>
+    /\.(m3u8|mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts)($|\?)/i.test(u) ||
+    u.includes("/videos/") ||
+    u.includes("/hls/");
+
+  const items: ReelMedia[] = [];
+  const seen = new Set<string>();
+
+  const normalizeKey = (u: string) =>
+    u
+      .trim()
+      .replace(/^https?:\/\/[^/]+/i, "")
+      .replace(/\?.*$/, "");
+
+  const addItem = (candidate: ReelMedia, aliases: string[] = []) => {
+    const rawUrl = (candidate.url || "").trim();
+    if (!rawUrl || rawUrl.includes("1618005182384")) return;
+    const key = normalizeKey(rawUrl);
+    if (!key || seen.has(key) || seen.has(rawUrl)) return;
+    seen.add(key);
+    seen.add(rawUrl);
+    for (const alias of aliases) {
+      if (alias && alias.trim()) {
+        seen.add(alias.trim());
+        seen.add(normalizeKey(alias));
+      }
+    }
+    items.push({ ...candidate, url: rawUrl });
+  };
+
+  // True product publication (not a normal video reel that merely tagged a product)
+  const isProdReel =
+    reel.type === "product" || Boolean(reel.id && reel.id.startsWith("reel_prod_"));
+
+  // 1. Existing reel.media items
+  if (Array.isArray(reel.media) && reel.media.length > 0) {
+    const videoEntriesCount = reel.media.filter((x) => x?.type === "video").length;
+    for (const m of reel.media) {
+      const mUrl = typeof m?.url === "string" ? m.url.trim() : "";
+      const type: "video" | "image" = m?.type === "video" || isVideoUrl(mUrl) ? "video" : "image";
+      const isPrimaryVideo =
+        type === "video" &&
+        (videoEntriesCount === 1 || !mUrl || mUrl === reel.videoUrl || mUrl === reel.hlsUrl);
+      const resolvedUrl =
+        type === "video"
+          ? isPrimaryVideo
+            ? reel.hlsUrl || reel.videoUrl || mUrl
+            : mUrl || reel.hlsUrl || reel.videoUrl || ""
+          : mUrl;
+      if (!resolvedUrl) continue;
+      const hlsCandidate =
+        m?.hlsUrl || (isPrimaryVideo ? reel.hlsUrl : undefined) || (resolvedUrl.includes(".m3u8") ? resolvedUrl : undefined);
+      const thumbCandidate = m?.thumbnailUrl || (isPrimaryVideo ? reel.thumbnailUrl : undefined);
+
+      addItem(
+        {
+          type,
+          url: resolvedUrl,
+          hlsUrl: hlsCandidate,
+          thumbnailUrl: thumbCandidate || undefined,
+        },
+        isPrimaryVideo ? [reel.videoUrl || "", reel.hlsUrl || "", mUrl] : [mUrl]
+      );
+    }
+  }
+
+  // 2. Top-level reel.videoUrl / reel.hlsUrl if not yet added
+  if ((reel.videoUrl && reel.videoUrl.trim() !== "") || (reel.hlsUrl && reel.hlsUrl.trim() !== "")) {
+    const primaryVideoUrl = (reel.hlsUrl || reel.videoUrl || "").trim();
+    const rawVid = (reel.videoUrl || "").trim();
+    if (
+      primaryVideoUrl &&
+      !seen.has(normalizeKey(primaryVideoUrl)) &&
+      (!rawVid || !seen.has(normalizeKey(rawVid)))
+    ) {
+      addItem(
+        {
+          type: "video",
+          url: primaryVideoUrl,
+          hlsUrl: reel.hlsUrl || (primaryVideoUrl.includes(".m3u8") ? primaryVideoUrl : undefined),
+          thumbnailUrl: reel.thumbnailUrl || undefined,
+        },
+        [rawVid, reel.hlsUrl || ""]
+      );
+    }
+  }
+
+  // 3. If product reel, also check product's own videos
+  if (isProdReel && reelProduct && Array.isArray(reelProduct.videos)) {
+    for (const v of reelProduct.videos) {
+      if (v && typeof v === "string" && v.trim() !== "") {
+        const cleanV = v.trim();
+        addItem({
+          type: "video",
+          url: cleanV,
+          hlsUrl: cleanV.includes(".m3u8") ? cleanV : undefined,
+          thumbnailUrl: reelProduct.imageUrl || reel.thumbnailUrl || undefined,
+        });
+      }
+    }
+  }
+
+  // 4. Include reel.images when this is a carousel, a product reel, or when no video was found
+  const shouldIncludeReelImages =
+    items.length === 0 ||
+    isProdReel ||
+    reel.type === "carousel" ||
+    (Array.isArray(reel.images) && reel.images.length > 1);
+
+  if (shouldIncludeReelImages && Array.isArray(reel.images) && reel.images.length > 0) {
+    for (const img of reel.images) {
+      if (img && typeof img === "string" && img.trim() !== "") {
+        const cleanImg = img.trim();
+        if (items.length > 0 && reel.type === "video" && cleanImg === reel.thumbnailUrl) continue;
+        const type: "video" | "image" = isVideoUrl(cleanImg) ? "video" : "image";
+        addItem({
+          type,
+          url: cleanImg,
+          hlsUrl: type === "video" && cleanImg.includes(".m3u8") ? cleanImg : undefined,
+        });
+      }
+    }
+  }
+
+  // 5. If product reel, also include product's images / imageUrl so product video + image always forms a carousel
+  if (isProdReel && reelProduct) {
+    if (Array.isArray(reelProduct.images) && reelProduct.images.length > 0) {
+      for (const pImg of reelProduct.images) {
+        if (pImg && typeof pImg === "string" && pImg.trim() !== "") {
+          addItem({ type: "image", url: pImg.trim() });
+        }
+      }
+    }
+    if (reelProduct.imageUrl && typeof reelProduct.imageUrl === "string" && reelProduct.imageUrl.trim() !== "") {
+      addItem({ type: "image", url: reelProduct.imageUrl.trim() });
+    }
+  }
+
+  // 6. If product reel has a video AND a distinct non-poster image thumbnail, or if items is still empty
+  if (
+    reel.thumbnailUrl &&
+    typeof reel.thumbnailUrl === "string" &&
+    reel.thumbnailUrl.trim() !== "" &&
+    !reel.thumbnailUrl.endsWith(".m3u8")
+  ) {
+    const cleanThumb = reel.thumbnailUrl.trim();
+    if (items.length === 0 || (isProdReel && !cleanThumb.includes("/poster.jpg") && !cleanThumb.includes("thumb_"))) {
+      addItem({ type: "image", url: cleanThumb });
+    }
+  }
+
+  if (items.length === 0) {
+    return [{ type: "image", url: reel.thumbnailUrl || "" }];
+  }
+
+  return items;
+}
+
+interface ReelCarouselProps {
+  reel: Reel;
+  reelIndex: number;
+  mediaItems: ReelMedia[];
+  activeSlideIndex: number;
+  isCurrentReel: boolean;
+  shouldPreload: boolean;
+  isPlaying: boolean;
+  isMuted: boolean;
+  mediaAspectRatio?: 'vertical' | 'square' | 'horizontal' | 'horizontal_or_square';
+  onIndexChange: (index: number) => void;
+  onTogglePlay: () => void;
+  onVideoClick: (e: React.MouseEvent, index: number) => void;
+  onDoubleTap: (reelId: string) => void;
+  onAspectRatioDetected: (reelId: string, ratio: 'vertical' | 'square' | 'horizontal' | 'horizontal_or_square') => void;
+  onRegisterRef: (index: number, el: HTMLVideoElement | null) => void;
+}
+
+function ReelCarousel({
+  reel,
+  reelIndex,
+  mediaItems,
+  activeSlideIndex,
+  isCurrentReel,
+  shouldPreload,
+  isPlaying,
+  isMuted,
+  mediaAspectRatio,
+  onIndexChange,
+  onTogglePlay,
+  onVideoClick,
+  onDoubleTap,
+  onAspectRatioDetected,
+  onRegisterRef,
+}: ReelCarouselProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [slideAspectRatios, setSlideAspectRatios] = useState<{ [index: number]: boolean }>({});
+  const [slideAspectRatios, setSlideAspectRatios] = useState<{ [index: number]: 'vertical' | 'square' | 'horizontal' }>({});
+  const [isGrabbing, setIsGrabbing] = useState(false);
   const isDragging = useRef(false);
   const startX = useRef(0);
-  const scrollLeft = useRef(0);
+  const startY = useRef(0);
+  const startScrollLeft = useRef(0);
+  const dragWalk = useRef(0);
   const hasMoved = useRef(false);
-  const handleMouseDown = (e: React.MouseEvent) => { if (!containerRef.current) return; isDragging.current = true; hasMoved.current = false; startX.current = e.pageX - containerRef.current.offsetLeft; scrollLeft.current = containerRef.current.scrollLeft; };
-  const handleMouseMove = (e: React.MouseEvent) => { if (!isDragging.current || !containerRef.current) return; const x = e.pageX - containerRef.current.offsetLeft; const walk = x - startX.current; if (Math.abs(walk) > 5) hasMoved.current = true; containerRef.current.scrollLeft = scrollLeft.current - walk; };
-  const handleMouseUpOrLeave = () => { if (!isDragging.current || !containerRef.current) return; isDragging.current = false; const container = containerRef.current; const idx = Math.round(container.scrollLeft / container.clientWidth); container.scrollTo({ left: idx * container.clientWidth, behavior: "smooth" }); };
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => { const container = e.currentTarget; if (container.clientWidth > 0) { const idx = Math.round(container.scrollLeft / container.clientWidth); if (idx !== currentIndex && idx >= 0 && idx < images.length) { setCurrentIndex(idx); if (onIndexChange) onIndexChange(idx); } } };
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const touchStartScrollLeft = useRef(0);
+  const isProgrammaticScroll = useRef(false);
+  const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scrollToSlide = useCallback(
+    (targetIdx: number, behavior: ScrollBehavior = "smooth") => {
+      const clamped = Math.max(0, Math.min(mediaItems.length - 1, targetIdx));
+      onIndexChange(clamped);
+      const container = containerRef.current;
+      if (!container || container.clientWidth <= 0) return;
+      isProgrammaticScroll.current = true;
+      if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
+      container.scrollTo({
+        left: clamped * container.clientWidth,
+        behavior,
+      });
+      programmaticTimeoutRef.current = setTimeout(() => {
+        isProgrammaticScroll.current = false;
+      }, 380);
+    },
+    [mediaItems.length, onIndexChange]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
+    };
+  }, []);
+
+  // Keep horizontal scroll position aligned when container resizes
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const handleResize = () => {
+      if (container.clientWidth > 0 && !isDragging.current) {
+        container.scrollTo({ left: activeSlideIndex * container.clientWidth, behavior: "instant" as ScrollBehavior });
+      }
+    };
+    const observer = new ResizeObserver(handleResize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [activeSlideIndex]);
+
+  // Keyboard Left/Right navigation for active carousel reel on desktop
+  useEffect(() => {
+    if (!isCurrentReel || mediaItems.length <= 1) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      if (e.key === "ArrowLeft" && activeSlideIndex > 0) {
+        e.preventDefault();
+        scrollToSlide(activeSlideIndex - 1);
+      } else if (e.key === "ArrowRight" && activeSlideIndex < mediaItems.length - 1) {
+        e.preventDefault();
+        scrollToSlide(activeSlideIndex + 1);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isCurrentReel, activeSlideIndex, mediaItems.length, scrollToSlide]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!containerRef.current || e.button !== 0) return;
+    isDragging.current = true;
+    hasMoved.current = false;
+    dragWalk.current = 0;
+    startX.current = e.clientX;
+    startY.current = e.clientY;
+    startScrollLeft.current = containerRef.current.scrollLeft;
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging.current || !containerRef.current) return;
+    const walkX = e.clientX - startX.current;
+    const walkY = e.clientY - startY.current;
+    dragWalk.current = walkX;
+    if (Math.abs(walkX) > 6 && Math.abs(walkX) >= Math.abs(walkY)) {
+      if (!hasMoved.current) {
+        hasMoved.current = true;
+        setIsGrabbing(true);
+      }
+      containerRef.current.scrollLeft = startScrollLeft.current - walkX;
+    }
+  };
+
+  const finishMouseDrag = () => {
+    if (!isDragging.current || !containerRef.current) return;
+    isDragging.current = false;
+    setIsGrabbing(false);
+    if (!hasMoved.current) return;
+    const container = containerRef.current;
+    const width = container.clientWidth;
+    if (width <= 0) return;
+
+    const walk = dragWalk.current;
+    let targetIdx = Math.round(container.scrollLeft / width);
+    if (Math.abs(walk) > 40) {
+      targetIdx = walk < 0 ? activeSlideIndex + 1 : activeSlideIndex - 1;
+    }
+    scrollToSlide(targetIdx, "smooth");
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!containerRef.current || e.touches.length === 0) return;
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    touchStartScrollLeft.current = containerRef.current.scrollLeft;
+    hasMoved.current = false;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 0) return;
+    const dx = touchStartX.current - e.touches[0].clientX;
+    const dy = touchStartY.current - e.touches[0].clientY;
+    if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+      hasMoved.current = true;
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!containerRef.current || e.changedTouches.length === 0) return;
+    const dx = touchStartX.current - e.changedTouches[0].clientX;
+    const dy = touchStartY.current - e.changedTouches[0].clientY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 35) {
+      const targetIdx = dx > 0 ? activeSlideIndex + 1 : activeSlideIndex - 1;
+      scrollToSlide(targetIdx, "smooth");
+    }
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (isProgrammaticScroll.current || isDragging.current) return;
+    const container = e.currentTarget;
+    if (container.clientWidth > 0) {
+      const idx = Math.round(container.scrollLeft / container.clientWidth);
+      if (idx !== activeSlideIndex && idx >= 0 && idx < mediaItems.length) {
+        onIndexChange(idx);
+      }
+    }
+  };
+
+  const isProd = reel.type === "product" || Boolean(reel.productId) || reel.id?.startsWith("reel_prod_");
+
   return (
-    <div ref={containerRef} onScroll={handleScroll} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUpOrLeave} onMouseLeave={handleMouseUpOrLeave} onDoubleClick={() => { if (!hasMoved.current) onDoubleClick(); }} className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-none select-none bg-black cursor-grab active:cursor-grabbing touch-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-x pan-y" }}>
-      {images.filter((img) => Boolean(img && typeof img === "string" && img.trim().length > 0)).map((img, idx) => (
-        <div key={idx} className="w-full h-full shrink-0 snap-center flex items-center justify-center relative overflow-hidden bg-slate-950" style={{ touchAction: "pan-x pan-y" }}>
-          <img src={img} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-35 scale-125 pointer-events-none" referrerPolicy="no-referrer" />
-          <img src={img} alt={`Carousel ${idx + 1}`} draggable={false} onLoad={(e) => { const isVert = e.currentTarget.naturalHeight > e.currentTarget.naturalWidth * 1.05; setSlideAspectRatios((prev) => ({ ...prev, [idx]: isVert })); }} className={`w-full h-full pointer-events-none select-none block object-center relative z-10 ${slideAspectRatios[idx] !== false ? "object-cover md:object-contain" : "object-contain"}`} style={{ touchAction: "pan-x pan-y" }} referrerPolicy="no-referrer" />
-        </div>
-      ))}
+    <div className="relative w-full h-full overflow-hidden bg-slate-950">
+      {/* Left/Right navigation buttons synced with horizontal scroll (Desktop only) */}
+      {activeSlideIndex > 0 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            scrollToSlide(activeSlideIndex - 1);
+          }}
+          className="hidden md:flex absolute left-2.5 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-black/55 backdrop-blur-xs text-white items-center justify-center hover:bg-black/80 active:scale-90 transition-all cursor-pointer border border-white/20 shadow-lg"
+          title="Elemento anterior"
+          id={`carousel-prev-btn-${reel.id}`}
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+      )}
+      {activeSlideIndex < mediaItems.length - 1 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            scrollToSlide(activeSlideIndex + 1);
+          }}
+          className="hidden md:flex absolute right-2.5 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-black/55 backdrop-blur-xs text-white items-center justify-center hover:bg-black/80 active:scale-90 transition-all cursor-pointer border border-white/20 shadow-lg"
+          title="Elemento siguiente"
+          id={`carousel-next-btn-${reel.id}`}
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      )}
+
+      {/* Horizontal Scroll Container */}
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={finishMouseDrag}
+        onMouseLeave={finishMouseDrag}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onClick={() => {
+          if (!hasMoved.current) onTogglePlay();
+        }}
+        onDoubleClick={() => {
+          if (!hasMoved.current) onDoubleTap(reel.id);
+        }}
+        className={`w-full h-full flex overflow-x-auto no-scrollbar select-none bg-slate-950 touch-auto ${
+          isGrabbing ? "cursor-grabbing" : "snap-x snap-mandatory cursor-grab"
+        }`}
+        style={{
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+          scrollSnapType: isGrabbing ? "none" : "x mandatory",
+          WebkitOverflowScrolling: "touch",
+          touchAction: "pan-x pan-y",
+        }}
+        id={`carousel-scroll-${reel.id}`}
+      >
+        {mediaItems.map((item, slideIdx) => {
+          const isSlideVideo = item.type === "video" && !!item.url;
+          const isSlideActive = slideIdx === activeSlideIndex;
+          const slideAspect = slideAspectRatios[slideIdx] || mediaAspectRatio;
+          const isPrimaryReelVideo =
+            item.url === reel.videoUrl || item.url === reel.hlsUrl;
+          const resolvedSlideHls =
+            item.hlsUrl ||
+            (item.url.includes(".m3u8")
+              ? item.url
+              : isPrimaryReelVideo
+              ? reel.hlsUrl
+              : undefined);
+
+          return (
+            <div
+              key={`${reel.id}_slide_${slideIdx}`}
+              className="w-full h-full shrink-0 snap-center snap-always relative flex items-center justify-center overflow-hidden bg-slate-950"
+              style={{
+                scrollSnapAlign: "center",
+                scrollSnapStop: "always",
+                touchAction: "pan-x pan-y",
+              }}
+            >
+              {isSlideVideo ? (
+                <div
+                  className={`w-full h-full relative flex items-center justify-center bg-slate-950 overflow-hidden ${
+                    isGrabbing ? "pointer-events-none" : ""
+                  }`}
+                  style={{ touchAction: "pan-x pan-y" }}
+                >
+                  {(item.thumbnailUrl || reel.thumbnailUrl) &&
+                    !(item.thumbnailUrl || reel.thumbnailUrl || "").endsWith(".m3u8") &&
+                    !(item.thumbnailUrl || reel.thumbnailUrl || "").includes("1618005182384") && (
+                      <img
+                        src={getMediaUrl(item.thumbnailUrl || reel.thumbnailUrl)}
+                        alt=""
+                        aria-hidden="true"
+                        className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-35 scale-125 pointer-events-none"
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
+                  {isCurrentReel || (shouldPreload && slideIdx === 0) ? (
+                    <ReelVideoItem
+                      key={`${reel.id}_${reelIndex}_media_${slideIdx}`}
+                      reel={{
+                        ...reel,
+                        videoUrl: item.url,
+                        hlsUrl: resolvedSlideHls,
+                      }}
+                      index={reelIndex}
+                      isCurrent={isCurrentReel && isSlideActive}
+                      shouldPreload={(isCurrentReel && isSlideActive) || (shouldPreload && slideIdx === 0)}
+                      isPlaying={isPlaying}
+                      isMuted={isMuted}
+                      mediaAspectRatio={slideAspect}
+                      onVideoClick={(e, idx) => {
+                        if (hasMoved.current) {
+                          e.stopPropagation();
+                          return;
+                        }
+                        onVideoClick(e, idx);
+                      }}
+                      onDoubleTap={onDoubleTap}
+                      onAspectRatioDetected={onAspectRatioDetected}
+                      onRegisterRef={onRegisterRef}
+                    />
+                  ) : (
+                    <div className="w-full h-full relative flex items-center justify-center bg-slate-950 overflow-hidden">
+                      {(item.thumbnailUrl || reel.thumbnailUrl) &&
+                      !(item.thumbnailUrl || reel.thumbnailUrl || "").endsWith(".m3u8") &&
+                      !(item.thumbnailUrl || reel.thumbnailUrl || "").includes("1618005182384") ? (
+                        <img
+                          src={getMediaUrl(item.thumbnailUrl || reel.thumbnailUrl)}
+                          alt={reel.description || ""}
+                          draggable={false}
+                          className={`w-full h-full block relative z-10 select-none pointer-events-none object-center ${
+                            slideAspect === "vertical" ? "object-cover md:object-contain" : "object-contain"
+                          }`}
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-500">
+                          <Play className="w-12 h-12 text-white/20 mb-2 fill-white/10" />
+                          <span className="text-xs text-white/30 font-medium">Video</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-slate-950">
+                  {item.url && (
+                    <img
+                      src={getMediaUrl(item.url)}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-35 scale-125 pointer-events-none"
+                      referrerPolicy="no-referrer"
+                    />
+                  )}
+                  {item.url ? (
+                    <img
+                      src={getMediaUrl(item.url)}
+                      alt={`${reel.description || "Publicación"} (${slideIdx + 1}/${mediaItems.length})`}
+                      draggable={false}
+                      onLoad={(e) => {
+                        const img = e.currentTarget;
+                        const ratio = img.naturalWidth / img.naturalHeight;
+                        let detected: 'vertical' | 'square' | 'horizontal' = isProd ? 'square' : 'vertical';
+                        if (ratio > 1.15) detected = 'horizontal';
+                        else if (ratio >= 0.85 && ratio <= 1.15) detected = 'square';
+                        setSlideAspectRatios((prev) => ({ ...prev, [slideIdx]: detected }));
+                        if (slideIdx === 0) onAspectRatioDetected(reel.id, detected);
+                      }}
+                      className={`w-full h-full pointer-events-none select-none block object-center relative z-10 ${
+                        !isProd && slideAspect === "vertical"
+                          ? "object-cover md:object-contain"
+                          : "object-contain"
+                      }`}
+                      style={{ touchAction: "pan-x pan-y" }}
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-slate-950 text-slate-600 text-xs">
+                      <span>Publicación</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Pagination indicator dots */}
+      <div
+        className="absolute bottom-1.5 sm:bottom-2.5 left-1/2 -translate-x-1/2 z-30 flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-black/40 border border-white/10"
+        id={`carousel-dots-${reel.id}`}
+      >
+        {mediaItems.map((_, dotIdx) => (
+          <button
+            key={dotIdx}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              scrollToSlide(dotIdx);
+            }}
+            className={`h-1.5 rounded-full transition-all cursor-pointer ${
+              dotIdx === activeSlideIndex
+                ? "w-4 bg-amber-400 shadow-xs"
+                : "w-1.5 bg-white/50 hover:bg-white/80"
+            }`}
+            title={`Ir a imagen ${dotIdx + 1}`}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -970,7 +1499,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, shou
       muted={isMuted}
       preload="metadata"
       className={`w-full h-full block relative z-10 select-none cursor-pointer object-center ${mediaAspectRatio === 'vertical' ? "object-cover md:object-contain" : "object-contain"}`}
-      style={{ touchAction: "pan-y" }}
+      style={{ touchAction: "pan-x pan-y" }}
       onClick={(e) => onVideoClick(e, index)}
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleTap(reel.id); }}
       onLoadedMetadata={handleLoadedMetadata}

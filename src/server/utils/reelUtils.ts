@@ -7,40 +7,117 @@ import { Reel, ReelMedia } from "../../types";
  */
 export function buildReelMedia(reel: any): ReelMedia[] {
   const rawMedia = Array.isArray(reel.media) ? reel.media : [];
+  const isVideoUrl = (u: string) =>
+    /\.(m3u8|mp4|mov|m4v|webm|avi|mkv|3gp|flv|ts)($|\?)/i.test(u) ||
+    u.includes("/videos/") ||
+    u.includes("/hls/");
 
-  // media[] is canonical; reconcile video entries with current top-level URLs.
-  if (rawMedia.length > 0) {
-    return rawMedia
-      .map((m: any): ReelMedia | null => {
-        const type = m?.type === "video" ? "video" : "image";
-        const fallbackUrl = type === "video" ? reel.hlsUrl || reel.videoUrl || m?.url : m?.url;
-        const url = typeof fallbackUrl === "string" ? fallbackUrl.trim() : "";
-        if (!url) return null;
-        const candidateHls = reel.hlsUrl || m?.hlsUrl;
-        const candidateThumb = m?.thumbnailUrl || reel.thumbnailUrl;
-        return {
-          type,
-          url,
-          hlsUrl: type === "video" && typeof candidateHls === "string" && candidateHls.includes(".m3u8") ? candidateHls.trim() : undefined,
-          thumbnailUrl: typeof candidateThumb === "string" && candidateThumb.trim() ? candidateThumb.trim() : undefined,
-        };
-      })
-      .filter((m): m is ReelMedia => m !== null);
-  }
+  const result: ReelMedia[] = [];
+  const seenUrls = new Set<string>();
 
-  const mediaList: ReelMedia[] = [];
-  if (reel.videoUrl && typeof reel.videoUrl === "string" && reel.videoUrl.trim() !== "") {
-    const hlsUrl = typeof reel.hlsUrl === "string" && reel.hlsUrl.includes(".m3u8") ? reel.hlsUrl.trim() : undefined;
-    mediaList.push({ type: "video", url: hlsUrl || reel.videoUrl.trim(), hlsUrl, thumbnailUrl: reel.thumbnailUrl || undefined });
-  }
-  if (Array.isArray(reel.images) && reel.images.length > 0) {
-    for (const img of reel.images) {
-      if (img && typeof img === "string" && img.trim() !== "") mediaList.push({ type: "image", url: img.trim() });
+  const addMediaItem = (item: ReelMedia, aliases: string[] = []) => {
+    const cleanUrl = (item.url || "").trim();
+    if (!cleanUrl || cleanUrl.includes("1618005182384")) return;
+    if (seenUrls.has(cleanUrl)) return;
+    seenUrls.add(cleanUrl);
+    for (const alias of aliases) {
+      if (alias && alias.trim()) seenUrls.add(alias.trim());
     }
-  } else if (!reel.videoUrl && reel.thumbnailUrl && typeof reel.thumbnailUrl === "string" && reel.thumbnailUrl.trim() !== "") {
-    mediaList.push({ type: "image", url: reel.thumbnailUrl.trim() });
+    result.push({ ...item, url: cleanUrl });
+  };
+
+  // 1. Process existing media[] entries while preserving each video's own URL
+  if (rawMedia.length > 0) {
+    for (const m of rawMedia) {
+      const rawUrl = typeof m?.url === "string" ? m.url.trim() : "";
+      const type: "video" | "image" =
+        m?.type === "video" || isVideoUrl(rawUrl) ? "video" : "image";
+      const fallbackUrl =
+        type === "video"
+          ? reel.hlsUrl || reel.videoUrl || rawUrl || ""
+          : rawUrl;
+      const url = typeof fallbackUrl === "string" ? fallbackUrl.trim() : "";
+      if (!url) continue;
+
+      const isPrimaryVideo =
+        type === "video" &&
+        (!rawUrl || rawUrl === reel.videoUrl || rawUrl === reel.hlsUrl || rawMedia.filter((x: any) => x?.type === "video").length === 1);
+      const resolvedUrl = isPrimaryVideo ? (reel.hlsUrl || reel.videoUrl || rawUrl) : (rawUrl || url);
+      const candidateHls =
+        m?.hlsUrl || (isPrimaryVideo ? reel.hlsUrl : undefined) || (resolvedUrl.includes(".m3u8") ? resolvedUrl : undefined);
+      const candidateThumb = m?.thumbnailUrl || (isPrimaryVideo ? reel.thumbnailUrl : undefined);
+
+      addMediaItem(
+        {
+          type,
+          url: resolvedUrl,
+          hlsUrl:
+            type === "video" && typeof candidateHls === "string" && candidateHls.includes(".m3u8")
+              ? candidateHls.trim()
+              : undefined,
+          thumbnailUrl:
+            typeof candidateThumb === "string" && candidateThumb.trim()
+              ? candidateThumb.trim()
+              : undefined,
+        },
+        isPrimaryVideo ? [reel.videoUrl || "", reel.hlsUrl || "", rawUrl] : [rawUrl]
+      );
+    }
   }
-  return mediaList;
+
+  // 2. Ensure top-level videoUrl/hlsUrl is included if not already present
+  if ((reel.videoUrl && typeof reel.videoUrl === "string" && reel.videoUrl.trim() !== "") || (reel.hlsUrl && typeof reel.hlsUrl === "string" && reel.hlsUrl.trim() !== "")) {
+    const vUrl = typeof reel.videoUrl === "string" ? reel.videoUrl.trim() : "";
+    const hlsUrl =
+      typeof reel.hlsUrl === "string" && reel.hlsUrl.includes(".m3u8")
+        ? reel.hlsUrl.trim()
+        : undefined;
+    const primaryUrl = hlsUrl || vUrl;
+    if (primaryUrl && !seenUrls.has(primaryUrl) && (!vUrl || !seenUrls.has(vUrl))) {
+      addMediaItem(
+        {
+          type: "video",
+          url: primaryUrl,
+          hlsUrl,
+          thumbnailUrl: reel.thumbnailUrl || undefined,
+        },
+        [vUrl, hlsUrl || ""]
+      );
+    }
+  }
+
+  // 3. Ensure all entries in reel.images[] are included when the reel is a carousel/product or has no video
+  const shouldIncludeImages =
+    result.length === 0 ||
+    reel.type === "carousel" ||
+    reel.type === "product" ||
+    String(reel.id || "").startsWith("reel_prod_") ||
+    (Array.isArray(reel.images) && reel.images.length > 1);
+
+  if (shouldIncludeImages && Array.isArray(reel.images) && reel.images.length > 0) {
+    for (const img of reel.images) {
+      if (img && typeof img === "string" && img.trim() !== "") {
+        const clean = img.trim();
+        // Do not add the video's auto-generated poster/thumbnail as a separate carousel image slide on single-video reels
+        if (result.length > 0 && reel.type === "video" && clean === reel.thumbnailUrl) continue;
+        const itemType: "video" | "image" = isVideoUrl(clean) ? "video" : "image";
+        addMediaItem({
+          type: itemType,
+          url: clean,
+          hlsUrl: itemType === "video" && clean.includes(".m3u8") ? clean : undefined,
+        });
+      }
+    }
+  } else if (
+    result.length === 0 &&
+    reel.thumbnailUrl &&
+    typeof reel.thumbnailUrl === "string" &&
+    reel.thumbnailUrl.trim() !== ""
+  ) {
+    addMediaItem({ type: "image", url: reel.thumbnailUrl.trim() });
+  }
+
+  return result;
 }
 
 /**
@@ -76,13 +153,14 @@ export function formatReelDTO(r: any, userMap?: Map<string, any>): Reel {
 
   const media = buildReelMedia({ ...r, videoUrl, hlsUrl, thumbnailUrl, images });
 
-  const normalizedMedia: ReelMedia[] = media.map((item) => {
+  const normalizedMedia: ReelMedia[] = media.map((item, idx) => {
     if (item.type !== "video") return item;
+    const isPrimary = idx === 0 && (!item.url || item.url === videoUrl || item.url === hlsUrl);
     return {
       ...item,
-      url: hlsUrl || videoUrl || item.url,
-      hlsUrl: hlsUrl || item.hlsUrl,
-      thumbnailUrl: item.thumbnailUrl || thumbnailUrl || undefined,
+      url: item.url || hlsUrl || videoUrl,
+      hlsUrl: item.hlsUrl || (isPrimary ? hlsUrl : undefined),
+      thumbnailUrl: item.thumbnailUrl || (isPrimary ? thumbnailUrl : undefined) || undefined,
     };
   });
 

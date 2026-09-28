@@ -353,21 +353,38 @@ export function routeToPath(route: AppRoute): string {
  * Returns the profile URL path `/perfil/:username` for a registered user or username,
  * or `/perfil` if the user is a guest / not registered.
  */
-export function getProfilePath(usernameOrUser?: string | { username?: string; isGuest?: boolean } | null): string {
+export function getProfilePath(usernameOrUser?: string | { username?: string; name?: string; isGuest?: boolean } | null): string {
   if (!usernameOrUser) return '/perfil';
   if (typeof usernameOrUser === 'string') {
-    const clean = usernameOrUser.trim().replace(/^@/, '');
+    let clean = usernameOrUser.trim().replace(/^@/, '');
     if (!clean || clean.toLowerCase() === 'invitado' || clean.toLowerCase() === 'guest' || clean.toLowerCase() === 'current_user') {
       return '/perfil';
     }
-    return `/perfil/${encodeURIComponent(clean)}`;
+    if (clean.includes('@')) {
+      clean = clean.split('@')[0];
+    }
+    clean = clean
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, '');
+    return clean ? `/perfil/${encodeURIComponent(clean)}` : '/perfil';
   }
   if (usernameOrUser.isGuest) return '/perfil';
-  const clean = (usernameOrUser.username || '').trim().replace(/^@/, '');
+  let clean = (usernameOrUser.username || '').trim().replace(/^@/, '');
   if (!clean || clean.toLowerCase() === 'invitado' || clean.toLowerCase() === 'guest' || clean.toLowerCase() === 'current_user') {
     return '/perfil';
   }
-  return `/perfil/${encodeURIComponent(clean)}`;
+  if (clean.includes('@')) {
+    const fromName = (usernameOrUser.name || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, '')
+      .replace(/[^a-z0-9._-]/g, '');
+    clean = fromName && fromName !== 'invitado' ? fromName : clean.split('@')[0];
+  }
+  return clean ? `/perfil/${encodeURIComponent(clean)}` : '/perfil';
 }
 
 /**

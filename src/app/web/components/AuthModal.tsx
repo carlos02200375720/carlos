@@ -64,7 +64,7 @@ export function AuthModal({
       return;
     }
 
-    const cleanUsername = regUsername.trim().toLowerCase().replace(/\s+/g, "").replace("@", "");
+    const cleanUsername = regUsername.trim().toLowerCase().replace(/\s+/g, "").replace(/^@/, "");
     if (cleanUsername === "invitado" || cleanUsername === "current_user" || cleanUsername === "usuario_actual") {
       setRegError("Nombre de usuario reservado. Elige otro.");
       registeringRef.current = false;
@@ -119,7 +119,7 @@ export function AuthModal({
       return;
     }
 
-    const cleanInput = loginInput.trim().toLowerCase().replace("@", "");
+    const cleanInput = loginInput.trim().toLowerCase().replace(/^@/, "");
     setIsLoggingIn(true);
 
     try {

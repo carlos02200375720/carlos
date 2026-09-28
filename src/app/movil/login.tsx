@@ -110,7 +110,7 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
       return;
     }
 
-    const cleanUsername = regUsername.trim().toLowerCase().replace(/\s+/g, "").replace("@", "");
+    const cleanUsername = regUsername.trim().toLowerCase().replace(/\s+/g, "").replace(/^@/, "");
     if (cleanUsername === "invitado" || cleanUsername === "current_user" || cleanUsername === "usuario_actual") {
       setRegisterError("Nombre de usuario reservado. Elige otro.");
       return;

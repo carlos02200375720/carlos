@@ -133,6 +133,9 @@ export interface PerfilProps {
   currentUser: User;
   selectedCreatorId: string | null; // Null means we view our own private admin profile
   users: User[];
+  products?: Product[];
+  savedReelIds?: string[];
+  onToggleSave?: (id: string) => void;
   onBackToSelf: () => void;
   onOpenDirectChat: (user: User) => void;
   onSelectProduct: (product: Product) => void;
@@ -143,6 +146,8 @@ export interface PerfilProps {
   onPublishSuccess?: () => void;
   onLogout?: () => void;
   socket?: WebSocket | null;
+  initialSubTab?: "publish" | "publications" | "products" | "saved" | "orders" | "performance" | "edit";
+  onClearInitialSubTab?: () => void;
 }
 
 export type ProfileViewProps = PerfilProps;
@@ -151,6 +156,9 @@ export default function Perfil({
   currentUser,
   selectedCreatorId,
   users,
+  products = [],
+  savedReelIds = [],
+  onToggleSave,
   onBackToSelf,
   onOpenDirectChat,
   onSelectProduct,
@@ -161,14 +169,18 @@ export default function Perfil({
   onPublishSuccess,
   onLogout,
   socket,
+  initialSubTab,
+  onClearInitialSubTab,
 }: PerfilProps) {
   // Determine if we are looking at public creator profile or our private dashboard
+  const decodedCreatorId = selectedCreatorId ? decodeURIComponent(selectedCreatorId).replace(/^@/, "") : null;
   const isSelf =
-    selectedCreatorId === null ||
-    selectedCreatorId === currentUser.id ||
-    (!!currentUser.originalId && selectedCreatorId === currentUser.originalId) ||
-    (!!currentUser.username && selectedCreatorId?.toLowerCase() === currentUser.username?.toLowerCase()) ||
-    (selectedCreatorId === "current_user" && currentUser.username !== "invitado" && !currentUser.isGuest);
+    decodedCreatorId === null ||
+    decodedCreatorId === currentUser.id ||
+    (!!currentUser.originalId && decodedCreatorId === currentUser.originalId) ||
+    (!!currentUser.username && decodedCreatorId?.toLowerCase() === currentUser.username?.toLowerCase().replace(/^@/, "")) ||
+    (!!currentUser.email && decodedCreatorId?.toLowerCase() === currentUser.email?.toLowerCase()) ||
+    (decodedCreatorId === "current_user" && currentUser.username !== "invitado" && !currentUser.isGuest);
   const activeUserId = isSelf
     ? (currentUser.originalId || currentUser.username || currentUser.id)
     : selectedCreatorId;
@@ -219,14 +231,38 @@ export default function Perfil({
   const [trackingSuccessMessage, setTrackingSuccessMessage] = useState<string | null>(null);
   const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
   const [savedReels, setSavedReels] = useState<Reel[]>([]);
+  const [savedProductsFromApi, setSavedProductsFromApi] = useState<Product[]>([]);
+  const effectiveSavedIds = React.useMemo(() => {
+    const set = new Set<string>([...(savedReelIds || []), ...(currentUser?.savedReelIds || [])]);
+    return Array.from(set);
+  }, [savedReelIds, currentUser?.savedReelIds]);
+  const savedProducts = React.useMemo(() => {
+    const combined = [
+      ...savedProductsFromApi,
+      ...(products || []).filter((p) => effectiveSavedIds.includes(p.id)),
+    ];
+    return deduplicateById(combined).filter((p) => effectiveSavedIds.includes(p.id) || savedProductsFromApi.some((sp) => sp.id === p.id && (!savedReelIds || savedReelIds.length === 0 || savedReelIds.includes(p.id))));
+  }, [savedProductsFromApi, products, effectiveSavedIds, savedReelIds]);
   const [loading, setLoading] = useState(true);
   const isCurrentSuperAdmin = isSuperAdmin(currentUser);
-  const [activeSubTab, setActiveSubTab] = useState<"publish" | "publications" | "products" | "saved" | "orders" | "performance" | "edit">((currentUser.canSell === true || isCurrentSuperAdmin) ? "publish" : "saved");
+  const [activeSubTab, setActiveSubTab] = useState<"publish" | "publications" | "products" | "saved" | "orders" | "performance" | "edit">(
+    () => initialSubTab || ((currentUser.canSell === true || isCurrentSuperAdmin) ? "publish" : "saved")
+  );
   const canSell = isSelf && (currentUser.canSell === true || isCurrentSuperAdmin);
   const [isPublishOpen, setIsPublishOpen] = useState(false);
   const [publicTab, setPublicTab] = useState<"publications" | "products" | "policies">("publications");
   // Dedicated user publications feed state
   const [activeFeedReelId, setActiveFeedReelId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setActiveSubTab(initialSubTab);
+      if (initialSubTab === "orders") {
+        setOrderFilterTab("purchases");
+      }
+      onClearInitialSubTab?.();
+    }
+  }, [initialSubTab, onClearInitialSubTab]);
 
   useEffect(() => {
     if (isSelf && !canSell && (activeSubTab === "publish" || activeSubTab === "publications" || activeSubTab === "products" || activeSubTab === "performance")) {
@@ -361,7 +397,7 @@ export default function Perfil({
     setRegisterSuccess(false);
 
     try {
-      const cleanUsername = String(regUsername).trim().toLowerCase().replace(/\s+/g, "").replace("@", "");
+      const cleanUsername = String(regUsername).trim().toLowerCase().replace(/\s+/g, "").replace(/^@/, "");
       const response = await apiFetch("/api/users/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -520,6 +556,9 @@ export default function Perfil({
             setUserSales(deduplicateById(data.sales || []));
           }
           setSavedReels(deduplicateById(data.savedReels || []));
+          if (data.savedProducts) {
+            setSavedProductsFromApi(deduplicateById(data.savedProducts || []));
+          }
         } else if (isSelf) {
           setProfileUser(currentUser);
         } else {
@@ -794,7 +833,8 @@ export default function Perfil({
   const fetchOrders = async () => {
     try {
       setOrdersLoading(true);
-      const res = await apiFetch(`/api/orders?userId=${encodeURIComponent(currentUser.id)}`);
+      const targetOrderUserId = currentUser.originalId || currentUser.username || currentUser.id;
+      const res = await apiFetch(`/api/orders?userId=${encodeURIComponent(targetOrderUserId)}`);
       const data = await res.json();
       if (data && !data.error) {
         if (data.purchases) {
@@ -812,6 +852,12 @@ export default function Perfil({
       setOrdersLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isSelf && activeSubTab === "orders" && currentUser && !currentUser.isGuest && currentUser.username !== "invitado") {
+      fetchOrders();
+    }
+  }, [isSelf, activeSubTab, currentUser.id, currentUser.originalId, currentUser.username]);
 
   // Listen to WebSocket events for real-time order tracking updates
   useEffect(() => {
@@ -1033,12 +1079,7 @@ export default function Perfil({
             <div className="pb-1">
               <h2 className="font-display font-extrabold text-lg sm:text-xl text-slate-950 flex items-center space-x-2 flex-wrap">
                 <span className="inline-block" style={{ paddingLeft: '18px' }}>{profileUser.name}</span>
-                {isSuperAdmin(profileUser) ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 border border-amber-500/30 text-[11px] font-black tracking-wide" title="Superadministrador de la plataforma">
-                    <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                    <span>SUPERADMIN</span>
-                  </span>
-                ) : !isSelf && (
+                {(isSuperAdmin(profileUser) || !isSelf) && (
                   <BadgeCheck className="w-5 h-5 fill-sky-500 text-white shrink-0" title="Verificado" />
                 )}
               </h2>
@@ -2153,49 +2194,120 @@ export default function Perfil({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.15 }}
+                    className="space-y-6"
                   >
-                    <h3 className="font-display font-extrabold text-sm text-slate-900 mb-4 flex items-center space-x-2">
-                      <Bookmark className="w-4 h-4 text-amber-500 fill-amber-500/10" />
-                      <span>Publicaciones Guardadas ({savedReels.length})</span>
-                    </h3>
+                    {/* Saved Products Section */}
+                    <div>
+                      <h3 className="font-display font-extrabold text-sm text-slate-900 mb-3 flex items-center space-x-2">
+                        <Bookmark className="w-4 h-4 text-amber-500 fill-amber-500/10" />
+                        <span>Productos Guardados ({savedProducts.length})</span>
+                      </h3>
 
-                    {savedReels.length === 0 ? (
-                      <div className="border border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center text-center text-slate-400">
-                        <Bookmark className="w-10 h-10 stroke-1 text-slate-300 mb-2" />
-                        <p className="text-xs font-semibold text-slate-500">No tienes publicaciones guardadas</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Guarda publicaciones desde la sección de Reels para verlas aquí.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {savedReels.map((reel, index) => (
-                          <div
-                            key={`${reel.id}-${index}`}
-                            onClick={() => setActiveFeedReelId(reel.id)}
-                            className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
-                            id={`saved-reel-${reel.id}`}
-                          >
-                            <PublicationCover reel={reel} />
-                            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
-                            
-                            <div className="absolute top-2 left-2 bg-slate-950/80 backdrop-blur-md px-1.5 py-0.5 rounded text-[8px] font-bold text-white flex items-center space-x-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                              <span>@{reel.creatorUsername || reel.creatorName}</span>
+                      {savedProducts.length === 0 ? (
+                        <div className="border border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-center text-slate-400">
+                          <ShoppingBag className="w-8 h-8 stroke-1 text-slate-300 mb-1.5" />
+                          <p className="text-xs font-semibold text-slate-500">No tienes productos guardados</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Guarda tus productos favoritos desde la Tienda para encontrarlos aquí fácilmente.</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {savedProducts.map((product, index) => (
+                            <div
+                              key={`${product.id}-${index}`}
+                              onClick={() => onSelectProduct(product)}
+                              className="border border-slate-100 hover:border-amber-500/30 rounded-xl overflow-hidden hover:shadow-md transition-all flex flex-col bg-white group cursor-pointer justify-between"
+                              id={`saved-product-${product.id}`}
+                            >
+                              <div className="relative aspect-square w-full bg-white overflow-hidden flex items-center justify-center">
+                                <img
+                                  src={product.imageUrl}
+                                  alt={product.name}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                />
+                              </div>
+                              <div className="p-2.5 sm:p-3 flex-1 flex flex-col justify-between">
+                                <h4 className="font-display font-bold text-xs text-slate-900 group-hover:text-amber-500 transition-colors line-clamp-2 leading-tight">
+                                  {product.name}
+                                </h4>
+                                <div className="mt-2 pt-1.5 border-t border-slate-100 flex flex-col items-start gap-0.5">
+                                  <div className="w-full flex items-center justify-between">
+                                    <span className="text-xs sm:text-sm font-extrabold font-mono text-slate-900">
+                                      ${Number(product.price || 0).toFixed(2)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (onToggleSave) {
+                                          onToggleSave(product.id);
+                                        }
+                                        setSavedProductsFromApi((prev) => prev.filter((p) => p.id !== product.id));
+                                      }}
+                                      className="bg-transparent border-0 p-0 shadow-none outline-none flex items-center justify-center cursor-pointer"
+                                      title="Quitar de guardados"
+                                    >
+                                      <Bookmark className="w-4 h-4 fill-amber-500 text-amber-500 hover:text-amber-600 transition-colors" />
+                                    </button>
+                                  </div>
+                                  {Boolean(product.freeShipping) && (
+                                    <span className="text-[9px] font-bold bg-transparent text-emerald-700 leading-tight">
+                                      Envío Gratis
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
-                            <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[10px] font-mono font-bold">
-                              <span className="flex items-center space-x-0.5">
-                                <Eye className="w-3 h-3 text-slate-200" />
-                                <span>{reel.views}</span>
-                              </span>
-                              <span className="flex items-center space-x-0.5">
-                                <Heart className="w-3 h-3 text-rose-400 fill-rose-400/20" />
-                                <span>{reel.likes}</span>
-                              </span>
+                    {/* Saved Publications Section */}
+                    <div>
+                      <h3 className="font-display font-extrabold text-sm text-slate-900 mb-3 flex items-center space-x-2">
+                        <Bookmark className="w-4 h-4 text-amber-500 fill-amber-500/10" />
+                        <span>Publicaciones Guardadas ({savedReels.length})</span>
+                      </h3>
+
+                      {savedReels.length === 0 ? (
+                        <div className="border border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-center text-slate-400">
+                          <Bookmark className="w-8 h-8 stroke-1 text-slate-300 mb-1.5" />
+                          <p className="text-xs font-semibold text-slate-500">No tienes publicaciones guardadas</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Guarda publicaciones desde la sección de Inicio para verlas aquí.</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {savedReels.map((reel, index) => (
+                            <div
+                              key={`${reel.id}-${index}`}
+                              onClick={() => setActiveFeedReelId(reel.id)}
+                              className="aspect-[3/4] rounded-xl overflow-hidden relative border border-slate-200 cursor-pointer group bg-slate-900 shadow-sm"
+                              id={`saved-reel-${reel.id}`}
+                            >
+                              <PublicationCover reel={reel} />
+                              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
+                              
+                              <div className="absolute top-2 left-2 bg-slate-950/80 backdrop-blur-md px-1.5 py-0.5 rounded text-[8px] font-bold text-white flex items-center space-x-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                <span>@{reel.creatorUsername || reel.creatorName}</span>
+                              </div>
+
+                              <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[10px] font-mono font-bold">
+                                <span className="flex items-center space-x-0.5">
+                                  <Eye className="w-3 h-3 text-slate-200" />
+                                  <span>{reel.views}</span>
+                                </span>
+                                <span className="flex items-center space-x-0.5">
+                                  <Heart className="w-3 h-3 text-rose-400 fill-rose-400/20" />
+                                  <span>{reel.likes}</span>
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </motion.div>
                 )}
 

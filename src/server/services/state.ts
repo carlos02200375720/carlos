@@ -11,6 +11,7 @@ export let reels: Reel[] = [];
 export let orders: Order[] = [];
 export let chatMessages: ChatMessage[] = [];
 export let liveSessions: LiveSession[] = [];
+export let memoryUsers: User[] = [];
 
 // Getters and setters for collections
 export const getProducts = (): Product[] => products;

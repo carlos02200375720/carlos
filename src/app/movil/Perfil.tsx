@@ -39,6 +39,8 @@ export interface AndroidPerfilProps {
   onRefreshUsers?: () => void;
   onPublishSuccess?: () => void;
   socket?: WebSocket | null;
+  initialTab?: TabType;
+  onClearInitialTab?: () => void;
 }
 
 export type AndroidProfileViewProps = AndroidPerfilProps;
@@ -67,6 +69,8 @@ export default function Perfil({
   onOpenDirectChat,
   onRefreshUsers,
   onPublishSuccess,
+  initialTab,
+  onClearInitialTab,
 }: AndroidPerfilProps) {
   // Determine who we are viewing
   const activeUser =
@@ -87,11 +91,18 @@ export default function Perfil({
   const canDelete = isMe || isAdmin || !selectedCreatorId;
   const isGuest = activeUser.isGuest || activeUser.username === "invitado" || activeUser.id === "guest" || (isMe && (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || currentUser.id === "guest"));
 
-  const [activeTab, setActiveTab] = useState<TabType>(() => (isSellerOrAdmin ? "reels" : "saved"));
+  const [activeTab, setActiveTab] = useState<TabType>(() => initialTab || (isSellerOrAdmin ? "reels" : "saved"));
   const [savedSubTab, setSavedSubTab] = useState<"all" | "products" | "reels">("all");
   const [selectedFeedReelId, setSelectedFeedReelId] = useState<string | null>(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isPublishingOpen, setIsPublishingOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+      onClearInitialTab?.();
+    }
+  }, [initialTab, onClearInitialTab]);
 
   React.useEffect(() => {
     if (!isSellerOrAdmin && (activeTab === "reels" || activeTab === "products")) {

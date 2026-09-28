@@ -62,7 +62,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
       return;
     }
 
-    const cleanUsername = usernameToUse.trim().toLowerCase().replace("@", "");
+    const cleanUsername = usernameToUse.trim().toLowerCase().replace(/^@/, "");
     setIsLoggingIn(true);
 
     try {
@@ -75,7 +75,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
       const data = await response.json();
       if (response.ok && data.success) {
         sessionState.setAuthenticated(true);
-        sessionState.setUsername(cleanUsername);
+        sessionState.setUsername(data.user?.username || cleanUsername);
         
         sessionState.setUser(data.user);
         onLoginSuccess(data.user);
@@ -116,7 +116,7 @@ export default function LoginView({ onLoginSuccess, onRefreshUsers, users }: Log
       return;
     }
 
-    const cleanUsername = regUsername.trim().toLowerCase().replace(/\s+/g, "").replace("@", "");
+    const cleanUsername = regUsername.trim().toLowerCase().replace(/\s+/g, "").replace(/^@/, "");
     if (cleanUsername === "invitado" || cleanUsername === "current_user" || cleanUsername === "usuario_actual") {
       setRegisterError("Nombre de usuario reservado. Elige otro.");
       registeringRef.current = false;

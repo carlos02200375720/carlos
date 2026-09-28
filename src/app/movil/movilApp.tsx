@@ -43,7 +43,8 @@ export interface AndroidAppProps {
     address: string,
     shippingCost: number,
     onComplete: (newOrder: Order) => void,
-    itemsToCheckout?: CartItem[]
+    itemsToCheckout?: CartItem[],
+    buyerInfo?: { buyerName?: string; buyerEmail?: string; buyerPhone?: string }
   ) => void;
   handleCreatorProfileLink: (creatorId: string) => void;
   handleProductDetailsLink: (product: Product) => void;
@@ -126,6 +127,7 @@ export default function AndroidApp({
   const [navBarHeight, setNavBarHeight] = React.useState(56);
   const [cartDrawerRequest, setCartDrawerRequest] = React.useState(0);
   const [isCartPageOpen, setIsCartPageOpen] = React.useState(false);
+  const [profileInitialTab, setProfileInitialTab] = React.useState<"reels" | "products" | "saved" | "orders" | undefined>(undefined);
 
   React.useEffect(() => {
     const updateNavHeight = () => {
@@ -271,6 +273,7 @@ export default function AndroidApp({
                 clearDirectProduct={() => setDirectSelectedProduct(null)}
                 onNavigateToHistory={() => {
                   setSelectedCreatorProfileId(null);
+                  setProfileInitialTab('orders');
                   setActiveTab('profile');
                   navigateTo(getProfilePath(currentUser));
                 }}
@@ -333,6 +336,8 @@ export default function AndroidApp({
                     products={products}
                     savedReelIds={savedReelIds}
                     onToggleSaveReel={handleToggleSaveReel}
+                    initialTab={profileInitialTab}
+                    onClearInitialTab={() => setProfileInitialTab(undefined)}
                     onBackToSelf={() => {
                       setSelectedCreatorProfileId(null);
                       navigateTo(getProfilePath(currentUser));

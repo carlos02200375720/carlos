@@ -44,7 +44,8 @@ export interface WebAppProps {
     address: string,
     shippingCost: number,
     onComplete: (newOrder: Order) => void,
-    itemsToCheckout?: CartItem[]
+    itemsToCheckout?: CartItem[],
+    buyerInfo?: { buyerName?: string; buyerEmail?: string; buyerPhone?: string }
   ) => void;
   handleCreatorProfileLink: (creatorId: string) => void;
   handleProductDetailsLink: (product: Product) => void;
@@ -125,6 +126,7 @@ export default function WebApp({
 }: WebAppProps) {
   const isHomeActive = activeTab === 'inicio' || activeTab === 'reels';
   const isDarkNavActive = isHomeActive;
+  const [profileInitialSubTab, setProfileInitialSubTab] = React.useState<"publish" | "publications" | "products" | "saved" | "orders" | "performance" | "edit" | undefined>(undefined);
 
   return (
     <div className="w-full flex-1 flex relative" id="web-app-layout">
@@ -221,6 +223,9 @@ export default function WebApp({
                 currentUser={currentUser}
                 savedReelIds={savedReelIds}
                 onToggleSave={handleToggleSaveReel}
+                onGuestInteraction={(action) => {
+                  setGuestInteractionAlert(`Para ${action}, por favor inicia sesión o regístrate en la app.`);
+                }}
                 onAddToCart={handleAddToCart}
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}
@@ -228,7 +233,29 @@ export default function WebApp({
                 onCreatorClick={handleCreatorProfileLink}
                 selectedProductDirectly={directSelectedProduct}
                 clearDirectProduct={() => setDirectSelectedProduct(null)}
-                onNavigateToHistory={() => { setSelectedCreatorProfileId(null); setActiveTab('profile'); navigateTo(getProfilePath(currentUser)); }}
+                onNavigateToHistory={() => {
+                  setSelectedCreatorProfileId(null);
+                  setProfileInitialSubTab('orders');
+                  setActiveTab('profile');
+                  navigateTo(getProfilePath(currentUser));
+                }}
+                onLoginSuccess={(loggedUser) => {
+                  const normalizedUser: User = {
+                    ...loggedUser,
+                    id: "current_user",
+                    originalId: loggedUser.originalId || loggedUser.id,
+                    isGuest: false,
+                  };
+                  setCurrentUser(normalizedUser);
+                  setIsLoggedIn(true);
+                  sessionState.setAuthenticated(true);
+                  sessionState.setUsername(normalizedUser.username);
+                  sessionState.setUser(normalizedUser);
+                  setSelectedCreatorProfileId(null);
+                  setProfileInitialSubTab('orders');
+                  setActiveTab('profile');
+                  navigateTo(getProfilePath(normalizedUser));
+                }}
                 onToggleDetailView={setIsProductDetailOpen}
                 initialStep={shopInitialStep}
                 initialSelectedCartIndices={shopInitialSelectedIndices}
@@ -269,6 +296,11 @@ export default function WebApp({
                   currentUser={currentUser}
                   selectedCreatorId={selectedCreatorProfileId}
                   users={users}
+                  products={products}
+                  savedReelIds={savedReelIds}
+                  onToggleSave={handleToggleSaveReel}
+                  initialSubTab={profileInitialSubTab}
+                  onClearInitialSubTab={() => setProfileInitialSubTab(undefined)}
                   onBackToSelf={() => {
                     setSelectedCreatorProfileId(null);
                     navigateTo(getProfilePath(currentUser));
