@@ -110,6 +110,7 @@ export function formatReelDTO(r: any, userMap?: Map<string, any>): Reel {
   }
 
   const productId = r.productId || r.taggedProductId || undefined;
+  const isProductReel = type === "product" || Boolean(productId) || String(r.id || "").startsWith("reel_prod_");
 
   return {
     id: r.id,
@@ -135,7 +136,7 @@ export function formatReelDTO(r: any, userMap?: Map<string, any>): Reel {
     saves: typeof r.saves === "number" ? r.saves : 0,
     views: typeof r.views === "number" ? r.views : 0,
     productId,
-    aspectRatio: r.aspectRatio || "vertical",
+    aspectRatio: isProductReel ? (r.aspectRatio === "horizontal" ? "horizontal" : "square") : (r.aspectRatio || "vertical"),
   };
 }
 
@@ -158,7 +159,6 @@ export function createCompanionReelForProduct(product: any, sellerUser?: any): R
     media.push({
       type: "video",
       url: videoUrl,
-      thumbnailUrl,
     });
   }
   for (const img of productImages) {
@@ -198,6 +198,6 @@ export function createCompanionReelForProduct(product: any, sellerUser?: any): R
     saves: 0,
     views: 0,
     productId: product.id,
-    aspectRatio: "vertical",
+    aspectRatio: "square",
   };
 }

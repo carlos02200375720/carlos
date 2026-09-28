@@ -103,7 +103,7 @@ export default function Inicio({
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authDescription, setAuthDescription] = useState("");
   const [actualNavHeight, setActualNavHeight] = useState<number>(bottomNavHeight || 56);
-  const [imageAspect, setImageAspect] = useState<'vertical' | 'horizontal' | 'square'>('vertical');
+  const [imageAspect, setImageAspect] = useState<'vertical' | 'horizontal' | 'square'>('square');
   const [progressVideo, setProgressVideo] = useState<HTMLVideoElement | null>(null);
   const [showCartPanel, setShowCartPanel] = useState(false);
   const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
@@ -195,8 +195,16 @@ export default function Inicio({
   const isGuest = !currentUser || currentUser.isGuest || currentUser.username === "invitado";
 
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const prevReelIdRef = useRef<string | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
 
   const currentReel = reels[currentIndex] || reels[0];
+  const isProductPublication = Boolean(
+    currentReel?.type === "product" ||
+    currentReel?.id?.startsWith("reel_prod_") ||
+    currentReel?.productId ||
+    (currentReel as any)?.taggedProductId
+  );
 
   useEffect(() => {
     if (!initialReelId || reels.length === 0) return;
@@ -219,10 +227,13 @@ export default function Inicio({
   }, [initialReelId, reels, currentIndex]);
 
   useEffect(() => {
-    setActiveMediaIndex(0);
-    setImageAspect(currentReel?.aspectRatio || 'vertical');
     const activeId = reels[currentIndex]?.id || reels[0]?.id;
     if (!activeId) return;
+    if (prevReelIdRef.current !== activeId) {
+      prevReelIdRef.current = activeId;
+      setActiveMediaIndex(0);
+      setImageAspect("square");
+    }
     if (initialReelId && lastSeenInitialReelIdPropRef.current !== initialReelId) {
       const matched = findReelByInicioParam(reels, initialReelId);
       const targetIdx = matched ? reels.findIndex((r) => r.id === matched.id) : -1;
@@ -381,6 +392,30 @@ export default function Inicio({
     };
   }, [handleNext, handlePrev, showComments, showCartPanel, showHamburgerMenu]);
 
+  const applyDetectedImageDimensions = useCallback(
+    (img: HTMLImageElement | null) => {
+      if (!img || !img.naturalWidth || !img.naturalHeight) return;
+      const ratio = img.naturalWidth / img.naturalHeight;
+      if (isProductPublication) {
+        setImageAspect(ratio > 1.05 ? "horizontal" : "square");
+        return;
+      }
+      if (ratio > 1.05) setImageAspect("horizontal");
+      else if (ratio < 0.95) setImageAspect("vertical");
+      else setImageAspect("square");
+    },
+    [isProductPublication]
+  );
+
+  useEffect(() => {
+    if (isProductPublication) {
+      setImageAspect("square");
+    }
+    if (imageRef.current && imageRef.current.complete && imageRef.current.naturalWidth > 0) {
+      applyDetectedImageDimensions(imageRef.current);
+    }
+  }, [currentReel?.id, activeMediaIndex, currentMedia?.url, isProductPublication, applyDetectedImageDimensions]);
+
   if (!currentReel) {
     if (isLoading) {
       return (
@@ -440,13 +475,7 @@ export default function Inicio({
     "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80";
 
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    if (img.naturalWidth && img.naturalHeight) {
-      const ratio = img.naturalWidth / img.naturalHeight;
-      if (ratio > 1.05) setImageAspect("horizontal");
-      else if (ratio < 0.95) setImageAspect("vertical");
-      else setImageAspect("square");
-    }
+    applyDetectedImageDimensions(e.currentTarget);
   };
 
   const handleDoubleTap = () => {
@@ -520,16 +549,16 @@ export default function Inicio({
       {isVideo ? (
         <div className="absolute inset-0 w-full h-full overflow-hidden">
           <MovilVideoPlay
-            key={currentReel.id}
+            key={`${currentReel.id}-${activeMediaIndex}`}
             ref={playerRef}
             src={getMediaUrl(currentMedia.url)}
             hlsUrl={getMediaUrl(currentMedia.hlsUrl || (currentMedia.url?.includes(".m3u8") ? currentMedia.url : currentReel.hlsUrl))}
-            poster={currentReel.thumbnailUrl ? getMediaUrl(currentReel.thumbnailUrl) : undefined}
+            poster={undefined}
             autoPlay={true}
             loop={true}
             muted={isMuted}
             isCurrent={isFeedActive}
-            aspectRatio={currentReel.aspectRatio}
+            aspectRatio={isProductPublication ? "square" : currentReel.aspectRatio}
             onDoubleTap={handleDoubleTap}
             onMuteChange={handleMuteChange}
             onVideoReady={handleVideoReady}
@@ -541,17 +570,18 @@ export default function Inicio({
         <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center overflow-hidden bg-black">
           <div
             className={
-              imageAspect === "vertical"
+              !isProductPublication && imageAspect === "vertical"
                 ? "absolute inset-0 w-full h-full overflow-hidden bg-black"
                 : "w-full h-full flex items-center justify-center bg-black overflow-hidden"
             }
           >
             <img
+              ref={imageRef}
               src={getMediaUrl(currentMedia?.url || currentReel.thumbnailUrl || (currentReel.images && currentReel.images[0]))}
               alt={currentReel.description}
               onLoad={handleImageLoad}
               className={
-                imageAspect === "vertical"
+                !isProductPublication && imageAspect === "vertical"
                   ? "w-full h-full object-cover object-center block"
                   : "w-full h-auto max-h-full object-contain object-center block bg-black"
               }
@@ -565,7 +595,7 @@ export default function Inicio({
           key={`preload-${nextReel.id}`}
           src={getMediaUrl(nextMedia.url)}
           hlsUrl={getMediaUrl(nextMedia.hlsUrl || (nextMedia.url?.includes(".m3u8") ? nextMedia.url : nextReel.hlsUrl))}
-          poster={nextReel.thumbnailUrl ? getMediaUrl(nextReel.thumbnailUrl) : undefined}
+          poster={undefined}
           autoPlay={false}
           loop={true}
           muted={true}

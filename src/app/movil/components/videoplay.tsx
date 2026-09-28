@@ -66,7 +66,9 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
     const [isPlaying, setIsPlaying] = useState(false);
     const [isMuted, setIsMuted] = useState(muted);
     const [showTapIndicator, setShowTapIndicator] = useState(false);
-    const [detectedAspect, setDetectedAspect] = useState<'vertical' | 'horizontal' | 'square'>(aspectRatio || 'vertical');
+    const [detectedAspect, setDetectedAspect] = useState<'vertical' | 'horizontal' | 'square'>(
+      aspectRatio === 'horizontal' ? 'horizontal' : 'square'
+    );
     const lastTapTimeRef = useRef<number>(0);
     const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const playInProgressRef = useRef(false);
@@ -244,7 +246,7 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
     }, [src, hlsUrl]);
 
     useEffect(() => {
-      setDetectedAspect(aspectRatio || 'vertical');
+      setDetectedAspect(aspectRatio === 'horizontal' ? 'horizontal' : 'square');
     }, [targetSource, aspectRatio]);
 
     useEffect(() => {

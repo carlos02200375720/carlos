@@ -510,7 +510,7 @@ export default function Inicio({
                                 src={getMediaUrl(reel.thumbnailUrl)}
                                 alt={reel.description || ""}
                                 draggable={false}
-                                className={`w-full h-full block relative z-10 select-none object-center ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`}
+                                className={`w-full h-full block relative z-10 select-none object-center ${mediaAspectRatios[reel.id] === 'vertical' ? "object-cover md:object-contain" : "object-contain"}`}
                                 referrerPolicy="no-referrer"
                                 loading="lazy"
                               />
@@ -544,12 +544,13 @@ export default function Inicio({
                             onLoad={(e) => {
                               const img = e.currentTarget;
                               const ratio = img.naturalWidth / img.naturalHeight;
-                              let detected: 'vertical' | 'square' | 'horizontal' = 'vertical';
+                              const isProd = reel.type === "product" || Boolean(reel.productId) || reel.id?.startsWith("reel_prod_");
+                              let detected: 'vertical' | 'square' | 'horizontal' = isProd ? 'square' : 'vertical';
                               if (ratio > 1.15) detected = 'horizontal';
                               else if (ratio >= 0.85 && ratio <= 1.15) detected = 'square';
                               setMediaAspectRatios((prev) => ({ ...prev, [reel.id]: detected }));
                             }}
-                            className={`w-full h-full cursor-pointer select-none block touch-auto object-center relative z-10 ${(mediaAspectRatios[reel.id] === 'vertical' || !mediaAspectRatios[reel.id]) ? "object-cover md:object-contain" : "object-contain"}`}
+                            className={`w-full h-full cursor-pointer select-none block touch-auto object-center relative z-10 ${(reel.type !== "product" && !reel.productId && !reel.id?.startsWith("reel_prod_") && mediaAspectRatios[reel.id] === 'vertical') ? "object-cover md:object-contain" : "object-contain"}`}
                             style={{ touchAction: "pan-y" }}
                             referrerPolicy="no-referrer"
                           />
@@ -937,7 +938,8 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, shou
     if (isCurrent) onRegisterRef(index, null);
   }, [index, onRegisterRef]);
 
-  const rawPoster = reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".m3u8") ? reel.thumbnailUrl : undefined;
+  const isProductReel = reel.type === "product" || Boolean(reel.productId) || reel.id?.startsWith("reel_prod_");
+  const rawPoster = !isProductReel && reel.thumbnailUrl && !reel.thumbnailUrl.includes("1618005182384") && !reel.thumbnailUrl.endsWith(".m3u8") ? reel.thumbnailUrl : undefined;
   const posterUrl = rawPoster ? getMediaUrl(rawPoster) : undefined;
 
   const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -967,7 +969,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, shou
       loop
       muted={isMuted}
       preload="metadata"
-      className={`w-full h-full block relative z-10 select-none cursor-pointer object-center ${(mediaAspectRatio === 'vertical' || !mediaAspectRatio) ? "object-cover md:object-contain" : "object-contain"}`}
+      className={`w-full h-full block relative z-10 select-none cursor-pointer object-center ${mediaAspectRatio === 'vertical' ? "object-cover md:object-contain" : "object-contain"}`}
       style={{ touchAction: "pan-y" }}
       onClick={(e) => onVideoClick(e, index)}
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleTap(reel.id); }}
