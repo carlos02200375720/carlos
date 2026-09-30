@@ -1060,7 +1060,7 @@ export default function Tienda({
         <header
           className="fixed top-0 left-0 right-0 md:left-60 lg:left-64 z-40 flex items-center justify-between px-3 sm:px-5 pb-2 bg-transparent border-0 pointer-events-none transition-all duration-200"
           style={{
-            paddingTop: "max(0.625rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
+            paddingTop: "0.5rem",
           }}
           id="product-detail-transparent-header"
         >
@@ -1129,7 +1129,7 @@ export default function Tienda({
             showHeader ? "translate-y-0" : "-translate-y-full"
           }`}
           style={{
-            paddingTop: "max(0.5rem, calc(env(safe-area-inset-top, 0px) + 0.35rem))"
+            paddingTop: "0.5rem"
           }}
         >
           {/* Top Bar: Navigation / Search / Cart */}
@@ -1424,10 +1424,10 @@ export default function Tienda({
             <>
               <motion.div
                 key="detail"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 p-0 md:p-6 pb-12"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 p-0 md:p-6 pb-4 md:pb-12"
               >
                 {/* Image & Showcase */}
                 <div className="space-y-4">
@@ -1900,9 +1900,12 @@ export default function Tienda({
                       );
                     })()}
 
-                    {/* Add to Cart button integrated directly in product detail page */}
-                    <div className="mt-6 pt-4 border-t border-slate-100" id="shipping-calculation-section">
-                      <div>
+                    {/* Add to Cart button integrated directly in product detail page (fixed bottom on mobile, inline on desktop) */}
+                    <div
+                      className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 pt-1.5 pb-[1px] shadow-[0_-4px_16px_rgba(0,0,0,0.08)] mt-0 md:static md:z-auto md:bg-transparent md:backdrop-blur-none md:shadow-none md:px-0 md:pt-4 md:pb-0 md:mt-6 md:border-t md:border-slate-100"
+                      id="shipping-calculation-section"
+                    >
+                      <div className="w-full m-0 p-0">
                         {(() => {
                           const missingOpts = getMissingOptions(selectedProduct, selectedVariants);
                           const hasMissingOpts = missingOpts.length > 0;
@@ -1991,7 +1994,7 @@ export default function Tienda({
               )}
 
               {/* Security badges - Positioned below the product description at the footer */}
-              <div className="px-4 md:px-6 mt-4 pb-10">
+              <div className="px-4 md:px-6 mt-4 pb-20 md:pb-10">
                 <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 grid grid-cols-3 gap-2 text-center text-[10px] text-slate-500 font-semibold">
                   <div className="flex flex-col items-center">
                     <ShieldCheck className="w-5 h-5 text-emerald-500 mb-1" />
@@ -2442,7 +2445,7 @@ export default function Tienda({
               <div 
                 className="px-4 pb-3 border-b border-slate-100 flex items-center justify-between bg-white shrink-0"
                 style={{
-                  paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))"
+                  paddingTop: "0.75rem"
                 }}
               >
                 <div className="flex items-center space-x-2">

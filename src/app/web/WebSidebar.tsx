@@ -220,8 +220,8 @@ export default function WebSidebar({
         style={{
           top:
             activeTab === 'shop'
-              ? "max(0.55rem, calc(env(safe-area-inset-top, 0px) + 0.45rem))"
-              : "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.65rem))",
+              ? "0.5rem"
+              : "0.75rem",
         }}
         id="web-mobile-fixed-hamburger-btn"
         title="Abrir menú de navegación"
@@ -253,7 +253,7 @@ export default function WebSidebar({
             <div>
               <div
                 className="flex items-center justify-between px-2 pb-4 mb-4 border-b border-slate-800/80"
-                style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))" }}
+                style={{ paddingTop: "0.75rem" }}
               >
                 <div
                   className="flex items-center space-x-2.5 cursor-pointer"
