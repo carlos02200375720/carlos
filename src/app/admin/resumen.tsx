@@ -34,11 +34,17 @@ import {
   RotateCcw,
   Link as LinkIcon,
   Check,
-  UserCheck
+  UserCheck,
+  BarChart3
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Reel, Product, Order, NavigationTab } from "../../types";
-import PublishView from "./PublishView";
+import PublishView from "./publicar";
+import UsuariosAdminView from "./usuarios";
+import ReelsAdminView from "./reels";
+import ProductoAdminView from "./producto";
+import PedidosAdminView from "./pedidos";
+import MetricaAdminView from "./metrica";
 import { apiFetch } from "../../config";
 import { sessionState } from "../../utils/sessionState";
 import { isSuperAdmin } from "../../superAdmin";
@@ -70,7 +76,22 @@ export interface AdminViewProps {
   onSwitchPlatform?: (platform: 'android' | 'web') => void;
 }
 
-type AdminTab = 'resumen' | 'usuarios' | 'reels' | 'productos' | 'ordenes' | 'fotos_defecto' | 'sistema';
+type AdminTab = 'resumen' | 'usuarios' | 'reels' | 'productos' | 'publicar' | 'ordenes' | 'metrica' | 'fotos_defecto' | 'sistema';
+
+const VALID_ADMIN_TABS: AdminTab[] = ['resumen', 'usuarios', 'reels', 'productos', 'publicar', 'ordenes', 'metrica', 'fotos_defecto', 'sistema'];
+
+function parseAdminTabFromPath(pathname: string): AdminTab {
+  const match = pathname.trim().replace(/\/+$/, '').match(/^\/(?:src\/app\/|app\/)?admin\/([^/]+)$/i);
+  if (match) {
+    const raw = match[1].toLowerCase();
+    if (raw === 'producto' || raw === 'productos') return 'productos';
+    if (raw === 'pedido' || raw === 'pedidos' || raw === 'ordenes') return 'ordenes';
+    if (raw === 'metrica' || raw === 'metricas' || raw === 'métrica' || raw === 'métricas') return 'metrica';
+    const seg = raw as AdminTab;
+    if (VALID_ADMIN_TABS.includes(seg)) return seg;
+  }
+  return 'resumen';
+}
 
 export default function AdminView({
   currentUser,
@@ -88,7 +109,37 @@ export default function AdminView({
   activePlatform = 'web',
   onSwitchPlatform
 }: AdminViewProps) {
-  const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>('resumen');
+  const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>(() => {
+    if (typeof window !== 'undefined') {
+      return parseAdminTabFromPath(window.location.pathname);
+    }
+    return 'resumen';
+  });
+
+  const handleSelectAdminTab = (tab: AdminTab) => {
+    setActiveAdminTab(tab);
+    const routeSegment =
+      tab === 'productos'
+        ? 'producto'
+        : tab === 'ordenes'
+        ? 'pedidos'
+        : tab;
+    navigateTo(`/admin/${routeSegment}`);
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncTabFromUrl = () => {
+      const nextTab = parseAdminTabFromPath(window.location.pathname);
+      setActiveAdminTab((prev) => (prev === nextTab ? prev : nextTab));
+    };
+    window.addEventListener('popstate', syncTabFromUrl);
+    window.addEventListener('app-route-change', syncTabFromUrl);
+    return () => {
+      window.removeEventListener('popstate', syncTabFromUrl);
+      window.removeEventListener('app-route-change', syncTabFromUrl);
+    };
+  }, []);
   const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -497,6 +548,7 @@ export default function AdminView({
           >
             {[
               { id: 'resumen', label: 'Resumen General', icon: LayoutDashboard },
+              { id: 'metrica', label: 'Métricas', icon: BarChart3 },
               { id: 'usuarios', label: `Usuarios (${totalUsersCount})`, icon: Users },
               { id: 'reels', label: `Reels & Vídeos (${totalReelsCount})`, icon: Video },
               { id: 'productos', label: `Productos (${totalProductsCount})`, icon: ShoppingBag },
@@ -509,7 +561,7 @@ export default function AdminView({
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveAdminTab(tab.id as AdminTab)}
+                  onClick={() => handleSelectAdminTab(tab.id as AdminTab)}
                   className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap cursor-pointer ${
                     isActive
                       ? "bg-amber-500 text-slate-950 font-black shadow-sm shadow-amber-500/25 scale-[1.02]"
@@ -573,7 +625,7 @@ export default function AdminView({
             <button
               onClick={() => {
                 setPublishInitialTab("product");
-                setIsPublishOpen(true);
+                handleSelectAdminTab("publicar");
               }}
               className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-sm active:scale-95"
               id="admin-header-publish-btn"
@@ -640,7 +692,7 @@ export default function AdminView({
             <button
               onClick={() => {
                 setPublishInitialTab("product");
-                setIsPublishOpen(true);
+                handleSelectAdminTab("publicar");
               }}
               className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-md shadow-amber-500/20 active:scale-95"
               id="admin-new-content-button"
@@ -708,7 +760,7 @@ export default function AdminView({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4" id="admin-kpi-cards">
         {/* Card 1: Usuarios */}
         <div
-          onClick={() => setActiveAdminTab('usuarios')}
+          onClick={() => handleSelectAdminTab('usuarios')}
           className="bg-white border border-slate-200 hover:border-amber-400/80 rounded-2xl p-4 sm:p-5 shadow-xs transition-all cursor-pointer group"
           id="kpi-card-users"
         >
@@ -731,7 +783,7 @@ export default function AdminView({
 
         {/* Card 2: Reels & Videos */}
         <div
-          onClick={() => setActiveAdminTab('reels')}
+          onClick={() => handleSelectAdminTab('reels')}
           className="bg-white border border-slate-200 hover:border-amber-400/80 rounded-2xl p-4 sm:p-5 shadow-xs transition-all cursor-pointer group"
           id="kpi-card-reels"
         >
@@ -757,7 +809,7 @@ export default function AdminView({
 
         {/* Card 3: Productos Tienda */}
         <div
-          onClick={() => setActiveAdminTab('productos')}
+          onClick={() => handleSelectAdminTab('productos')}
           className="bg-white border border-slate-200 hover:border-amber-400/80 rounded-2xl p-4 sm:p-5 shadow-xs transition-all cursor-pointer group"
           id="kpi-card-products"
         >
@@ -780,7 +832,7 @@ export default function AdminView({
 
         {/* Card 4: Pedidos & Facturación */}
         <div
-          onClick={() => setActiveAdminTab('ordenes')}
+          onClick={() => handleSelectAdminTab('ordenes')}
           className="bg-white border border-slate-200 hover:border-amber-400/80 rounded-2xl p-4 sm:p-5 shadow-xs transition-all cursor-pointer group"
           id="kpi-card-orders"
         >
@@ -820,7 +872,7 @@ export default function AdminView({
                     <h2 className="text-base font-black text-slate-900">Órdenes Recientes de Clientes</h2>
                   </div>
                   <button
-                    onClick={() => setActiveAdminTab('ordenes')}
+                    onClick={() => handleSelectAdminTab('ordenes')}
                     className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center space-x-1"
                   >
                     <span>Ver todas ({allOrders.length})</span>
@@ -897,7 +949,7 @@ export default function AdminView({
                     <h2 className="text-base font-black text-slate-900">Cuentas Registradas Recientemente</h2>
                   </div>
                   <button
-                    onClick={() => setActiveAdminTab('usuarios')}
+                    onClick={() => handleSelectAdminTab('usuarios')}
                     className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center space-x-1"
                   >
                     <span>Ver todos ({users.length})</span>
@@ -973,8 +1025,11 @@ export default function AdminView({
                   </button>
 
                   <button
-                    onClick={() => onNavigateToTab('profile')}
-                    className="w-full flex items-center justify-between p-3 rounded-2xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all text-left group"
+                    onClick={() => {
+                      setPublishInitialTab("product");
+                      handleSelectAdminTab("publicar");
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-2xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all text-left group cursor-pointer"
                   >
                     <div className="flex items-center space-x-3">
                       <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -1032,420 +1087,81 @@ export default function AdminView({
 
       {/* Tab 2: Gestión de Usuarios */}
       {activeAdminTab === 'usuarios' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-5" id="admin-tab-content-users">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-black text-slate-900">Gestión de Usuarios</h2>
-              <p className="text-xs text-slate-500">Directorio oficial de cuentas registradas en la base de datos.</p>
-            </div>
-
-            <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                placeholder="Buscar por nombre, username o email..."
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase font-mono text-[10px] tracking-wider border-y border-slate-100">
-                <tr>
-                  <th className="py-3 px-4">Usuario</th>
-                  <th className="py-3 px-4">Correo Electrónico</th>
-                  <th className="py-3 px-4">Seguidores</th>
-                  <th className="py-3 px-4">Estado</th>
-                  <th className="py-3 px-4">Permiso</th>
-                  <th className="py-3 px-4 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-10 text-center text-slate-400">
-                      No se encontraron usuarios que coincidan con la búsqueda.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredUsers.map((user, uIdx) => {
-                    const userIsSuperAdmin = isSuperAdmin(user);
-                    return (
-                    <tr key={`${user.id}-${uIdx}`} className={`hover:bg-slate-50/80 transition-colors ${userIsSuperAdmin ? "bg-amber-500/5" : ""}`}>
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center space-x-3">
-                          <img
-                            src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
-                            alt={user.name}
-                            className={`w-9 h-9 rounded-full object-cover border shrink-0 ${userIsSuperAdmin ? "border-amber-400 ring-2 ring-amber-400/30" : "border-slate-200"}`}
-                          />
-                          <div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="font-bold text-slate-900">{user.name}</p>
-                              {userIsSuperAdmin && (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-700 border border-amber-500/30 text-[9px] font-black uppercase tracking-wider">
-                                  <ShieldCheck className="w-3 h-3 text-amber-600" />
-                                  <span>Superadmin</span>
-                                </span>
-                              )}
-                            </div>
-                            <p className="font-mono text-[11px] text-slate-400">@{user.username}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-600">
-                        {user.email || "No especificado"}
-                      </td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-700">
-                        {user.followers || 0}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <span className={`inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          user.isOnline ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${user.isOnline ? "bg-emerald-500" : "bg-slate-400"}`} />
-                          <span>{user.isOnline ? "En línea" : "Desconectado"}</span>
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        {userIsSuperAdmin ? (
-                          <div>
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-300 font-extrabold text-[11px] shadow-2xs">
-                              <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                              <span>Acceso Total</span>
-                            </span>
-                            <p className="mt-0.5 text-[9px] font-bold text-amber-700">Superadministrador</p>
-                          </div>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleSellerPermission(user)}
-                              disabled={updatingPermissionId === user.id}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${user.canSell ? "bg-emerald-500" : "bg-slate-300"}`}
-                              title={user.canSell ? "Permiso activo: publicar, productos y rendimiento" : "Activar permisos de vendedor"}
-                              aria-label={user.canSell ? "Desactivar permiso de vendedor" : "Activar permiso de vendedor"}
-                            >
-                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${user.canSell ? "translate-x-6" : "translate-x-1"}`} />
-                            </button>
-                            <p className={`mt-1 text-[9px] font-bold ${user.canSell ? "text-emerald-600" : "text-slate-400"}`}>
-                              {updatingPermissionId === user.id ? "Guardando..." : user.canSell ? "Vendedor" : "Normal"}
-                            </p>
-                          </>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="inline-flex items-center space-x-2">
-                          <button
-                            onClick={() => onCreatorClick(user.id)}
-                            className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors cursor-pointer"
-                            title="Ver perfil"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
-                          {user.id !== currentUser.id && !userIsSuperAdmin && (
-                            <button
-                              onClick={() => setDeletingTarget({ type: 'user', id: user.id, name: user.username })}
-                              className="p-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer"
-                              title="Eliminar usuario"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <UsuariosAdminView
+          currentUser={currentUser}
+          users={users}
+          setUsers={setUsers}
+          onCreatorClick={onCreatorClick}
+          onStatusMessage={setStatusMessage}
+          onRequestDeleteUser={(target) => setDeletingTarget(target)}
+        />
       )}
 
       {/* Tab 3: Moderación de Reels y Publicaciones */}
       {activeAdminTab === 'reels' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-5" id="admin-tab-content-reels">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-black text-slate-900">Moderación de Reels y Publicaciones</h2>
-              <p className="text-xs text-slate-500">Supervisa vídeos activos, métricas de engagement y elimina contenido infractor.</p>
-            </div>
-
-            <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={reelSearch}
-                onChange={(e) => setReelSearch(e.target.value)}
-                placeholder="Buscar por título, creador o ID..."
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredReels.length === 0 ? (
-              <div className="col-span-full py-12 text-center text-slate-400 text-xs">
-                No hay reels que coincidan con la búsqueda.
-              </div>
-            ) : (
-              filteredReels.map((reel, rIdx) => (
-                <div
-                  key={`${reel.id}-${rIdx}`}
-                  className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/60 hover:border-slate-300 transition-all flex flex-col justify-between"
-                >
-                  <div className="p-4 space-y-3">
-                    <div className="flex items-center space-x-3">
-                      <img
-                        src={reel.creatorAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
-                        alt={reel.creatorName}
-                        className="w-8 h-8 rounded-full object-cover border border-slate-200"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-slate-900 truncate">{reel.creatorName}</p>
-                        <p className="text-[10px] font-mono text-slate-400 truncate">@{reel.creatorUsername || "creator"}</p>
-                      </div>
-                      <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded-md uppercase">
-                        {reel.type || "video"}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{reel.title || "Sin título"}</h4>
-                      {reel.description && (
-                        <p className="text-[11px] text-slate-500 line-clamp-2">{reel.description}</p>
-                      )}
-                    </div>
-
-                    {/* Stats */}
-                    <div className="flex items-center space-x-4 text-[11px] font-mono text-slate-500 pt-2 border-t border-slate-200/60">
-                      <span className="flex items-center gap-1">
-                        <Eye className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{reel.views || 0}</span>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Heart className="w-3.5 h-3.5 text-rose-500" />
-                        <span>{reel.likes || 0}</span>
-                      </span>
-                      <span className="text-slate-400 text-[10px] truncate">
-                        ID: {reel.id}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Actions Bar */}
-                  <div className="bg-white px-4 py-2.5 border-t border-slate-200 flex items-center justify-between">
-                    <button
-                      onClick={() => onReelClick(reel.id)}
-                      className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center space-x-1"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Ver Reel</span>
-                    </button>
-                    <button
-                      onClick={() => setDeletingTarget({ type: 'reel', id: reel.id, name: reel.title || reel.id })}
-                      className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors"
-                      title="Eliminar publicación"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <ReelsAdminView
+          reels={reels}
+          setReels={setReels}
+          onReelClick={onReelClick}
+          onStatusMessage={setStatusMessage}
+          onRequestDeleteReel={(target) => setDeletingTarget(target)}
+        />
       )}
 
       {/* Tab 4: Gestión del Catálogo de Tienda */}
       {activeAdminTab === 'productos' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-5" id="admin-tab-content-products">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-black text-slate-900">Catálogo de Productos</h2>
-              <p className="text-xs text-slate-500">Supervisa artículos disponibles en la tienda oficial, existencias y precios.</p>
-            </div>
+        <ProductoAdminView
+          products={products}
+          setProducts={setProducts}
+          onProductClick={onProductClick}
+          onStatusMessage={setStatusMessage}
+          onRequestDeleteProduct={(target) => setDeletingTarget(target)}
+        />
+      )}
 
-            <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="Buscar por nombre o vendedor..."
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredProducts.length === 0 ? (
-              <div className="col-span-full py-12 text-center text-slate-400 text-xs">
-                No hay productos que coincidan con la búsqueda.
-              </div>
-            ) : (
-              filteredProducts.map((prod, pIdx) => (
-                <div
-                  key={`${prod.id}-${pIdx}`}
-                  className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/50 hover:border-slate-300 transition-all flex flex-col justify-between"
-                >
-                  <div className="p-4 flex space-x-3">
-                    <img
-                      src={prod.imageUrl}
-                      alt={prod.name}
-                      className="w-16 h-16 rounded-xl object-cover border border-slate-200 shrink-0 bg-white"
-                    />
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <h4 className="text-xs font-bold text-slate-900 line-clamp-2">{prod.name}</h4>
-                      <p className="text-[11px] font-mono font-black text-emerald-600">
-                        ${Number(prod.price).toFixed(2)} USD
-                      </p>
-                      <p className="text-[10px] text-slate-400">
-                        Vendedor: <span className="font-semibold text-slate-600">{prod.sellerName || "Oficial"}</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white px-4 py-2.5 border-t border-slate-200 flex items-center justify-between">
-                    <button
-                      onClick={() => onProductClick(prod)}
-                      className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center space-x-1"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>Ver Producto</span>
-                    </button>
-                    <button
-                      onClick={() => setDeletingTarget({ type: 'product', id: prod.id, name: prod.name })}
-                      className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+      {/* Tab Publicar: Publicador de Contenido y Productos */}
+      {activeAdminTab === 'publicar' && (
+        <div className="w-full" id="admin-tab-content-publicar">
+          <PublishView
+            currentUser={currentUser}
+            initialTab={publishInitialTab}
+            onBack={() => handleSelectAdminTab('resumen')}
+            onSuccess={() => {
+              onRefreshAll();
+              handleSelectAdminTab('resumen');
+            }}
+            userProducts={products}
+          />
         </div>
       )}
 
       {/* Tab 5: Pedidos & Logística Global */}
       {activeAdminTab === 'ordenes' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-5" id="admin-tab-content-orders">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-black text-slate-900">Control de Pedidos y Logística</h2>
-              <p className="text-xs text-slate-500">Historial completo de órdenes realizadas en la tienda y gestión de envíos.</p>
-            </div>
+        <PedidosAdminView
+          orders={allOrders}
+          setOrders={setAllOrders}
+          onStatusMessage={setStatusMessage}
+          onRequestEditOrder={(order) => {
+            setEditingOrder(order);
+            setOrderNewStatus(order.status || 'processing');
+            setOrderNewCarrier(order.carrier || '');
+            setOrderNewTracking(order.trackingNumber || '');
+            setOrderNewNotes(order.sellerNotes || '');
+          }}
+        />
+      )}
 
-            {/* Status Filter Chips */}
-            <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl">
-              {['all', 'pending', 'processing', 'shipped', 'delivered'].map((st, sIdx) => (
-                <button
-                  key={`${st}-${sIdx}`}
-                  onClick={() => setOrderStatusFilter(st)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    orderStatusFilter === st
-                      ? "bg-white text-slate-900 shadow-xs"
-                      : "text-slate-500 hover:text-slate-800"
-                  }`}
-                >
-                  {st === 'all' ? 'Todos' : st}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {filteredOrders.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 text-xs">
-                No hay pedidos en la categoría seleccionada.
-              </div>
-            ) : (
-              filteredOrders.map((order, oIdx) => (
-                <div
-                  key={`${order.id || 'order'}-${oIdx}`}
-                  className="border border-slate-200 rounded-2xl p-4 sm:p-5 bg-white hover:border-slate-300 transition-all flex flex-col space-y-4"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                    <div>
-                      <span className="font-mono font-bold text-xs text-slate-900">
-                        Pedido #{order.id}
-                      </span>
-                      <span className="text-slate-400 text-[11px] ml-2">
-                        {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : ""}
-                      </span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                        order.status === 'delivered'
-                          ? "bg-emerald-100 text-emerald-800"
-                          : order.status === 'shipped'
-                          ? "bg-blue-100 text-blue-800"
-                          : "bg-amber-100 text-amber-800"
-                      }`}>
-                        {order.status}
-                      </span>
-                      <button
-                        onClick={() => {
-                          setEditingOrder(order);
-                          setOrderNewStatus(order.status || 'processing');
-                          setOrderNewCarrier(order.carrier || '');
-                          setOrderNewTracking(order.trackingNumber || '');
-                          setOrderNewNotes(order.sellerNotes || '');
-                        }}
-                        className="px-3 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer flex items-center space-x-1"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span>Actualizar Envío</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                    {/* Buyer Details */}
-                    <div>
-                      <p className="font-bold text-slate-400 text-[10px] uppercase font-mono">Comprador</p>
-                      <p className="font-bold text-slate-900 mt-1">{order.buyerName || "Cliente"}</p>
-                      <p className="font-mono text-slate-500 text-[11px]">@{order.buyerUsername || "anon"}</p>
-                      <p className="text-slate-500 text-[11px]">{order.buyerEmail}</p>
-                    </div>
-
-                    {/* Shipping Address */}
-                    <div>
-                      <p className="font-bold text-slate-400 text-[10px] uppercase font-mono">Dirección y Envío</p>
-                      <p className="text-slate-700 mt-1 line-clamp-2">{order.shippingAddress || "Dirección predeterminada"}</p>
-                      <p className="text-[11px] font-mono text-slate-500 mt-0.5">
-                        Paquetería: <span className="font-bold text-slate-800">{order.carrier || "Sin asignar"}</span>
-                      </p>
-                      {order.trackingNumber && (
-                        <p className="text-[11px] font-mono text-indigo-600 font-bold">
-                          Guía: {order.trackingNumber}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Total & Items */}
-                    <div>
-                      <p className="font-bold text-slate-400 text-[10px] uppercase font-mono">Resumen de Pago</p>
-                      <p className="text-base font-black text-emerald-600 mt-1">
-                        ${Number(order.total).toFixed(2)} USD
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        {order.items?.length || 0} producto(s) en total
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+      {/* Tab Métricas: Analítica y Rendimiento */}
+      {activeAdminTab === 'metrica' && (
+        <MetricaAdminView
+          users={users}
+          reels={reels}
+          products={products}
+          orders={allOrders}
+          onCreatorClick={onCreatorClick}
+          onProductClick={onProductClick}
+          onReelClick={onReelClick}
+        />
       )}
 
       {/* Tab 6: Estado del Sistema & Configuración */}

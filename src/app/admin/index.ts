@@ -1,0 +1,14 @@
+export { default as Resumen, default as AdminView, default } from "./resumen";
+export { default as Usuarios, default as UsuariosAdminView } from "./usuarios";
+export { default as Reels, default as ReelsAdminView } from "./reels";
+export { default as Producto, default as Productos, default as ProductoAdminView } from "./producto";
+export { default as Publicar, default as PublishView } from "./publicar";
+export { default as Pedidos, default as Ordenes, default as PedidosAdminView } from "./pedidos";
+export { default as Metrica, default as Metricas, default as MetricaAdminView } from "./metrica";
+export * from "./resumen";
+export * from "./usuarios";
+export * from "./reels";
+export * from "./producto";
+export * from "./publicar";
+export * from "./pedidos";
+export * from "./metrica";

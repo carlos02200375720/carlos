@@ -5,7 +5,7 @@ import Inicio from "./Inicio";
 import Tienda from "./Tienda";
 import SocialPanel from "./SocialPanel";
 import Perfil from "./Perfil";
-import AdminView from "./AdminView";
+import AdminView from "../admin/resumen";
 import { motion, AnimatePresence } from "motion/react";
 import { sessionState } from "../../utils/sessionState";
 import { navigateTo, getProfilePath, getProductPath, getInicioPath } from "../../router";
@@ -182,7 +182,7 @@ export default function WebApp({
                   } else if (tab === 'messages') {
                     navigateTo('/messages');
                   } else if (tab === 'admin') {
-                    navigateTo('/admin');
+                    navigateTo('/admin/resumen');
                   }
                 }}
                 onRemoveFromCart={handleRemoveFromCart}
@@ -372,7 +372,7 @@ export default function WebApp({
                     } else if (tab === 'messages') {
                       navigateTo('/messages');
                     } else if (tab === 'admin') {
-                      navigateTo('/admin');
+                      navigateTo('/admin/resumen');
                     }
                   }}
                   setUsers={setUsers}

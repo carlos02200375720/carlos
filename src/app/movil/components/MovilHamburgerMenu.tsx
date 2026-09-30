@@ -68,7 +68,7 @@ export function MovilHamburgerMenu({
       if (onNavigateToProfile) onNavigateToProfile();
       else navigateTo(getProfilePath(currentUser));
     } else if (tab === "admin") {
-      navigateTo("/admin");
+      navigateTo("/admin/resumen");
     }
   };
 

@@ -5,8 +5,9 @@ export { default as Tienda, default as Shop, default as ShopView } from "./Tiend
 export { default as Perfil, default as ProfileView } from "./Perfil";
 export { default as LoginView } from "./LoginView";
 export { default as SocialPanel } from "./SocialPanel";
-export { default as PublishView } from "./PublishView";
+export { default as PublishView, default as Publicar } from "../admin/publicar";
 export { default as SplashScreen } from "./SplashScreen";
+export { default as AdminView, default as Resumen } from "../admin/resumen";
 export * from "./api";
 export * from "./components/AuthModal";
 export * from "./components/ErrorBoundary";

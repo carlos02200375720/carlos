@@ -6,6 +6,8 @@ import Tienda from "./Tienda";
 import SocialPanel from "./SocialPanel";
 import Perfil from "./Perfil";
 import AndroidLoginView from "./login";
+import AdminView from "../admin/resumen";
+import { isSuperAdmin } from "../../superAdmin";
 import { motion, AnimatePresence } from "motion/react";
 import { sessionState } from "../../utils/sessionState";
 import { navigateTo, getProfilePath, getProductPath, getInicioPath } from "../../router";
@@ -61,6 +63,8 @@ export interface AndroidAppProps {
   isInitialLoading?: boolean;
   setCurrentUser: React.Dispatch<React.SetStateAction<User>>;
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+  setReels?: React.Dispatch<React.SetStateAction<Reel[]>>;
+  setProducts?: React.Dispatch<React.SetStateAction<Product[]>>;
   isLoggedIn?: boolean;
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
   handleLogout: () => void;
@@ -114,6 +118,8 @@ export default function AndroidApp({
   isInitialLoading,
   setCurrentUser,
   setUsers,
+  setReels = () => {},
+  setProducts = () => {},
   isLoggedIn,
   setIsLoggedIn,
   handleLogout,
@@ -218,7 +224,7 @@ export default function AndroidApp({
                   } else if (tab === 'messages') {
                     navigateTo('/messages');
                   } else if (tab === 'admin') {
-                    navigateTo('/admin');
+                    navigateTo('/admin/resumen');
                   }
                 }}
                 onRemoveFromCart={handleRemoveFromCart}
@@ -384,6 +390,43 @@ export default function AndroidApp({
                   navigateTo('/inicio');
                 }}
               />
+            )}
+
+            {activeTab === 'admin' && isSuperAdmin(currentUser) && (
+              <div
+                className="w-full pb-16"
+                id="android-admin-container"
+                style={{ paddingBottom: `${navBarHeight + 12}px` }}
+              >
+                <AdminView
+                  currentUser={currentUser}
+                  users={users}
+                  reels={reels}
+                  products={products}
+                  onRefreshAll={refreshAllData}
+                  onCreatorClick={handleCreatorProfileLink}
+                  onProductClick={handleProductDetailsLink}
+                  onReelClick={handleReelLink}
+                  onNavigateToTab={(tab) => {
+                    setSelectedCreatorProfileId(null);
+                    setActiveTab(tab);
+                    if (tab === 'profile') {
+                      navigateTo(getProfilePath(currentUser));
+                    } else if (tab === 'inicio' || tab === 'reels') {
+                      navigateTo('/inicio');
+                    } else if (tab === 'shop') {
+                      navigateTo('/tienda');
+                    } else if (tab === 'messages') {
+                      navigateTo('/messages');
+                    } else if (tab === 'admin') {
+                      navigateTo('/admin/resumen');
+                    }
+                  }}
+                  setUsers={setUsers}
+                  setReels={setReels}
+                  setProducts={setProducts}
+                />
+              </div>
             )}
           </motion.div>
         </AnimatePresence>

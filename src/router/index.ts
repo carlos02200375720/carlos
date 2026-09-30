@@ -11,7 +11,7 @@ export type AppRoute =
   | { type: 'cart' }
   | { type: 'messages' }
   | { type: 'profile'; userId?: string }
-  | { type: 'admin' };
+  | { type: 'admin'; adminTab?: string };
 
 /**
  * Converts a product name into a clean URL-safe slug
@@ -188,6 +188,55 @@ export function getThankYouPath(): string {
 }
 
 /**
+ * Returns the admin summary URL path `/admin/resumen`
+ */
+export function getAdminPath(): string {
+  return '/admin/resumen';
+}
+
+/**
+ * Returns the admin users URL path `/admin/usuarios`
+ */
+export function getAdminUsersPath(): string {
+  return '/admin/usuarios';
+}
+
+/**
+ * Returns the admin reels URL path `/admin/reels`
+ */
+export function getAdminReelsPath(): string {
+  return '/admin/reels';
+}
+
+/**
+ * Returns the admin products URL path `/admin/producto`
+ */
+export function getAdminProductoPath(): string {
+  return '/admin/producto';
+}
+
+/**
+ * Returns the admin publish URL path `/admin/publicar`
+ */
+export function getAdminPublicarPath(): string {
+  return '/admin/publicar';
+}
+
+/**
+ * Returns the admin orders URL path `/admin/pedidos`
+ */
+export function getAdminPedidosPath(): string {
+  return '/admin/pedidos';
+}
+
+/**
+ * Returns the admin metrics URL path `/admin/metrica`
+ */
+export function getAdminMetricaPath(): string {
+  return '/admin/metrica';
+}
+
+/**
  * Parses the current pathname into a structured AppRoute
  */
 export function parseRoute(pathname: string): AppRoute {
@@ -280,9 +329,13 @@ export function parseRoute(pathname: string): AppRoute {
     return { type: 'profile', userId: profileMatch[1] ? decodeURIComponent(profileMatch[1]) : undefined };
   }
 
-  // /admin
-  if (normalized === '/admin') {
-    return { type: 'admin' };
+  // /admin/resumen, /admin/usuarios, or /admin
+  const adminMatch = normalized.match(/^\/(?:src\/app\/|app\/)?admin(?:\/([^/]+))?$/i);
+  if (adminMatch) {
+    return {
+      type: 'admin',
+      adminTab: adminMatch[1] ? decodeURIComponent(adminMatch[1]).toLowerCase() : 'resumen',
+    };
   }
 
   // Default: inicio / home
@@ -343,7 +396,7 @@ export function routeToPath(route: AppRoute): string {
     case 'profile':
       return route.userId ? `/perfil/${encodeURIComponent(route.userId)}` : '/perfil';
     case 'admin':
-      return '/admin';
+      return route.adminTab ? `/admin/${encodeURIComponent(route.adminTab)}` : '/admin/resumen';
     default:
       return '/inicio';
   }

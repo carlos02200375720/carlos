@@ -49,7 +49,7 @@ export default function WebSidebar({
     } else if (tab === 'admin') {
       setSelectedCreatorProfileId(null);
       setActiveTab('admin');
-      navigateTo('/admin');
+      navigateTo('/admin/resumen');
     }
   };
 
@@ -163,7 +163,7 @@ export default function WebSidebar({
 
           {/* 5. Panel de Administración — solo superadministrador */}
           {isSuperAdmin(currentUser) && <button
-            onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('admin'); navigateTo('/admin'); }}
+            onClick={() => { setSelectedCreatorProfileId(null); setActiveTab('admin'); navigateTo('/admin/resumen'); }}
             className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
               activeTab === 'admin'
                 ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"

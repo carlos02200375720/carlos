@@ -22,7 +22,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { apiFetch, getApiUrl } from "../../config";
-import VideoUploadPreview from "./components/VideoUploadPreview";
+import VideoUploadPreview from "../web/components/VideoUploadPreview";
 
 interface PublishViewProps {
   currentUser: User;

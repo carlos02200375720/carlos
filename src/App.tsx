@@ -376,6 +376,9 @@ export default function App() {
       }
     } else if (currentRoute.type === 'admin') {
       setActiveTab('admin');
+      if (typeof window !== 'undefined' && window.location.pathname.toLowerCase().replace(/\/+$/, '') === '/admin') {
+        navigateTo('/admin/resumen', { replace: true });
+      }
     }
   }, [currentRoute, products, reels]);
 
@@ -1581,6 +1584,8 @@ export default function App() {
               isInitialLoading={isInitialLoading}
               setCurrentUser={setCurrentUser}
               setUsers={setUsers}
+              setReels={setReels}
+              setProducts={setProducts}
               isLoggedIn={isLoggedIn}
               setIsLoggedIn={setIsLoggedIn}
               handleLogout={handleLogout}

@@ -4,7 +4,7 @@ import { Eye, Heart, MessageCircle, BarChart3, ShoppingBag, ShieldCheck, Shield,
 import { motion, AnimatePresence } from "motion/react";
 import LoginView from "./LoginView";
 import UserPublicationsFeed from "./components/UserPublicationsFeed";
-import PublishView from "./PublishView";
+import PublishView from "../admin/publicar";
 import { apiFetch, getMediaUrl } from "../../config";
 import { sessionState } from "../../utils/sessionState";
 import { getDefaultAvatar, getDefaultCoverPhoto } from "../../utils/defaultAssets";
