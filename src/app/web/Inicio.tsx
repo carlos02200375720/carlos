@@ -260,14 +260,21 @@ export default function Inicio({
 
   const handleVideoClick = (e: React.MouseEvent, index: number) => {
     e.stopPropagation();
-    if (index !== activeReelIndex) return;
-    const video = videoRefs.current[index];
-    if (!video) return;
-    if (video.paused) {
+    if (index !== activeIndexRef.current) return;
+    const video =
+      e.currentTarget instanceof HTMLVideoElement
+        ? e.currentTarget
+        : videoRefs.current[index] || activeVideoElement;
+    if (!video) {
+      setIsPlaying((prev) => !prev);
+      return;
+    }
+    if (video.paused || !isPlaying) {
       video.muted = isMuted;
       video.defaultMuted = isMuted;
       video.volume = isMuted ? 0 : 1;
-      video.play().then(() => setIsPlaying(true)).catch(() => {});
+      setIsPlaying(true);
+      video.play().catch(() => {});
     } else {
       video.pause();
       setIsPlaying(false);
@@ -457,7 +464,10 @@ export default function Inicio({
                         onRegisterRef={handleRegisterRef}
                       />
                     ) : isMediaVideo ? (
-                      <div className="w-full h-full relative flex items-center justify-center bg-slate-950 overflow-hidden">
+                      <div
+                        className="w-full h-full relative flex items-center justify-center bg-slate-950 overflow-hidden cursor-pointer"
+                        onClick={(e) => handleVideoClick(e, index)}
+                      >
                         {reel.thumbnailUrl && !reel.thumbnailUrl.endsWith(".m3u8") && !reel.thumbnailUrl.includes("1618005182384") && (
                           <img
                             src={getMediaUrl(reel.thumbnailUrl)}
@@ -546,11 +556,11 @@ export default function Inicio({
                     )}
 
                     <AnimatePresence>{likedAnim === reel.id && <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: [1, 1.3, 1], opacity: [0, 1, 0] }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }} className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-30"><Heart className="w-24 h-24 text-rose-500 fill-rose-500 drop-shadow-lg" /></motion.div>}</AnimatePresence>
-                    {!isPlaying && isCurrent && isMediaVideo && <div className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-10 bg-black/20 rounded-full w-16 h-16 bg-opacity-40"><Play className="w-8 h-8 text-white fill-white translate-x-0.5" /></div>}
+                    {!isPlaying && isCurrent && isMediaVideo && <div className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-20 bg-black/40 rounded-full w-16 h-16 backdrop-blur-xs"><Play className="w-8 h-8 text-white fill-white translate-x-0.5" /></div>}
 
-                    <div className="absolute left-4 sm:left-6 bottom-[26px] sm:bottom-6 right-20 sm:right-24 md:right-6 lg:right-8 z-20 flex flex-col space-y-3 max-w-xl">
-                      <div className="text-white bg-transparent p-3 rounded-xl drop-shadow-md" style={{ marginLeft: "-15px", marginBottom: "-10px" }}><h3 className="font-display font-bold text-base sm:text-lg tracking-wide flex items-center space-x-2.5"><span className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm" onClick={() => { const target = (reel.creatorUsername && reel.creatorUsername !== "invitado") ? reel.creatorUsername : (reel.creatorId && reel.creatorId !== "current_user" ? reel.creatorId : (reel.creatorName || "current_user")); onCreatorClick(target); }}>@{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}</span>{(() => { const isSelf = currentUser.id === reel.creatorId || reel.creatorId === "current_user" || (currentUser.originalId && currentUser.originalId === reel.creatorId) || (currentUser.username && reel.creatorUsername && currentUser.username.toLowerCase() === reel.creatorUsername.toLowerCase()); if (isSelf) return null; const targetId = reel.creatorId || reel.creatorUsername; const isFollowing = Boolean(currentUser.followingUserIds?.some((id) => id === reel.creatorId || id === reel.creatorUsername || (reel.creatorUsername && id.toLowerCase() === reel.creatorUsername.toLowerCase()) || (reel.creatorId && id.toLowerCase() === reel.creatorId.toLowerCase()))); return <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (currentUser.username === "invitado" || currentUser.isGuest) onGuestInteraction("seguir a creadores"); else if (onToggleFollowUser) onToggleFollowUser(targetId); }} id={`follow-creator-btn-${reel.id}`} className={`text-xs font-bold px-3 py-1 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-sm ${isFollowing ? "text-white/80 border-white/60 hover:text-rose-300 hover:border-rose-400 hover:bg-rose-500/10" : "text-white border-white hover:bg-white/15 active:scale-95 font-extrabold"}`}>{isFollowing ? "Siguiendo" : "+ Seguir"}</button>; })()}</h3><p className="text-sm sm:text-base text-white/95 font-medium mt-1.5 line-clamp-3 leading-relaxed drop-shadow-sm">{reel.description || ""}</p></div>
-                      {reelProduct && <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} onClick={() => onProductClick(reelProduct)} className="bg-black/45 border border-white/20 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/55 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg overflow-hidden mb-0.5 sm:mb-0" id={`tagged-product-${reel.id}`} style={{ marginLeft: "-4px", width: "285.606px", height: "68.3438px" }}><div className="w-20 shrink-0 h-full relative overflow-hidden bg-transparent border-r border-white/15">{reelProduct.imageUrl ? <img src={reelProduct.imageUrl} alt={reelProduct.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-800/60 text-amber-400"><ShoppingBag className="w-5 h-5" /></div>}</div><div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-transparent"><span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center"><ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado</span><h4 className="text-xs font-bold truncate text-slate-100">{reelProduct.name}</h4><div className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-400 font-mono">${reelProduct.price.toFixed(2)}</span><span className="text-[9px] text-amber-400 font-semibold">Ver detalles →</span></div></div></motion.div>}
+                    <div className="absolute left-4 sm:left-6 bottom-[26px] sm:bottom-6 right-20 sm:right-24 md:right-6 lg:right-8 z-20 flex flex-col space-y-3 max-w-xl pointer-events-none">
+                      <div className="text-white bg-transparent p-3 rounded-xl drop-shadow-md pointer-events-none" style={{ marginLeft: "-15px", marginBottom: "-10px" }}><h3 className="font-display font-bold text-base sm:text-lg tracking-wide flex items-center space-x-2.5"><span className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm pointer-events-auto" onClick={() => { const target = (reel.creatorUsername && reel.creatorUsername !== "invitado") ? reel.creatorUsername : (reel.creatorId && reel.creatorId !== "current_user" ? reel.creatorId : (reel.creatorName || "current_user")); onCreatorClick(target); }}>@{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}</span>{(() => { const isSelf = currentUser.id === reel.creatorId || reel.creatorId === "current_user" || (currentUser.originalId && currentUser.originalId === reel.creatorId) || (currentUser.username && reel.creatorUsername && currentUser.username.toLowerCase() === reel.creatorUsername.toLowerCase()); if (isSelf) return null; const targetId = reel.creatorId || reel.creatorUsername; const isFollowing = Boolean(currentUser.followingUserIds?.some((id) => id === reel.creatorId || id === reel.creatorUsername || (reel.creatorUsername && id.toLowerCase() === reel.creatorUsername.toLowerCase()) || (reel.creatorId && id.toLowerCase() === reel.creatorId.toLowerCase()))); return <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (currentUser.username === "invitado" || currentUser.isGuest) onGuestInteraction("seguir a creadores"); else if (onToggleFollowUser) onToggleFollowUser(targetId); }} id={`follow-creator-btn-${reel.id}`} className={`text-xs font-bold px-3 py-1 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-sm pointer-events-auto ${isFollowing ? "text-white/80 border-white/60 hover:text-rose-300 hover:border-rose-400 hover:bg-rose-500/10" : "text-white border-white hover:bg-white/15 active:scale-95 font-extrabold"}`}>{isFollowing ? "Siguiendo" : "+ Seguir"}</button>; })()}</h3><p className="text-sm sm:text-base text-white/95 font-medium mt-1.5 line-clamp-3 leading-relaxed drop-shadow-sm pointer-events-none">{reel.description || ""}</p></div>
+                      {reelProduct && <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} onClick={() => onProductClick(reelProduct)} className="bg-black/45 border border-white/20 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/55 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg overflow-hidden mb-0.5 sm:mb-0 pointer-events-auto" id={`tagged-product-${reel.id}`} style={{ marginLeft: "-4px", width: "285.606px", height: "68.3438px" }}><div className="w-20 shrink-0 h-full relative overflow-hidden bg-transparent border-r border-white/15">{reelProduct.imageUrl ? <img src={reelProduct.imageUrl} alt={reelProduct.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-800/60 text-amber-400"><ShoppingBag className="w-5 h-5" /></div>}</div><div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-transparent"><span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center"><ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado</span><h4 className="text-xs font-bold truncate text-slate-100">{reelProduct.name}</h4><div className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-400 font-mono">${reelProduct.price.toFixed(2)}</span><span className="text-[9px] text-amber-400 font-semibold">Ver detalles →</span></div></div></motion.div>}
                     </div>
 
                     {isCurrent && isMediaVideo && <ReelProgressBar video={activeVideoElement || videoRefs.current[index]} isActive={isCurrent} />}
@@ -1320,6 +1330,10 @@ interface ReelVideoItemProps {
 const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, shouldPreload, isPlaying, isMuted, mediaAspectRatio, onVideoClick, onDoubleTap, onAspectRatioDetected, onRegisterRef }: ReelVideoItemProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const isCurrentRef = useRef(isCurrent);
+  isCurrentRef.current = isCurrent;
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
   const rawSource = (reel.hlsUrl || reel.videoUrl)?.trim();
   const hlsSource = getMediaUrl(rawSource);
   const stallTimerRef = useRef<any>(null);
@@ -1387,7 +1401,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, shou
       hlsRef.current = hls;
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (isCurrent && isPlaying) {
+        if (isCurrentRef.current && isPlayingRef.current) {
           video.play().catch(() => {});
         }
       });
@@ -1408,7 +1422,7 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, shou
           if (video && hlsSource) {
             video.src = hlsSource;
             video.load();
-            if (isCurrent && isPlaying) video.play().catch(() => {});
+            if (isCurrentRef.current && isPlayingRef.current) video.play().catch(() => {});
           }
         }
       });
@@ -1458,13 +1472,19 @@ const ReelVideoItem = memo(function ReelVideoItem({ reel, index, isCurrent, shou
       el.volume = isMuted ? 0 : 1;
     }
     if (isCurrent) onRegisterRef(index, el);
-  }, [index, isMuted, onRegisterRef]);
+  }, [index, isCurrent, isMuted, onRegisterRef]);
+
+  useEffect(() => {
+    if (isCurrent && videoRef.current) {
+      onRegisterRef(index, videoRef.current);
+    }
+  }, [isCurrent, index, onRegisterRef]);
 
   useEffect(() => () => {
     clearStallTimer();
     hlsRef.current?.destroy();
     hlsRef.current = null;
-    if (isCurrent) onRegisterRef(index, null);
+    if (isCurrentRef.current) onRegisterRef(index, null);
   }, [index, onRegisterRef]);
 
   const isProductReel = reel.type === "product" || Boolean(reel.productId) || reel.id?.startsWith("reel_prod_");

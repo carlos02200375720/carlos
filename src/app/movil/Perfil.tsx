@@ -8,6 +8,7 @@ import AndroidPublicationCover from "./components/AndroidPublicationCover";
 import AndroidPublishView from "./publicasion";
 import AndroidLoginView from "./login";
 import { isSuperAdmin } from "../../superAdmin";
+import { navigateTo, parseRoute, getProfilePath, getProfileSavedPath, getProfileCompraPath, getProfileConfigPath, getProfileProductoPath, getProfilePublicacionesPath, getProfilePublicarPath } from "../../router";
 
 export interface AndroidPerfilProps {
   user?: User;
@@ -91,11 +92,61 @@ export default function Perfil({
   const canDelete = isMe || isAdmin || !selectedCreatorId;
   const isGuest = activeUser.isGuest || activeUser.username === "invitado" || activeUser.id === "guest" || (isMe && (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || currentUser.id === "guest"));
 
-  const [activeTab, setActiveTab] = useState<TabType>(() => initialTab || (isSellerOrAdmin ? "reels" : "saved"));
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    if (typeof window !== "undefined") {
+      const parsed = parseRoute(window.location.pathname);
+      if (parsed.type === "profile" && parsed.profileTab === "guardado") {
+        return "saved";
+      }
+      if (parsed.type === "profile" && parsed.profileTab === "compra") {
+        return "orders";
+      }
+      if (parsed.type === "profile" && parsed.profileTab === "producto") {
+        return "products";
+      }
+      if (parsed.type === "profile" && parsed.profileTab === "publicaciones") {
+        return "reels";
+      }
+    }
+    return initialTab || (isSellerOrAdmin ? "reels" : "saved");
+  });
   const [savedSubTab, setSavedSubTab] = useState<"all" | "products" | "reels">("all");
   const [selectedFeedReelId, setSelectedFeedReelId] = useState<string | null>(null);
-  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const [isPublishingOpen, setIsPublishingOpen] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      const parsed = parseRoute(window.location.pathname);
+      if (parsed.type === "profile" && parsed.profileTab === "config") {
+        return true;
+      }
+    }
+    return false;
+  });
+  const [isPublishingOpen, setIsPublishingOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      const parsed = parseRoute(window.location.pathname);
+      if (parsed.type === "profile" && parsed.profileTab === "publicar") {
+        return true;
+      }
+    }
+    return false;
+  });
+
+  const handleSelectMobileTab = (tab: TabType) => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      if (tab === "saved" && isMe) {
+        navigateTo(getProfileSavedPath(activeUser));
+      } else if (tab === "orders" && isMe) {
+        navigateTo(getProfileCompraPath(activeUser));
+      } else if (tab === "products") {
+        navigateTo(getProfileProductoPath(activeUser));
+      } else if (tab === "reels") {
+        navigateTo(getProfilePublicacionesPath(activeUser));
+      } else {
+        navigateTo(getProfilePath(activeUser));
+      }
+    }
+  };
 
   React.useEffect(() => {
     if (initialTab) {
@@ -396,7 +447,10 @@ export default function Perfil({
             {isMe ? (
               <>
                 <button
-                  onClick={() => setIsEditProfileOpen(true)}
+                  onClick={() => {
+                    setIsEditProfileOpen(true);
+                    navigateTo(getProfileConfigPath(activeUser));
+                  }}
                   className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold flex items-center space-x-1.5 border border-slate-200 active:scale-95 transition-transform cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
@@ -477,7 +531,7 @@ export default function Perfil({
       <div className="flex border-b border-slate-200 mt-2 px-2">
         {isSellerOrAdmin && (
           <button
-            onClick={() => setActiveTab("reels")}
+            onClick={() => handleSelectMobileTab("reels")}
             title={`Reels (${userReels.length})`}
             aria-label="Reels"
             className={`flex-1 py-3 text-xs font-bold flex items-center justify-center border-b-2 transition-all cursor-pointer ${
@@ -490,7 +544,7 @@ export default function Perfil({
 
         {isSellerOrAdmin && (
           <button
-            onClick={() => setActiveTab("products")}
+            onClick={() => handleSelectMobileTab("products")}
             title={`Tienda (${userProducts.length})`}
             aria-label="Tienda"
             className={`flex-1 py-3 text-xs font-bold flex items-center justify-center border-b-2 transition-all cursor-pointer ${
@@ -503,7 +557,7 @@ export default function Perfil({
 
         {isMe && (
           <button
-            onClick={() => setActiveTab("saved")}
+            onClick={() => handleSelectMobileTab("saved")}
             title="Guardados"
             aria-label="Guardados"
             className={`flex-1 py-3 text-xs font-bold flex items-center justify-center border-b-2 transition-all cursor-pointer ${
@@ -516,7 +570,7 @@ export default function Perfil({
 
         {isMe && (
           <button
-            onClick={() => setActiveTab("orders")}
+            onClick={() => handleSelectMobileTab("orders")}
             title="Pedidos"
             aria-label="Pedidos"
             className={`flex-1 py-3 text-xs font-bold flex items-center justify-center border-b-2 transition-all cursor-pointer ${

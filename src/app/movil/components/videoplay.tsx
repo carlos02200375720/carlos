@@ -115,6 +115,8 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
     const autoPlayRef = useRef(autoPlay);
     autoPlayRef.current = autoPlay;
 
+    const userPausedRef = useRef(false);
+
     const safePlay = useCallback(async () => {
       const video = videoRef.current;
       if (!video || !isCurrentRef.current) return;
@@ -165,10 +167,10 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
 
     const handleWaitingOrStalled = () => {
       clearStallTimer();
-      if (!isCurrentRef.current || !autoPlayRef.current) return;
+      if (!isCurrentRef.current || !autoPlayRef.current || userPausedRef.current) return;
       stallTimerRef.current = setTimeout(() => {
         const v = videoRef.current;
-        if (!v || !isCurrentRef.current || !autoPlayRef.current) return;
+        if (!v || !isCurrentRef.current || !autoPlayRef.current || userPausedRef.current) return;
         if (v.paused && v.readyState >= 2) {
           safePlay();
         }
@@ -189,16 +191,23 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
       ref,
       () => ({
         getVideoElement: () => videoRef.current,
-        play: safePlay,
+        play: () => {
+          userPausedRef.current = false;
+          return safePlay();
+        },
         pause: () => {
+          userPausedRef.current = true;
           videoRef.current?.pause();
           setIsPlaying(false);
         },
         togglePlay: () => {
           const v = videoRef.current;
           if (!v) return;
-          if (v.paused) safePlay();
-          else {
+          if (v.paused) {
+            userPausedRef.current = false;
+            safePlay();
+          } else {
+            userPausedRef.current = true;
             v.pause();
             setIsPlaying(false);
           }
@@ -246,6 +255,7 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
     }, [src, hlsUrl]);
 
     useEffect(() => {
+      userPausedRef.current = false;
       setDetectedAspect(aspectRatio === 'horizontal' ? 'horizontal' : 'square');
     }, [targetSource, aspectRatio]);
 
@@ -369,10 +379,11 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
         video.muted = isMuted;
         video.defaultMuted = isMuted;
         video.volume = isMuted ? 0 : 1;
-        if (autoPlay) {
+        if (autoPlay && !userPausedRef.current) {
           safePlay();
         }
       } else {
+        userPausedRef.current = false;
         video.pause();
         setIsPlaying(false);
       }
@@ -410,9 +421,13 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
       tapTimerRef.current = setTimeout(() => {
         const video = videoRef.current;
         if (!video) return;
-        if (video.paused) safePlay();
-        else if (onClickRef.current) onClickRef.current();
-        else {
+        if (video.paused) {
+          userPausedRef.current = false;
+          safePlay();
+        } else if (onClickRef.current) {
+          onClickRef.current();
+        } else {
+          userPausedRef.current = true;
           video.pause();
           setIsPlaying(false);
         }
@@ -449,15 +464,15 @@ export const MovilVideoPlay = forwardRef<MovilVideoPlayHandle, MovilVideoPlayPro
             onLoadedMetadata={checkVideoDimensions}
             onLoadedData={() => {
               checkVideoDimensions();
-              if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current) safePlay();
+              if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current && !userPausedRef.current) safePlay();
             }}
             onResize={checkVideoDimensions}
             onCanPlay={() => {
               checkVideoDimensions();
-              if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current) safePlay();
+              if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current && !userPausedRef.current) safePlay();
             }}
             onCanPlayThrough={() => {
-              if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current) safePlay();
+              if (isCurrentRef.current && videoRef.current?.paused && autoPlayRef.current && !userPausedRef.current) safePlay();
             }}
             onTimeUpdate={(e) => {
               const v = e.currentTarget;

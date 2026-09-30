@@ -1,6 +1,6 @@
 {
-  "name": "MallSocial - Social & Shopping Live",
-  "short_name": "MallSocial",
+  "name": "Mall - Social & Shopping Live",
+  "short_name": "Mall",
   "id": "mall-social-app",
   "description": "Plataforma social interactiva de comercio en vivo: video reels, transmisiones en vivo con chat en tiempo real, tienda e-commerce y catálogo.",
   "start_url": "/inicio",

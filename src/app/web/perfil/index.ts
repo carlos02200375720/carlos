@@ -1,0 +1,18 @@
+export { default, default as Perfil, default as ProfileView } from "./perfil";
+export * from "./perfil";
+export { default as Guardado, default as GuardadoPerfilView, PublicationCover } from "./guardado";
+export * from "./guardado";
+export { default as Compra, default as CompraPerfilView } from "./compra";
+export * from "./compra";
+export { default as Config, default as ConfigPerfilView } from "./config";
+export * from "./config";
+export { default as Productos, default as ProductosPerfilView } from "./productos";
+export * from "./productos";
+export { default as Venta, default as VentaPerfilView } from "./venta";
+export * from "./venta";
+export { default as Publicaciones, default as PublicacionesPerfilView } from "./publicaciones";
+export * from "./publicaciones";
+export { default as Publicar, default as PublishView, default as PublicarPerfilView } from "./publicar";
+export * from "./publicar";
+export { default as Rendimiento, default as RendimientoPerfilView } from "./rendimiento";
+export * from "./rendimiento";

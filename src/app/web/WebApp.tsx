@@ -2,13 +2,13 @@ import React from "react";
 import { User, Reel, Product, CartItem, Order, ChatMessage, NavigationTab } from "../../types";
 import WebSidebar from "./WebSidebar";
 import Inicio from "./Inicio";
-import Tienda from "./Tienda";
+import Tienda from "./tienda";
 import SocialPanel from "./SocialPanel";
-import Perfil from "./Perfil";
+import Perfil from "./perfil";
 import AdminView from "../admin/resumen";
 import { motion, AnimatePresence } from "motion/react";
 import { sessionState } from "../../utils/sessionState";
-import { navigateTo, getProfilePath, getProductPath, getInicioPath } from "../../router";
+import { navigateTo, parseRoute, getProfilePath, getProfileSavedPath, getProfileCompraPath, getProfileConfigPath, getProfileProductoPath, getProfileVentaPath, getProfilePublicacionesPath, getProfilePublicarPath, getProfileRendimientoPath, getProductPath, getInicioPath } from "../../router";
 import { isSuperAdmin } from "../../superAdmin";
 
 export interface WebAppProps {
@@ -237,7 +237,7 @@ export default function WebApp({
                   setSelectedCreatorProfileId(null);
                   setProfileInitialSubTab('orders');
                   setActiveTab('profile');
-                  navigateTo(getProfilePath(currentUser));
+                  navigateTo(getProfileCompraPath(currentUser));
                 }}
                 onLoginSuccess={(loggedUser) => {
                   const normalizedUser: User = {
@@ -254,7 +254,7 @@ export default function WebApp({
                   setSelectedCreatorProfileId(null);
                   setProfileInitialSubTab('orders');
                   setActiveTab('profile');
-                  navigateTo(getProfilePath(normalizedUser));
+                  navigateTo(getProfileCompraPath(normalizedUser));
                 }}
                 onToggleDetailView={setIsProductDetailOpen}
                 initialStep={shopInitialStep}
@@ -319,7 +319,26 @@ export default function WebApp({
                       sessionState.setUsername(updatedUser.username);
                       setSelectedCreatorProfileId(null);
                       setActiveTab('profile');
-                      navigateTo(getProfilePath(updatedUser));
+                      const parsed = typeof window !== 'undefined' ? parseRoute(window.location.pathname) : null;
+                      if (parsed?.type === 'profile' && parsed.profileTab === 'config') {
+                        navigateTo(getProfileConfigPath(updatedUser));
+                      } else if (parsed?.type === 'profile' && parsed.profileTab === 'guardado') {
+                        navigateTo(getProfileSavedPath(updatedUser));
+                      } else if (parsed?.type === 'profile' && parsed.profileTab === 'compra') {
+                        navigateTo(getProfileCompraPath(updatedUser));
+                      } else if (parsed?.type === 'profile' && parsed.profileTab === 'producto') {
+                        navigateTo(getProfileProductoPath(updatedUser));
+                      } else if (parsed?.type === 'profile' && parsed.profileTab === 'venta') {
+                        navigateTo(getProfileVentaPath(updatedUser));
+                      } else if (parsed?.type === 'profile' && parsed.profileTab === 'publicaciones') {
+                        navigateTo(getProfilePublicacionesPath(updatedUser));
+                      } else if (parsed?.type === 'profile' && parsed.profileTab === 'publicar') {
+                        navigateTo(getProfilePublicarPath(updatedUser));
+                      } else if (parsed?.type === 'profile' && parsed.profileTab === 'rendimiento') {
+                        navigateTo(getProfileRendimientoPath(updatedUser));
+                      } else {
+                        navigateTo(getProfilePath(updatedUser));
+                      }
                     }
                   }}
                   onRefreshUsers={refreshAllData}

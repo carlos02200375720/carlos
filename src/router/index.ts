@@ -10,7 +10,7 @@ export type AppRoute =
   | { type: 'thankyou' }
   | { type: 'cart' }
   | { type: 'messages' }
-  | { type: 'profile'; userId?: string }
+  | { type: 'profile'; userId?: string; profileTab?: string }
   | { type: 'admin'; adminTab?: string };
 
 /**
@@ -247,8 +247,8 @@ export function parseRoute(pathname: string): AppRoute {
     return { type: 'cart' };
   }
 
-  // /tienda/verificacion (also supports /checkout, /shop/checkout, /tienda/checkout, or /verificacion)
-  if (/^\/(?:tienda\/|shop\/)?(?:verificacion|checkout)$/i.test(normalized)) {
+  // /tienda/verificacion (also supports /tienda/verificasion, /checkout, /shop/checkout, /tienda/checkout, or /verificacion)
+  if (/^\/(?:tienda\/|shop\/)?(?:verificacion|verificasion|checkout)$/i.test(normalized)) {
     return { type: 'checkout' };
   }
 
@@ -257,8 +257,8 @@ export function parseRoute(pathname: string): AppRoute {
     return { type: 'thankyou' };
   }
 
-  // /tienda or /shop
-  if (normalized.toLowerCase() === '/tienda' || normalized.toLowerCase() === '/shop') {
+  // /tienda or /tienda/catalogo or /shop
+  if (/^\/(?:tienda|shop)(?:\/catalogo)?$/i.test(normalized)) {
     return { type: 'shop' };
   }
 
@@ -323,10 +323,169 @@ export function parseRoute(pathname: string): AppRoute {
     return { type: 'messages' };
   }
 
+  // /perfil/:userId/guardado or /perfil/guardado or /app/web/perfil/guardado
+  const profileSavedMatch = normalized.match(
+    /^\/(?:src\/app\/web\/|app\/web\/)?(?:perfil|profile)(?:\/([^/]+))?\/guardados?$/i
+  );
+  if (profileSavedMatch) {
+    const rawUser = profileSavedMatch[1] ? decodeURIComponent(profileSavedMatch[1]) : undefined;
+    const isGenericUser =
+      !rawUser ||
+      rawUser.toLowerCase() === 'usuario' ||
+      rawUser.toLowerCase() === 'invitado' ||
+      rawUser.toLowerCase() === 'guest' ||
+      rawUser.toLowerCase() === 'current_user';
+    return {
+      type: 'profile',
+      userId: isGenericUser ? undefined : rawUser,
+      profileTab: 'guardado',
+    };
+  }
+
+  // /perfil/:userId/compra or /perfil/compra or /app/web/perfil/compra
+  const profileCompraMatch = normalized.match(
+    /^\/(?:src\/app\/web\/|app\/web\/)?(?:perfil|profile)(?:\/([^/]+))?\/compras?$/i
+  );
+  if (profileCompraMatch) {
+    const rawUser = profileCompraMatch[1] ? decodeURIComponent(profileCompraMatch[1]) : undefined;
+    const isGenericUser =
+      !rawUser ||
+      rawUser.toLowerCase() === 'usuario' ||
+      rawUser.toLowerCase() === 'invitado' ||
+      rawUser.toLowerCase() === 'guest' ||
+      rawUser.toLowerCase() === 'current_user';
+    return {
+      type: 'profile',
+      userId: isGenericUser ? undefined : rawUser,
+      profileTab: 'compra',
+    };
+  }
+
+  // /perfil/:userId/config or /perfil/config or /app/web/perfil/config
+  const profileConfigMatch = normalized.match(
+    /^\/(?:src\/app\/web\/|app\/web\/)?(?:perfil|profile)(?:\/([^/]+))?\/(?:config|configuracion)$/i
+  );
+  if (profileConfigMatch) {
+    const rawUser = profileConfigMatch[1] ? decodeURIComponent(profileConfigMatch[1]) : undefined;
+    const isGenericUser =
+      !rawUser ||
+      rawUser.toLowerCase() === 'usuario' ||
+      rawUser.toLowerCase() === 'invitado' ||
+      rawUser.toLowerCase() === 'guest' ||
+      rawUser.toLowerCase() === 'current_user';
+    return {
+      type: 'profile',
+      userId: isGenericUser ? undefined : rawUser,
+      profileTab: 'config',
+    };
+  }
+
+  // /perfil/:userId/producto or /perfil/:userId/productos or /app/web/perfil/productos
+  const profileProductoMatch = normalized.match(
+    /^\/(?:src\/app\/web\/|app\/web\/)?(?:perfil|profile)(?:\/([^/]+))?\/productos?$/i
+  );
+  if (profileProductoMatch) {
+    const rawUser = profileProductoMatch[1] ? decodeURIComponent(profileProductoMatch[1]) : undefined;
+    const isGenericUser =
+      !rawUser ||
+      rawUser.toLowerCase() === 'usuario' ||
+      rawUser.toLowerCase() === 'invitado' ||
+      rawUser.toLowerCase() === 'guest' ||
+      rawUser.toLowerCase() === 'current_user';
+    return {
+      type: 'profile',
+      userId: isGenericUser ? undefined : rawUser,
+      profileTab: 'producto',
+    };
+  }
+
+  // /perfil/:userId/venta or /perfil/:userId/ventas or /app/web/perfil/venta
+  const profileVentaMatch = normalized.match(
+    /^\/(?:src\/app\/web\/|app\/web\/)?(?:perfil|profile)(?:\/([^/]+))?\/ventas?$/i
+  );
+  if (profileVentaMatch) {
+    const rawUser = profileVentaMatch[1] ? decodeURIComponent(profileVentaMatch[1]) : undefined;
+    const isGenericUser =
+      !rawUser ||
+      rawUser.toLowerCase() === 'usuario' ||
+      rawUser.toLowerCase() === 'invitado' ||
+      rawUser.toLowerCase() === 'guest' ||
+      rawUser.toLowerCase() === 'current_user';
+    return {
+      type: 'profile',
+      userId: isGenericUser ? undefined : rawUser,
+      profileTab: 'venta',
+    };
+  }
+
+  // /perfil/:userId/publicaciones or /perfil/:userId/publicacion or /app/web/perfil/publicaciones
+  const profilePublicacionesMatch = normalized.match(
+    /^\/(?:src\/app\/web\/|app\/web\/)?(?:perfil|profile)(?:\/([^/]+))?\/publicacion(?:es)?$/i
+  );
+  if (profilePublicacionesMatch) {
+    const rawUser = profilePublicacionesMatch[1] ? decodeURIComponent(profilePublicacionesMatch[1]) : undefined;
+    const isGenericUser =
+      !rawUser ||
+      rawUser.toLowerCase() === 'usuario' ||
+      rawUser.toLowerCase() === 'invitado' ||
+      rawUser.toLowerCase() === 'guest' ||
+      rawUser.toLowerCase() === 'current_user';
+    return {
+      type: 'profile',
+      userId: isGenericUser ? undefined : rawUser,
+      profileTab: 'publicaciones',
+    };
+  }
+
+  // /perfil/:userId/publicar or /app/web/perfil/publicar
+  const profilePublicarMatch = normalized.match(
+    /^\/(?:src\/app\/web\/|app\/web\/)?(?:perfil|profile)(?:\/([^/]+))?\/publicar$/i
+  );
+  if (profilePublicarMatch) {
+    const rawUser = profilePublicarMatch[1] ? decodeURIComponent(profilePublicarMatch[1]) : undefined;
+    const isGenericUser =
+      !rawUser ||
+      rawUser.toLowerCase() === 'usuario' ||
+      rawUser.toLowerCase() === 'invitado' ||
+      rawUser.toLowerCase() === 'guest' ||
+      rawUser.toLowerCase() === 'current_user';
+    return {
+      type: 'profile',
+      userId: isGenericUser ? undefined : rawUser,
+      profileTab: 'publicar',
+    };
+  }
+
+  // /perfil/:userId/rendimiento or /app/web/perfil/usuario/rendimiento or /app/web/perfil/rendimiento
+  const profileRendimientoMatch = normalized.match(
+    /^\/(?:src\/app\/web\/|app\/web\/)?(?:perfil|profile)(?:\/([^/]+))?\/rendimientos?$/i
+  );
+  if (profileRendimientoMatch) {
+    const rawUser = profileRendimientoMatch[1] ? decodeURIComponent(profileRendimientoMatch[1]) : undefined;
+    const isGenericUser =
+      !rawUser ||
+      rawUser.toLowerCase() === 'usuario' ||
+      rawUser.toLowerCase() === 'invitado' ||
+      rawUser.toLowerCase() === 'guest' ||
+      rawUser.toLowerCase() === 'current_user';
+    return {
+      type: 'profile',
+      userId: isGenericUser ? undefined : rawUser,
+      profileTab: 'rendimiento',
+    };
+  }
+
   // /perfil or /perfil/:userId (also supports legacy /profile or /profile/:userId)
   const profileMatch = normalized.match(/^\/(?:perfil|profile)(?:\/([^/]+))?$/i);
   if (profileMatch) {
-    return { type: 'profile', userId: profileMatch[1] ? decodeURIComponent(profileMatch[1]) : undefined };
+    const rawUser = profileMatch[1] ? decodeURIComponent(profileMatch[1]) : undefined;
+    const isGenericUser =
+      !rawUser ||
+      rawUser.toLowerCase() === 'usuario' ||
+      rawUser.toLowerCase() === 'invitado' ||
+      rawUser.toLowerCase() === 'guest' ||
+      rawUser.toLowerCase() === 'current_user';
+    return { type: 'profile', userId: isGenericUser ? undefined : rawUser };
   }
 
   // /admin/resumen, /admin/usuarios, or /admin
@@ -394,6 +553,30 @@ export function routeToPath(route: AppRoute): string {
     case 'messages':
       return '/messages';
     case 'profile':
+      if (route.profileTab === 'guardado') {
+        return getProfileSavedPath(route.userId);
+      }
+      if (route.profileTab === 'compra') {
+        return getProfileCompraPath(route.userId);
+      }
+      if (route.profileTab === 'config') {
+        return getProfileConfigPath(route.userId);
+      }
+      if (route.profileTab === 'producto') {
+        return getProfileProductoPath(route.userId);
+      }
+      if (route.profileTab === 'venta') {
+        return getProfileVentaPath(route.userId);
+      }
+      if (route.profileTab === 'publicaciones') {
+        return getProfilePublicacionesPath(route.userId);
+      }
+      if (route.profileTab === 'publicar') {
+        return getProfilePublicarPath(route.userId);
+      }
+      if (route.profileTab === 'rendimiento') {
+        return getProfileRendimientoPath(route.userId);
+      }
       return route.userId ? `/perfil/${encodeURIComponent(route.userId)}` : '/perfil';
     case 'admin':
       return route.adminTab ? `/admin/${encodeURIComponent(route.adminTab)}` : '/admin/resumen';
@@ -438,6 +621,118 @@ export function getProfilePath(usernameOrUser?: string | { username?: string; na
     clean = fromName && fromName !== 'invitado' ? fromName : clean.split('@')[0];
   }
   return clean ? `/perfil/${encodeURIComponent(clean)}` : '/perfil';
+}
+
+/**
+ * Returns the saved publications URL path `/perfil/:username/guardado`
+ * (or `/perfil/usuario/guardado` if the user is a guest / has no username).
+ */
+export function getProfileSavedPath(
+  usernameOrUser?: string | { username?: string; name?: string; isGuest?: boolean } | null
+): string {
+  const basePath = getProfilePath(usernameOrUser);
+  if (basePath === '/perfil') {
+    return '/perfil/usuario/guardado';
+  }
+  return `${basePath}/guardado`;
+}
+
+/**
+ * Returns the purchases URL path `/perfil/:username/compra`
+ * (or `/perfil/usuario/compra` if the user is a guest / has no username).
+ */
+export function getProfileCompraPath(
+  usernameOrUser?: string | { username?: string; name?: string; isGuest?: boolean } | null
+): string {
+  const basePath = getProfilePath(usernameOrUser);
+  if (basePath === '/perfil') {
+    return '/perfil/usuario/compra';
+  }
+  return `${basePath}/compra`;
+}
+
+/**
+ * Returns the profile configuration URL path `/perfil/:username/config`
+ * (or `/perfil/usuario/config` if the user is a guest / has no username).
+ */
+export function getProfileConfigPath(
+  usernameOrUser?: string | { username?: string; name?: string; isGuest?: boolean } | null
+): string {
+  const basePath = getProfilePath(usernameOrUser);
+  if (basePath === '/perfil') {
+    return '/perfil/usuario/config';
+  }
+  return `${basePath}/config`;
+}
+
+/**
+ * Returns the profile products URL path `/perfil/:username/producto`
+ * (or `/perfil/usuario/producto` if the user is a guest / has no username).
+ */
+export function getProfileProductoPath(
+  usernameOrUser?: string | { username?: string; name?: string; isGuest?: boolean } | null
+): string {
+  const basePath = getProfilePath(usernameOrUser);
+  if (basePath === '/perfil') {
+    return '/perfil/usuario/producto';
+  }
+  return `${basePath}/producto`;
+}
+
+/**
+ * Returns the profile incoming sales URL path `/perfil/:username/venta`
+ * (or `/perfil/usuario/venta` if the user is a guest / has no username).
+ */
+export function getProfileVentaPath(
+  usernameOrUser?: string | { username?: string; name?: string; isGuest?: boolean } | null
+): string {
+  const basePath = getProfilePath(usernameOrUser);
+  if (basePath === '/perfil') {
+    return '/perfil/usuario/venta';
+  }
+  return `${basePath}/venta`;
+}
+
+/**
+ * Returns the profile publications URL path `/perfil/:username/publicaciones`
+ * (or `/perfil/usuario/publicaciones` if the user is a guest / has no username).
+ */
+export function getProfilePublicacionesPath(
+  usernameOrUser?: string | { username?: string; name?: string; isGuest?: boolean } | null
+): string {
+  const basePath = getProfilePath(usernameOrUser);
+  if (basePath === '/perfil') {
+    return '/perfil/usuario/publicaciones';
+  }
+  return `${basePath}/publicaciones`;
+}
+
+/**
+ * Returns the profile publish URL path `/perfil/:username/publicar`
+ * (or `/perfil/usuario/publicar` if the user is a guest / has no username).
+ */
+export function getProfilePublicarPath(
+  usernameOrUser?: string | { username?: string; name?: string; isGuest?: boolean } | null
+): string {
+  const basePath = getProfilePath(usernameOrUser);
+  if (basePath === '/perfil') {
+    return '/perfil/usuario/publicar';
+  }
+  return `${basePath}/publicar`;
+}
+
+/**
+ * Returns the profile performance URL path `/perfil/:username/rendimiento`
+ * (or `/perfil/usuario/rendimiento` if the user is a guest / has no username).
+ */
+export function getProfileRendimientoPath(
+  usernameOrUser?: string | { username?: string; name?: string; isGuest?: boolean } | null
+): string {
+  const basePath = getProfilePath(usernameOrUser);
+  if (basePath === '/perfil') {
+    return '/perfil/usuario/rendimiento';
+  }
+  return `${basePath}/rendimiento`;
 }
 
 /**

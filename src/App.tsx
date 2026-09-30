@@ -7,7 +7,7 @@ import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { isSuperAdmin } from "./superAdmin";
 import { sessionState } from "./utils/sessionState";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
-import { useCurrentRoute, navigateTo, parseRoute, getProfilePath, getProductPath, getInicioPath, findReelByInicioParam } from "./router";
+import { useCurrentRoute, navigateTo, parseRoute, getProfilePath, getProfileSavedPath, getProfileCompraPath, getProfileConfigPath, getProfileProductoPath, getProfileVentaPath, getProfilePublicacionesPath, getProfilePublicarPath, getProfileRendimientoPath, getProductPath, getInicioPath, findReelByInicioParam } from "./router";
 
 const deduplicateById = <T extends { id?: string; _id?: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -382,9 +382,18 @@ export default function App() {
     }
   }, [currentRoute, products, reels]);
 
-  // Keep profile URL synchronized with /perfil/:username of the active user or viewed creator
+  // Keep profile URL synchronized with /perfil/:username (or /perfil/:username/guardado, /perfil/:username/compra, /perfil/:username/config, /perfil/:username/producto) of the active user or viewed creator
   useEffect(() => {
     if (activeTab !== 'profile' || typeof window === 'undefined') return;
+    const parsed = parseRoute(window.location.pathname);
+    const isSavedSubRoute = parsed.type === 'profile' && parsed.profileTab === 'guardado';
+    const isCompraSubRoute = parsed.type === 'profile' && parsed.profileTab === 'compra';
+    const isConfigSubRoute = parsed.type === 'profile' && parsed.profileTab === 'config';
+    const isProductoSubRoute = parsed.type === 'profile' && parsed.profileTab === 'producto';
+    const isVentaSubRoute = parsed.type === 'profile' && parsed.profileTab === 'venta';
+    const isPublicacionesSubRoute = parsed.type === 'profile' && parsed.profileTab === 'publicaciones';
+    const isPublicarSubRoute = parsed.type === 'profile' && parsed.profileTab === 'publicar';
+    const isRendimientoSubRoute = parsed.type === 'profile' && parsed.profileTab === 'rendimiento';
 
     if (selectedCreatorProfileId) {
       const matchedCreator = users.find(
@@ -394,12 +403,44 @@ export default function App() {
           (u.username && u.username.toLowerCase() === selectedCreatorProfileId.toLowerCase())
       );
       const targetUsername = matchedCreator?.username || selectedCreatorProfileId;
-      const expectedPath = getProfilePath(targetUsername);
+      const expectedPath = isSavedSubRoute
+        ? getProfileSavedPath(targetUsername)
+        : isCompraSubRoute
+        ? getProfileCompraPath(targetUsername)
+        : isConfigSubRoute
+        ? getProfileConfigPath(targetUsername)
+        : isProductoSubRoute
+        ? getProfileProductoPath(targetUsername)
+        : isVentaSubRoute
+        ? getProfileVentaPath(targetUsername)
+        : isPublicacionesSubRoute
+        ? getProfilePublicacionesPath(targetUsername)
+        : isPublicarSubRoute
+        ? getProfilePublicarPath(targetUsername)
+        : isRendimientoSubRoute
+        ? getProfileRendimientoPath(targetUsername)
+        : getProfilePath(targetUsername);
       if (window.location.pathname !== expectedPath) {
         navigateTo(expectedPath, { replace: true });
       }
     } else {
-      const expectedPath = getProfilePath(currentUser);
+      const expectedPath = isSavedSubRoute
+        ? getProfileSavedPath(currentUser)
+        : isCompraSubRoute
+        ? getProfileCompraPath(currentUser)
+        : isConfigSubRoute
+        ? getProfileConfigPath(currentUser)
+        : isProductoSubRoute
+        ? getProfileProductoPath(currentUser)
+        : isVentaSubRoute
+        ? getProfileVentaPath(currentUser)
+        : isPublicacionesSubRoute
+        ? getProfilePublicacionesPath(currentUser)
+        : isPublicarSubRoute
+        ? getProfilePublicarPath(currentUser)
+        : isRendimientoSubRoute
+        ? getProfileRendimientoPath(currentUser)
+        : getProfilePath(currentUser);
       if (window.location.pathname !== expectedPath) {
         navigateTo(expectedPath, { replace: true });
       }
