@@ -2033,8 +2033,8 @@ export default function Tienda({
           {activeStep === 'checkout' && (
             <motion.div
               key="checkout"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="grid grid-cols-1 md:grid-cols-5 gap-8 max-w-5xl mx-auto px-2 sm:px-4 py-2 pb-24 md:pb-8"
             >
@@ -2224,21 +2224,23 @@ export default function Tienda({
                   </div>
                 </div>
 
-                {/* Integrated Pay Button inside the Order Summary (desktop + mobile) */}
+                {/* Integrated Pay Button inside the Order Summary (fixed bottom on mobile, inline on desktop) */}
                 <div className="flex flex-col space-y-3 pt-2">
                   {!isFormValid && (
                     <span className="text-[11px] text-rose-500 font-bold animate-pulse text-center bg-rose-50/70 border border-rose-100 py-1.5 px-2 rounded-lg">
                       Por favor complete los datos de envío y pago
                     </span>
                   )}
-                  <button
-                    onClick={executePayment}
-                    className="w-full bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-slate-950 font-extrabold py-3.5 px-6 rounded-xl text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-amber-500/25 border border-amber-400"
-                    id="pay-now-desktop-btn"
-                  >
-                    <ShieldCheck className="w-5 h-5 text-slate-950 shrink-0" />
-                    <span>Pagar (${cartTotal.toFixed(2)})</span>
-                  </button>
+                  <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 pt-1.5 pb-[1px] shadow-[0_-4px_16px_rgba(0,0,0,0.08)] md:static md:z-auto md:bg-transparent md:backdrop-blur-none md:border-0 md:p-0 md:shadow-none">
+                    <button
+                      onClick={executePayment}
+                      className="w-full bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-slate-950 font-extrabold py-3.5 px-6 rounded-xl text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-amber-500/25 border border-amber-400"
+                      id="pay-now-desktop-btn"
+                    >
+                      <ShieldCheck className="w-5 h-5 text-slate-950 shrink-0" />
+                      <span>Pagar (${cartTotal.toFixed(2)})</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200/60 text-center">
@@ -2272,15 +2274,12 @@ export default function Tienda({
           {/* 5. THANK YOU STEP */}
           {activeStep === 'thankyou' && (
             <div
-              className="w-full px-2 sm:px-4 py-2"
-              style={{
-                paddingBottom: 'calc(68px + env(safe-area-inset-bottom, 0px) + 5px)'
-              }}
+              className="w-full px-2 sm:px-4 py-2 pb-20 md:pb-6"
             >
               <motion.div
                 key="thankyou"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
                 className="max-w-lg mx-auto bg-white p-4 sm:p-6 rounded-2xl text-center"
               >
                 <CheckCircle2 className="w-14 h-14 sm:w-16 sm:h-16 text-emerald-500 mx-auto animate-bounce" />
@@ -2385,7 +2384,7 @@ export default function Tienda({
                   </div>
                 )}
 
-                <div className="mt-6 flex space-x-3">
+                <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 pt-1.5 pb-[1px] shadow-[0_-4px_16px_rgba(0,0,0,0.08)] mt-0 flex space-x-3 md:static md:z-auto md:bg-transparent md:backdrop-blur-none md:border-0 md:p-0 md:shadow-none md:mt-6">
                   <button
                     onClick={() => {
                       setActiveStep('catalog');
@@ -2606,10 +2605,7 @@ export default function Tienda({
               {/* Drawer Footer summary */}
               {cart.length > 0 && (
                 <div 
-                  className="px-4 py-2 border-t border-slate-100 bg-white space-y-1.5 shrink-0"
-                  style={{ 
-                    paddingBottom: 'max(0.5rem, calc(env(safe-area-inset-bottom, 0px) + 0.35rem))'
-                  }}
+                  className="px-4 pt-2 pb-[1px] md:py-2 border-t border-slate-100 bg-white space-y-1.5 shrink-0"
                 >
                   <div className="flex justify-between text-[11px] text-slate-500 font-medium leading-tight">
                     <span>Subtotal ({selectedCartItems.length} de {cart.length} selec.):</span>
