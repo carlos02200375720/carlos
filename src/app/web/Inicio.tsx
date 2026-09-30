@@ -375,7 +375,7 @@ export default function Inicio({
 
   return (
     <div className="relative w-full bg-slate-950 overflow-hidden flex flex-col" id="reels-panel" style={{ height: "100dvh", maxHeight: "100dvh" }}>
-      <header className="absolute top-0 inset-x-0 z-40 flex items-center justify-between px-4 pointer-events-none" style={{ paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))", paddingBottom: "0.75rem" }} id="reels-fixed-header">
+      <header className="absolute top-0 inset-x-0 z-40 flex items-center justify-between px-4 pt-2 pb-1.5 md:pt-8 md:pb-3 pointer-events-none" id="reels-fixed-header">
         <div className="flex items-center space-x-2 pointer-events-auto">
           <button
             type="button"
@@ -609,7 +609,7 @@ export default function Inicio({
               <div>
                 <div
                   className="flex items-center justify-between px-2 pb-4 mb-4 border-b border-slate-800/80"
-                  style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))" }}
+                  style={{ paddingTop: "0.75rem" }}
                 >
                   <div
                     className="flex items-center space-x-2.5 cursor-pointer"
