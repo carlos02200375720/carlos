@@ -66,6 +66,7 @@ export default function Inicio({
   const [showMobileNavMenu, setShowMobileNavMenu] = useState(false);
   const [carouselIndices, setCarouselIndices] = useState<{ [key: string]: number }>({});
   const [mediaAspectRatios, setMediaAspectRatios] = useState<{ [key: string]: 'vertical' | 'square' | 'horizontal' | 'horizontal_or_square' }>({});
+  const [expandedDescriptions, setExpandedDescriptions] = useState<{ [key: string]: boolean }>({});
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<{ [key: number]: HTMLVideoElement | null }>({});
@@ -559,7 +560,45 @@ export default function Inicio({
                     {!isPlaying && isCurrent && isMediaVideo && <div className="absolute inset-0 m-auto flex items-center justify-center pointer-events-none z-20 bg-black/40 rounded-full w-16 h-16 backdrop-blur-xs"><Play className="w-8 h-8 text-white fill-white translate-x-0.5" /></div>}
 
                     <div className="absolute left-4 sm:left-6 bottom-[26px] sm:bottom-6 right-20 sm:right-24 md:right-6 lg:right-8 z-20 flex flex-col space-y-3 max-w-xl pointer-events-none">
-                      <div className="text-white bg-transparent p-3 rounded-xl drop-shadow-md pointer-events-none" style={{ marginLeft: "-15px", marginBottom: "-10px" }}><h3 className="font-display font-bold text-base sm:text-lg tracking-wide flex items-center space-x-2.5"><span className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm pointer-events-auto" onClick={() => { const target = (reel.creatorUsername && reel.creatorUsername !== "invitado") ? reel.creatorUsername : (reel.creatorId && reel.creatorId !== "current_user" ? reel.creatorId : (reel.creatorName || "current_user")); onCreatorClick(target); }}>@{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}</span>{(() => { const isSelf = currentUser.id === reel.creatorId || reel.creatorId === "current_user" || (currentUser.originalId && currentUser.originalId === reel.creatorId) || (currentUser.username && reel.creatorUsername && currentUser.username.toLowerCase() === reel.creatorUsername.toLowerCase()); if (isSelf) return null; const targetId = reel.creatorId || reel.creatorUsername; const isFollowing = Boolean(currentUser.followingUserIds?.some((id) => id === reel.creatorId || id === reel.creatorUsername || (reel.creatorUsername && id.toLowerCase() === reel.creatorUsername.toLowerCase()) || (reel.creatorId && id.toLowerCase() === reel.creatorId.toLowerCase()))); return <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (currentUser.username === "invitado" || currentUser.isGuest) onGuestInteraction("seguir a creadores"); else if (onToggleFollowUser) onToggleFollowUser(targetId); }} id={`follow-creator-btn-${reel.id}`} className={`text-xs font-bold px-3 py-1 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-sm pointer-events-auto ${isFollowing ? "text-white/80 border-white/60 hover:text-rose-300 hover:border-rose-400 hover:bg-rose-500/10" : "text-white border-white hover:bg-white/15 active:scale-95 font-extrabold"}`}>{isFollowing ? "Siguiendo" : "+ Seguir"}</button>; })()}</h3><p className="text-sm sm:text-base text-white/95 font-medium mt-1.5 line-clamp-3 leading-relaxed drop-shadow-sm pointer-events-none">{reel.description || ""}</p></div>
+                      <div className="text-white bg-transparent p-3 rounded-xl drop-shadow-md pointer-events-none" style={{ marginLeft: "-15px", marginBottom: "-10px" }}><h3 className="font-display font-bold text-base sm:text-lg tracking-wide flex items-center space-x-2.5"><span className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm pointer-events-auto" onClick={() => { const target = (reel.creatorUsername && reel.creatorUsername !== "invitado") ? reel.creatorUsername : (reel.creatorId && reel.creatorId !== "current_user" ? reel.creatorId : (reel.creatorName || "current_user")); onCreatorClick(target); }}>@{reel.creatorUsername || reel.creatorName.toLowerCase().replace(/\s+/g, "")}</span>{(() => { const isSelf = currentUser.id === reel.creatorId || reel.creatorId === "current_user" || (currentUser.originalId && currentUser.originalId === reel.creatorId) || (currentUser.username && reel.creatorUsername && currentUser.username.toLowerCase() === reel.creatorUsername.toLowerCase()); if (isSelf) return null; const targetId = reel.creatorId || reel.creatorUsername; const isFollowing = Boolean(currentUser.followingUserIds?.some((id) => id === reel.creatorId || id === reel.creatorUsername || (reel.creatorUsername && id.toLowerCase() === reel.creatorUsername.toLowerCase()) || (reel.creatorId && id.toLowerCase() === reel.creatorId.toLowerCase()))); return <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (currentUser.username === "invitado" || currentUser.isGuest) onGuestInteraction("seguir a creadores"); else if (onToggleFollowUser) onToggleFollowUser(targetId); }} id={`follow-creator-btn-${reel.id}`} className={`text-xs font-bold px-3 py-1 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-sm pointer-events-auto ${isFollowing ? "text-white/80 border-white/60 hover:text-rose-300 hover:border-rose-400 hover:bg-rose-500/10" : "text-white border-white hover:bg-white/15 active:scale-95 font-extrabold"}`}>{isFollowing ? "Siguiendo" : "+ Seguir"}</button>; })()}</h3>{reel.description && (
+                        <p className={`text-sm sm:text-base text-white/95 font-medium mt-1.5 leading-relaxed drop-shadow-sm pointer-events-auto break-words ${expandedDescriptions[reel.id] ? "whitespace-pre-line max-h-44 overflow-y-auto no-scrollbar" : ""}`} id={`reel-description-${reel.id}`}>
+                          {reel.description.length > 25 && !expandedDescriptions[reel.id] ? (
+                            <>
+                              <span>{reel.description.slice(0, 25)}...</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  setExpandedDescriptions((prev) => ({ ...prev, [reel.id]: true }));
+                                }}
+                                className="font-bold text-white hover:text-amber-400 cursor-pointer pointer-events-auto transition-colors"
+                                id={`expand-desc-btn-${reel.id}`}
+                              >
+                                mas
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span>{reel.description}</span>
+                              {reel.description.length > 25 && expandedDescriptions[reel.id] && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    setExpandedDescriptions((prev) => ({ ...prev, [reel.id]: false }));
+                                  }}
+                                  className="font-bold text-white/75 hover:text-amber-400 cursor-pointer pointer-events-auto transition-colors ml-1.5 text-xs"
+                                  id={`collapse-desc-btn-${reel.id}`}
+                                >
+                                  menos
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </p>
+                      )}</div>
                       {reelProduct && <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} onClick={() => onProductClick(reelProduct)} className="bg-black/45 border border-white/20 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/55 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg overflow-hidden mb-0.5 sm:mb-0 pointer-events-auto" id={`tagged-product-${reel.id}`} style={{ marginLeft: "-4px", width: "285.606px", height: "68.3438px" }}><div className="w-20 shrink-0 h-full relative overflow-hidden bg-transparent border-r border-white/15">{reelProduct.imageUrl ? <img src={reelProduct.imageUrl} alt={reelProduct.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-800/60 text-amber-400"><ShoppingBag className="w-5 h-5" /></div>}</div><div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-transparent"><span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center"><ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado</span><h4 className="text-xs font-bold truncate text-slate-100">{reelProduct.name}</h4><div className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-400 font-mono">${reelProduct.price.toFixed(2)}</span><span className="text-[9px] text-amber-400 font-semibold">Ver detalles →</span></div></div></motion.div>}
                     </div>
 

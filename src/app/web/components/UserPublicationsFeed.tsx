@@ -923,26 +923,48 @@ export default function UserPublicationsFeed({
                 {reel.description && (
                   <div className="text-xs text-white/95 leading-relaxed drop-shadow-md">
                     <p
-                      className={
-                        expandedDesc[reel.id] ? "whitespace-pre-line" : "line-clamp-2"
-                      }
+                      className={`break-words ${
+                        expandedDesc[reel.id] ? "whitespace-pre-line max-h-40 overflow-y-auto no-scrollbar" : ""
+                      }`}
                     >
-                      {reel.description}
+                      {reel.description.length > 25 && !expandedDesc[reel.id] ? (
+                        <>
+                          <span>{reel.description.slice(0, 25)}...</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedDesc((prev) => ({
+                                ...prev,
+                                [reel.id]: true,
+                              }));
+                            }}
+                            className="font-extrabold text-white hover:text-amber-400 cursor-pointer transition-colors"
+                          >
+                            mas
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span>{reel.description}</span>
+                          {reel.description.length > 25 && expandedDesc[reel.id] && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedDesc((prev) => ({
+                                  ...prev,
+                                  [reel.id]: false,
+                                }));
+                              }}
+                              className="text-[11px] font-extrabold text-white/75 hover:text-amber-400 ml-1.5 cursor-pointer transition-colors"
+                            >
+                              menos
+                            </button>
+                          )}
+                        </>
+                      )}
                     </p>
-                    {reel.description.length > 80 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedDesc((prev) => ({
-                            ...prev,
-                            [reel.id]: !prev[reel.id],
-                          }))
-                        }
-                        className="text-[11px] font-extrabold text-white/70 hover:text-white mt-0.5 underline cursor-pointer"
-                      >
-                        {expandedDesc[reel.id] ? "menos" : "más"}
-                      </button>
-                    )}
                   </div>
                 )}
 

@@ -41,6 +41,7 @@ export async function getProducts(req: Request, res: Response): Promise<void> {
         shippingCapital: p.shippingCapital || 0,
         shippingProvince: p.shippingProvince || 0,
         freeShipping: Boolean(p.freeShipping),
+        shippingOptions: Array.isArray(p.shippingOptions) ? p.shippingOptions : [],
         images: p.images || [],
         videos: p.videos || [],
         variants: p.variants || [],
@@ -90,6 +91,7 @@ export async function getProductById(req: Request, res: Response): Promise<void>
           shippingCapital: dbProduct.shippingCapital || 0,
           shippingProvince: dbProduct.shippingProvince || 0,
           freeShipping: Boolean(dbProduct.freeShipping),
+          shippingOptions: Array.isArray(dbProduct.shippingOptions) ? dbProduct.shippingOptions : [],
           images: dbProduct.images || [],
           videos: dbProduct.videos || [],
           variants: dbProduct.variants || [],
@@ -171,6 +173,7 @@ export async function createProduct(req: any, res: any): Promise<void> {
       shippingCapital,
       shippingProvince,
       freeShipping,
+      shippingOptions,
       images,
       videos,
       variants,
@@ -189,12 +192,26 @@ export async function createProduct(req: any, res: any): Promise<void> {
       return;
     }
 
-    const isFreeShipping = Boolean(freeShipping);
+    const normalizedShippingOptions = Array.isArray(shippingOptions)
+      ? shippingOptions
+          .filter((opt: any) => opt && String(opt.label || "").trim().length > 0)
+          .map((opt: any, idx: number) => ({
+            id: opt.id || `ship_${Date.now()}_${idx}`,
+            label: String(opt.label || "").trim(),
+            origin: opt.origin ? String(opt.origin).trim() : "",
+            price: Math.max(0, Number(opt.price) || 0),
+            deliveryTime: String(opt.deliveryTime || "3-7 días hábiles").trim(),
+          }))
+      : [];
+
+    const isFreeShipping = Boolean(freeShipping) || normalizedShippingOptions.some((o) => o.price === 0);
     const parsedCapital = Math.max(0, Number(shippingCapital) || 0);
     const parsedProvince = Math.max(0, Number(shippingProvince) || 0);
     const parsedBaseShipping =
       shippingCost !== undefined && shippingCost !== ""
         ? Math.max(0, Number(shippingCost) || 0)
+        : normalizedShippingOptions.length > 0
+        ? normalizedShippingOptions[0].price
         : parsedCapital > 0
         ? parsedCapital
         : parsedProvince > 0
@@ -214,6 +231,7 @@ export async function createProduct(req: any, res: any): Promise<void> {
       shippingCapital: parsedCapital,
       shippingProvince: parsedProvince,
       freeShipping: isFreeShipping,
+      shippingOptions: normalizedShippingOptions,
       images: images || [],
       videos: videos || [],
       variants: variants || [],
@@ -284,6 +302,7 @@ export async function updateProduct(req: any, res: any, next: any): Promise<void
       shippingCapital,
       shippingProvince,
       freeShipping,
+      shippingOptions,
       images,
       videos,
       variants,
@@ -307,6 +326,17 @@ export async function updateProduct(req: any, res: any, next: any): Promise<void
     if (shippingCapital !== undefined) updateFields.shippingCapital = Math.max(0, Number(shippingCapital) || 0);
     if (shippingProvince !== undefined) updateFields.shippingProvince = Math.max(0, Number(shippingProvince) || 0);
     if (freeShipping !== undefined) updateFields.freeShipping = Boolean(freeShipping);
+    if (shippingOptions !== undefined && Array.isArray(shippingOptions)) {
+      updateFields.shippingOptions = shippingOptions
+        .filter((opt: any) => opt && String(opt.label || "").trim().length > 0)
+        .map((opt: any, idx: number) => ({
+          id: opt.id || `ship_${Date.now()}_${idx}`,
+          label: String(opt.label || "").trim(),
+          origin: opt.origin ? String(opt.origin).trim() : "",
+          price: Math.max(0, Number(opt.price) || 0),
+          deliveryTime: String(opt.deliveryTime || "3-7 días hábiles").trim(),
+        }));
+    }
     if (category !== undefined) updateFields.category = String(category).trim();
     if (images !== undefined) updateFields.images = Array.isArray(images) ? images : [];
     if (videos !== undefined) updateFields.videos = Array.isArray(videos) ? videos : [];

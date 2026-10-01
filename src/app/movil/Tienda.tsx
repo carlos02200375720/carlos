@@ -935,27 +935,42 @@ export default function Tienda({
     if (!prod) {
       return [{ carrier: "Envío Gratis", aging: "1-5 días hábiles", shippingCost: 0 }];
     }
+
+    const opts: { carrier: string; aging: string; shippingCost: number }[] = [];
+    const seenLabels = new Set<string>();
+
+    if (Array.isArray(prod.shippingOptions) && prod.shippingOptions.length > 0) {
+      prod.shippingOptions.forEach((opt) => {
+        if (!opt || !opt.label || !String(opt.label).trim()) return;
+        const cleanLabel = String(opt.label).trim();
+        seenLabels.add(cleanLabel.toLowerCase());
+        opts.push({
+          carrier: cleanLabel,
+          aging: String(opt.deliveryTime || "3-7 días hábiles").trim(),
+          shippingCost: Math.max(0, Number(opt.price ?? 0) || 0),
+        });
+      });
+    }
+
     const capCost = Math.max(0, Number(prod.shippingCapital ?? 0) || 0);
     const provCost = Math.max(0, Number(prod.shippingProvince ?? 0) || 0);
     const baseCost = Math.max(0, Number(prod.shippingCost ?? 0) || 0);
 
-    const opts: { carrier: string; aging: string; shippingCost: number }[] = [];
-
-    if (capCost > 0) {
+    if (capCost > 0 && !seenLabels.has("envío a la capital")) {
       opts.push({
         carrier: "Envío a la Capital",
         aging: "1-3 días hábiles",
         shippingCost: capCost,
       });
     }
-    if (provCost > 0) {
+    if (provCost > 0 && !seenLabels.has("envío a provincia")) {
       opts.push({
         carrier: "Envío a Provincia",
         aging: "3-5 días hábiles",
         shippingCost: provCost,
       });
     }
-    if (prod.freeShipping) {
+    if (prod.freeShipping && !opts.some((o) => o.shippingCost === 0)) {
       opts.push({
         carrier: "Envío Gratis",
         aging: "1-5 días hábiles",
@@ -2178,11 +2193,11 @@ export default function Tienda({
 
                   {/* Shipping Options as Buttons (like Size/Color) */}
                   <div className="space-y-1.5 text-left" id="android-product-shipping-options-group">
-                    <div className="flex items-center space-x-1.5 text-[11px] font-bold">
+                    <div className="flex items-center flex-wrap gap-1.5 text-[11px] font-bold">
                       <span className="text-slate-600">Envío:</span>
                       {selectedShippingOption ? (
                         <span className="text-slate-900 font-extrabold bg-slate-100 px-2 py-0.5 rounded-md">
-                          {selectedShippingOption.carrier} ({selectedShippingOption.shippingCost === 0 ? "GRATIS" : `$${selectedShippingOption.shippingCost.toFixed(2)}`})
+                          {selectedShippingOption.carrier} ({selectedShippingOption.shippingCost === 0 ? "GRATIS" : `$${selectedShippingOption.shippingCost.toFixed(2)}`}{selectedShippingOption.aging ? ` • ${selectedShippingOption.aging}` : ""})
                         </span>
                       ) : (
                         <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
@@ -2206,7 +2221,7 @@ export default function Tienda({
                                 selectedProduct.shippingCost = option.shippingCost;
                               }
                             }}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex flex-wrap items-center gap-1.5 ${
                               isSelected
                                 ? "bg-slate-950 text-white border-slate-950 shadow-sm ring-2 ring-amber-500/30"
                                 : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
@@ -2216,6 +2231,17 @@ export default function Tienda({
                             <span className={`font-mono ${isSelected ? "text-amber-400" : "text-emerald-700"}`}>
                               {option.shippingCost === 0 ? "GRATIS ($0.00)" : `$${option.shippingCost.toFixed(2)}`}
                             </span>
+                            {option.aging && (
+                              <span
+                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                  isSelected
+                                    ? "bg-slate-800 text-slate-200"
+                                    : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                ⏱ {option.aging}
+                              </span>
+                            )}
                           </button>
                         );
                       })}

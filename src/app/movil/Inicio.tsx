@@ -107,6 +107,7 @@ export default function Inicio({
   const [progressVideo, setProgressVideo] = useState<HTMLVideoElement | null>(null);
   const [showCartPanel, setShowCartPanel] = useState(false);
   const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
+  const [expandedDescriptions, setExpandedDescriptions] = useState<{ [key: string]: boolean }>({});
 
   const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>([]);
 
@@ -690,7 +691,43 @@ export default function Inicio({
               <span onClick={handleCreatorNav} className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm pointer-events-auto">@{displayUsername}</span>
               {currentUser?.id !== currentReel.creatorId && onToggleFollowUser && <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (isGuest) onGuestInteraction?.("seguir a creadores"); else onToggleFollowUser(currentReel.creatorId); }} className={`text-xs font-bold px-3 py-1 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-sm pointer-events-auto ${isFollowing ? "text-white/80 border-white/60" : "text-white border-white"}`}>{isFollowing ? "Siguiendo" : "+ Seguir"}</button>}
             </h3>
-            {currentReel.description && <p className="text-sm text-white/95 font-medium mt-1.5 line-clamp-3 leading-relaxed drop-shadow-sm">{currentReel.description}</p>}
+            {currentReel.description && (
+              <p className={`text-sm text-white/95 font-medium mt-1.5 leading-relaxed drop-shadow-sm pointer-events-auto break-words ${expandedDescriptions[currentReel.id] ? "whitespace-pre-line max-h-40 overflow-y-auto no-scrollbar" : ""}`}>
+                {currentReel.description.length > 25 && !expandedDescriptions[currentReel.id] ? (
+                  <>
+                    <span>{currentReel.description.slice(0, 25)}...</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setExpandedDescriptions((prev) => ({ ...prev, [currentReel.id]: true }));
+                      }}
+                      className="font-bold text-white hover:text-amber-400 cursor-pointer pointer-events-auto transition-colors"
+                    >
+                      mas
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span>{currentReel.description}</span>
+                    {currentReel.description.length > 25 && expandedDescriptions[currentReel.id] && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setExpandedDescriptions((prev) => ({ ...prev, [currentReel.id]: false }));
+                        }}
+                        className="font-bold text-white/75 hover:text-amber-400 cursor-pointer pointer-events-auto transition-colors ml-1.5 text-xs"
+                      >
+                        menos
+                      </button>
+                    )}
+                  </>
+                )}
+              </p>
+            )}
             {taggedProduct && handleProductSelect && <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} onClick={() => handleProductSelect(taggedProduct)} className="bg-black/10 backdrop-blur-md border border-white/15 text-white rounded-xl flex items-stretch cursor-pointer hover:bg-black/20 hover:border-amber-500/40 active:scale-[0.98] transition-all shadow-lg overflow-hidden pointer-events-auto select-none mt-2" id={`tagged-product-${currentReel.id}`} style={{ marginLeft: "-4px", width: "285.606px", maxWidth: "100%", height: "68.3438px" }}>
               <div className="w-20 shrink-0 h-full relative overflow-hidden bg-black/10 border-r border-white/10">{taggedProduct.imageUrl || taggedProduct.images?.[0] ? <img src={taggedProduct.imageUrl || taggedProduct.images?.[0]} alt={taggedProduct.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-800 text-amber-400"><ShoppingBag className="w-5 h-5" /></div>}</div>
               <div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between bg-black/10"><span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-400 flex items-center"><ShoppingBag className="w-2.5 h-2.5 mr-1 shrink-0" /> Producto Destacado</span><h4 className="text-xs font-bold truncate text-slate-100">{taggedProduct.name}</h4><div className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-400 font-mono">${(Number(taggedProduct.price) || 0).toFixed(2)}</span><span className="text-[9px] text-amber-400 font-semibold">Ver detalles →</span></div></div>

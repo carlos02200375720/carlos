@@ -24,7 +24,7 @@ import {
   Send,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, Product, Order } from "../../../types";
+import { User, Product, Order, ProductShippingOption } from "../../../types";
 import { apiFetch } from "../../../config";
 import VentaPerfilView from "./venta";
 
@@ -78,10 +78,14 @@ export function ProductosPerfilView({
     price: "",
     stock: "",
     shippingCost: "",
+    shippingOptions: [] as ProductShippingOption[],
     category: "Ropa Femenina",
     imageUrl: "",
     images: [] as string[],
   });
+  const [newEditShipLabel, setNewEditShipLabel] = useState("");
+  const [newEditShipPrice, setNewEditShipPrice] = useState("");
+  const [newEditShipTime, setNewEditShipTime] = useState("10-20 días hábiles");
   const [newExtraImageUrl, setNewExtraImageUrl] = useState("");
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [isDeletingProduct, setIsDeletingProduct] = useState(false);
@@ -132,6 +136,7 @@ export function ProductosPerfilView({
       price: prod.price !== undefined ? String(prod.price) : "0",
       stock: prod.stock !== undefined ? String(prod.stock) : "0",
       shippingCost: prod.shippingCost !== undefined ? String(prod.shippingCost) : "0",
+      shippingOptions: Array.isArray(prod.shippingOptions) ? [...prod.shippingOptions] : [],
       category: prod.category || "Ropa Femenina",
       imageUrl: prod.imageUrl || "",
       images: Array.isArray(prod.images)
@@ -140,6 +145,9 @@ export function ProductosPerfilView({
         ? [prod.imageUrl]
         : [],
     });
+    setNewEditShipLabel("");
+    setNewEditShipPrice("");
+    setNewEditShipTime("10-20 días hábiles");
     setNewExtraImageUrl("");
     setProductActionError(null);
   };
@@ -230,12 +238,30 @@ export function ProductosPerfilView({
       setIsSavingProduct(true);
       setProductActionError(null);
 
+      const effectiveShippingOptions = [...editProdForm.shippingOptions];
+      if (newEditShipLabel.trim()) {
+        effectiveShippingOptions.push({
+          id: `ship_${Date.now()}`,
+          label: newEditShipLabel.trim(),
+          price: Math.max(0, parseFloat(String(newEditShipPrice).replace(",", ".")) || 0),
+          deliveryTime: newEditShipTime.trim() || "5-10 días hábiles",
+        });
+      }
+
       const payload = {
         name: editProdForm.name.trim(),
         description: editProdForm.description.trim(),
         price: numPrice,
         stock: numStock,
-        shippingCost: Math.max(0, parseFloat(editProdForm.shippingCost) || 0),
+        shippingCost:
+          effectiveShippingOptions.length > 0
+            ? effectiveShippingOptions[0].price
+            : Math.max(0, parseFloat(editProdForm.shippingCost) || 0),
+        shippingOptions: effectiveShippingOptions,
+        freeShipping:
+          effectiveShippingOptions.length > 0
+            ? effectiveShippingOptions.some((o) => o.price === 0)
+            : (parseFloat(editProdForm.shippingCost) || 0) === 0,
         category: editProdForm.category.trim() || "General",
         imageUrl: editProdForm.imageUrl.trim(),
         images: editProdForm.images.filter((img) => img.trim().length > 0),
@@ -847,6 +873,128 @@ export function ProductosPerfilView({
                         <option value="General">General / Otros</option>
                       </select>
                     </div>
+                  </div>
+
+                  {/* Manual Shipping Options Editor in Edit Product Modal */}
+                  <div className="space-y-2.5 bg-amber-50/40 p-3.5 rounded-2xl border border-amber-200/80">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1">
+                        <Truck className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Rutas de Envío Manual (China, EE.UU., Local, etc.)</span>
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: "Envío desde China 🇨🇳", time: "10-20 días hábiles" },
+                        { label: "Envío desde Estados Unidos 🇺🇸", time: "5-10 días hábiles" },
+                        { label: "Envío a la Capital 🏙️", time: "1-3 días hábiles" },
+                        { label: "Envío Gratis 🎁", time: "1-5 días hábiles", price: "0" },
+                      ].map((preset, pIdx) => (
+                        <button
+                          key={pIdx}
+                          type="button"
+                          onClick={() => {
+                            setNewEditShipLabel(preset.label);
+                            setNewEditShipTime(preset.time);
+                            if (preset.price !== undefined) setNewEditShipPrice(preset.price);
+                          }}
+                          className="px-2 py-1 rounded-lg bg-white hover:bg-amber-50 border border-slate-200 text-[10px] font-bold text-slate-700 cursor-pointer"
+                        >
+                          + {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                      <div className="sm:col-span-5">
+                        <input
+                          type="text"
+                          placeholder="Origen (ej. Envío desde China)"
+                          value={newEditShipLabel}
+                          onChange={(e) => setNewEditShipLabel(e.target.value)}
+                          className="w-full text-xs px-2.5 py-2 rounded-lg border border-slate-200 bg-white font-medium text-slate-800"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="$ Precio"
+                          value={newEditShipPrice}
+                          onChange={(e) => setNewEditShipPrice(e.target.value)}
+                          className="w-full text-xs font-mono px-2.5 py-2 rounded-lg border border-slate-200 bg-white font-bold text-slate-800"
+                        />
+                      </div>
+                      <div className="sm:col-span-3">
+                        <input
+                          type="text"
+                          placeholder="Ej. 10-20 días"
+                          value={newEditShipTime}
+                          onChange={(e) => setNewEditShipTime(e.target.value)}
+                          className="w-full text-xs px-2.5 py-2 rounded-lg border border-slate-200 bg-white font-medium text-slate-800"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!newEditShipLabel.trim()) return;
+                            setEditProdForm((prev) => ({
+                              ...prev,
+                              shippingOptions: [
+                                ...prev.shippingOptions,
+                                {
+                                  id: `ship_${Date.now()}`,
+                                  label: newEditShipLabel.trim(),
+                                  price: Math.max(0, parseFloat(String(newEditShipPrice).replace(",", ".")) || 0),
+                                  deliveryTime: newEditShipTime.trim() || "5-10 días hábiles",
+                                },
+                              ],
+                            }));
+                            setNewEditShipLabel("");
+                            setNewEditShipPrice("");
+                          }}
+                          className="w-full py-2 px-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-lg cursor-pointer"
+                        >
+                          + Añadir
+                        </button>
+                      </div>
+                    </div>
+
+                    {editProdForm.shippingOptions.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        {editProdForm.shippingOptions.map((opt, sIdx) => (
+                          <div
+                            key={opt.id || sIdx}
+                            className="flex items-center justify-between gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs"
+                          >
+                            <span className="font-bold text-slate-800 truncate">{opt.label}</span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="font-mono font-bold text-emerald-700">
+                                {opt.price === 0 ? "GRATIS" : `$${Number(opt.price).toFixed(2)}`}
+                              </span>
+                              <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                ⏱ {opt.deliveryTime}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditProdForm((prev) => ({
+                                    ...prev,
+                                    shippingOptions: prev.shippingOptions.filter((_, i) => i !== sIdx),
+                                  }))
+                                }
+                                className="text-slate-400 hover:text-rose-500 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Main Product Image */}

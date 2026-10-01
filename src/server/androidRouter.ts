@@ -742,7 +742,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
   // Android Publish / Create Product with auto Companion Reel
   router.post("/products", async (req: Request, res: Response) => {
     try {
-      const { name, description, price, imageUrl, stock, sellerId, shippingCost, shippingCapital, shippingProvince, freeShipping, images, videos, variants, variantList, category } = req.body;
+      const { name, description, price, imageUrl, stock, sellerId, shippingCost, shippingCapital, shippingProvince, freeShipping, shippingOptions, images, videos, variants, variantList, category } = req.body;
       let resolvedSellerId = sellerId || req.headers["x-user-id"];
       let seller: any = null;
 
@@ -761,13 +761,27 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         };
       }
 
-      const isFreeShipping = Boolean(freeShipping);
+      const normalizedShippingOptions = Array.isArray(shippingOptions)
+        ? shippingOptions
+            .filter((opt: any) => opt && String(opt.label || "").trim().length > 0)
+            .map((opt: any, idx: number) => ({
+              id: opt.id || `ship_${Date.now()}_${idx}`,
+              label: String(opt.label || "").trim(),
+              origin: opt.origin ? String(opt.origin).trim() : "",
+              price: Math.max(0, Number(opt.price) || 0),
+              deliveryTime: String(opt.deliveryTime || "3-7 días hábiles").trim(),
+            }))
+        : [];
+
+      const isFreeShipping = Boolean(freeShipping) || normalizedShippingOptions.some((o) => o.price === 0);
       const parsedStock = stock !== undefined && stock !== "" ? Math.max(0, Number(stock)) : 10;
       const parsedCapital = shippingCapital !== undefined && shippingCapital !== "" ? Math.max(0, Number(shippingCapital) || 0) : 0;
       const parsedProvince = shippingProvince !== undefined && shippingProvince !== "" ? Math.max(0, Number(shippingProvince) || 0) : 0;
       const parsedShipping =
         shippingCost !== undefined && shippingCost !== ""
           ? Math.max(0, Number(shippingCost) || 0)
+          : normalizedShippingOptions.length > 0
+          ? normalizedShippingOptions[0].price
           : parsedCapital > 0
           ? parsedCapital
           : parsedProvince > 0
@@ -787,6 +801,7 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         shippingCapital: Number.isNaN(parsedCapital) ? 0 : parsedCapital,
         shippingProvince: Number.isNaN(parsedProvince) ? 0 : parsedProvince,
         freeShipping: isFreeShipping,
+        shippingOptions: normalizedShippingOptions,
         images: images || [],
         videos: videos || [],
         variants: Array.isArray(variants) ? variants : [],

@@ -80,6 +80,14 @@ export interface ProductVariantItem {
   sku?: string;
 }
 
+export interface ProductShippingOption {
+  id?: string;
+  label: string;
+  origin?: string;
+  price: number;
+  deliveryTime: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -96,7 +104,9 @@ export interface Product {
   shippingCapital?: number;
   shippingProvince?: number;
   freeShipping?: boolean;
+  shippingOptions?: ProductShippingOption[];
   selectedCarrier?: string;
+  selectedDeliveryTime?: string;
   images?: string[]; // Multiple photos of products
   videos?: string[]; // Video of products
   variants?: {

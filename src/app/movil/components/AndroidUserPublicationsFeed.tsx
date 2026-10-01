@@ -46,6 +46,7 @@ export default function AndroidUserPublicationsFeed({
   const [activeReels, setActiveReels] = useState<Reel[]>(reels);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [expandedDescriptions, setExpandedDescriptions] = useState<{ [key: string]: boolean }>({});
   const hlsRef = useRef<Hls | null>(null);
 
   const currentReel = activeReels[activeIndex] || activeReels[0];
@@ -246,7 +247,46 @@ export default function AndroidUserPublicationsFeed({
           )}
         </div>
 
-        <div className="absolute bottom-4 left-4 right-16 z-30 pointer-events-none"><p className="text-sm font-semibold drop-shadow-md">{currentReel.creatorName || currentReel.creatorUsername}</p><p className="text-xs text-slate-200 mt-1 line-clamp-2 drop-shadow-md">{currentReel.description}</p></div>
+        <div className="absolute bottom-4 left-4 right-16 z-30 pointer-events-none">
+          <p className="text-sm font-semibold drop-shadow-md">{currentReel.creatorName || currentReel.creatorUsername}</p>
+          {currentReel.description && (
+            <p className={`text-xs text-slate-200 mt-1 drop-shadow-md pointer-events-auto break-words ${expandedDescriptions[currentReel.id] ? "whitespace-pre-line max-h-40 overflow-y-auto no-scrollbar" : ""}`}>
+              {currentReel.description.length > 25 && !expandedDescriptions[currentReel.id] ? (
+                <>
+                  <span>{currentReel.description.slice(0, 25)}...</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setExpandedDescriptions((prev) => ({ ...prev, [currentReel.id]: true }));
+                    }}
+                    className="font-bold text-white hover:text-amber-400 cursor-pointer pointer-events-auto transition-colors"
+                  >
+                    mas
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span>{currentReel.description}</span>
+                  {currentReel.description.length > 25 && expandedDescriptions[currentReel.id] && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setExpandedDescriptions((prev) => ({ ...prev, [currentReel.id]: false }));
+                      }}
+                      className="font-bold text-white/75 hover:text-amber-400 cursor-pointer pointer-events-auto transition-colors ml-1.5 text-[11px]"
+                    >
+                      menos
+                    </button>
+                  )}
+                </>
+              )}
+            </p>
+          )}
+        </div>
       </div>
 
       <AnimatePresence>

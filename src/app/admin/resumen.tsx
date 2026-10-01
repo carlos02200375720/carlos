@@ -566,7 +566,9 @@ export default function AdminView({
                 <button
                   key={tab.id}
                   onClick={() => handleSelectAdminTab(tab.id as AdminTab)}
-                  className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap cursor-pointer ${
+                  title={tab.label}
+                  aria-label={tab.label}
+                  className={`flex items-center justify-center p-2.5 rounded-xl font-bold text-xs transition-all whitespace-nowrap cursor-pointer ${
                     isActive
                       ? "bg-amber-500 text-slate-950 font-black shadow-sm shadow-amber-500/25 scale-[1.02]"
                       : "text-slate-300 hover:text-white hover:bg-slate-800/70"
@@ -574,7 +576,6 @@ export default function AdminView({
                   id={`admin-tab-btn-${tab.id}`}
                 >
                   <Icon className={`w-4 h-4 ${isActive ? "text-slate-950" : "text-slate-400"}`} />
-                  <span>{tab.label}</span>
                 </button>
               );
             })}
@@ -591,51 +592,52 @@ export default function AdminView({
               <button
                 type="button"
                 onClick={() => handlePlatformChange('web')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                className={`flex items-center justify-center p-2 rounded-xl transition-all cursor-pointer ${
                   currentPlatform === 'web'
                     ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/60 font-bold'
                 }`}
                 title="Visualizar versión Web"
+                aria-label="Visualizar versión Web"
               >
                 <span>🌐</span>
-                <span className="text-xs">Web</span>
               </button>
               <button
                 type="button"
                 onClick={() => handlePlatformChange('android')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                className={`flex items-center justify-center p-2 rounded-xl transition-all cursor-pointer ${
                   currentPlatform === 'android'
                     ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/60 font-bold'
                 }`}
                 title="Visualizar versión Android"
+                aria-label="Visualizar versión Android"
               >
                 <span>📱</span>
-                <span className="text-xs">Android</span>
               </button>
             </div>
 
             <button
               onClick={handleManualRefresh}
               disabled={isRefreshing}
-              className="hidden lg:inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-bold text-slate-200 transition-all cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center justify-center p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-bold text-slate-200 transition-all cursor-pointer disabled:opacity-50"
               id="admin-header-refresh-btn"
               title="Sincronizar"
+              aria-label="Sincronizar"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-amber-400" : ""}`} />
-              <span className="hidden xl:inline">{isRefreshing ? "..." : "Sincronizar"}</span>
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-amber-400" : ""}`} />
             </button>
             <button
               onClick={() => {
                 setPublishInitialTab("product");
                 handleSelectAdminTab("publicar");
               }}
-              className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-sm active:scale-95"
+              className="inline-flex items-center justify-center p-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-sm active:scale-95"
               id="admin-header-publish-btn"
+              title="Publicar / Vender"
+              aria-label="Publicar / Vender"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Publicar / Vender</span>
+              <Plus className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -664,51 +666,12 @@ export default function AdminView({
       )}
 
       {/* Top Banner Header */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-xl shadow-slate-950/20">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl px-6 py-4 text-white relative overflow-hidden shadow-xl shadow-slate-950/20">
         <div className="absolute -right-16 -top-16 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute right-32 bottom-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
-          <div className="space-y-2">
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider">
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-              <span>Acceso de Administración</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-display font-black tracking-tight text-white">
-              Panel de Control y Administración
-            </h1>
-            <p className="text-slate-400 text-xs sm:text-sm max-w-2xl leading-relaxed">
-              Supervisa la plataforma en tiempo real: usuarios registrados, moderación de reels y vídeos, catálogo de la tienda y logística de órdenes globales.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={handleManualRefresh}
-              disabled={isRefreshing}
-              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-              id="admin-refresh-button"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-amber-400" : ""}`} />
-              <span>{isRefreshing ? "Actualizando..." : "Sincronizar"}</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setPublishInitialTab("product");
-                handleSelectAdminTab("publicar");
-              }}
-              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-md shadow-amber-500/20 active:scale-95"
-              id="admin-new-content-button"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Publicar / Vender</span>
-            </button>
-          </div>
-        </div>
-
         {/* Real-time Status Badges */}
-        <div className="mt-6 pt-4 border-t border-slate-800/80 flex flex-wrap items-center gap-4 text-xs font-mono text-slate-400">
+        <div className="relative z-10 flex flex-wrap items-center gap-4 text-xs font-mono text-slate-400">
           <div className="flex items-center space-x-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
             <span className="text-slate-300 font-semibold">MongoDB Atlas:</span>
