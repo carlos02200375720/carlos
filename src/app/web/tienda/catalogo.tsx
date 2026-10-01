@@ -7,6 +7,7 @@ import ProductoIdTiendaView from "./productoid";
 import CarritoTiendaView from "./carrito";
 import VerificasionTiendaView from "./verificasion";
 import GraciaTiendaView from "./gracia";
+import { trackFunnelStep } from "../../../utils/analyticsTracker";
 
 export const CATEGORIES = [
   {
@@ -413,6 +414,26 @@ export default function Tienda({
       window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
     }
   }, [activeStep, selectedProduct, onToggleDetailView]);
+
+  // Track sales funnel steps in real time
+  useEffect(() => {
+    if (showCartDrawer) {
+      trackFunnelStep("carrito", { path: "/tienda/carrito" });
+      return;
+    }
+    if (activeStep === "catalog") {
+      trackFunnelStep("tienda", { path: "/tienda" });
+    } else if (activeStep === "detail" && selectedProduct) {
+      trackFunnelStep("producto_id", {
+        path: getProductPath(selectedProduct),
+        productId: selectedProduct.id,
+      });
+    } else if (activeStep === "checkout") {
+      trackFunnelStep("verificacion", { path: "/tienda/verificacion" });
+    } else if (activeStep === "thankyou") {
+      trackFunnelStep("gracia", { path: "/tienda/gracia" });
+    }
+  }, [activeStep, selectedProduct?.id, showCartDrawer]);
 
   // Sync direct product clicks from reels or routes
   useEffect(() => {

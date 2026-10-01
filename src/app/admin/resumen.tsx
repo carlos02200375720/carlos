@@ -81,12 +81,16 @@ type AdminTab = 'resumen' | 'usuarios' | 'reels' | 'productos' | 'publicar' | 'o
 const VALID_ADMIN_TABS: AdminTab[] = ['resumen', 'usuarios', 'reels', 'productos', 'publicar', 'ordenes', 'metrica', 'fotos_defecto', 'sistema'];
 
 function parseAdminTabFromPath(pathname: string): AdminTab {
-  const match = pathname.trim().replace(/\/+$/, '').match(/^\/(?:src\/app\/|app\/)?admin\/([^/]+)$/i);
+  let decoded = pathname;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {}
+  const match = decoded.trim().replace(/\/+$/, '').match(/^\/(?:src\/app\/|app\/(?:web\/)?)?admin\/([^/]+)/i);
   if (match) {
     const raw = match[1].toLowerCase();
     if (raw === 'producto' || raw === 'productos') return 'productos';
     if (raw === 'pedido' || raw === 'pedidos' || raw === 'ordenes') return 'ordenes';
-    if (raw === 'metrica' || raw === 'metricas' || raw === 'métrica' || raw === 'métricas') return 'metrica';
+    if (raw === 'metrica' || raw === 'metricas' || raw === 'métrica' || raw === 'métricas' || raw === 'embudo') return 'metrica';
     const seg = raw as AdminTab;
     if (VALID_ADMIN_TABS.includes(seg)) return seg;
   }

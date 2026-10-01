@@ -9,6 +9,7 @@ let platformTarget: "android" | "web" | null = null;
 
 export const sessionState = {
   getUser: (): User | null => sessionUser,
+  getUserId: (): string | null => sessionUser?.id ?? sessionUsername ?? null,
   setUser: (user: User | null): void => {
     sessionUser = user;
     sessionUsername = user?.username ?? null;

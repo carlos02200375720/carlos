@@ -10,6 +10,7 @@ import * as chatController from "../controllers/chatController";
 import * as liveController from "../controllers/liveController";
 import * as uploadController from "../controllers/uploadController";
 import * as settingsController from "../controllers/settingsController";
+import * as analyticsController from "../controllers/analyticsController";
 import { getMongoStatus, connectToMongoDB } from "../config/database";
 
 export function createApiRouter(): Router {
@@ -113,6 +114,10 @@ export function createApiRouter(): Router {
   router.get("/app-settings/defaults", settingsController.getDefaultAssets);
   router.post("/admin/default-assets", settingsController.updateDefaultAssets);
   router.post("/admin/default-assets/reset", settingsController.resetDefaultAssets);
+
+  // Analytics & Sales Funnel routes
+  router.get("/analytics/funnel", analyticsController.getFunnelAnalytics);
+  router.post("/analytics/track", analyticsController.trackFunnelEvent);
 
   return router;
 }

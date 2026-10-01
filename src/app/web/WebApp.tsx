@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { sessionState } from "../../utils/sessionState";
 import { navigateTo, parseRoute, getProfilePath, getProfileSavedPath, getProfileCompraPath, getProfileConfigPath, getProfileProductoPath, getProfileVentaPath, getProfilePublicacionesPath, getProfilePublicarPath, getProfileRendimientoPath, getProductPath, getInicioPath } from "../../router";
 import { isSuperAdmin } from "../../superAdmin";
+import { trackFunnelStep } from "../../utils/analyticsTracker";
 
 export interface WebAppProps {
   activeTab: NavigationTab;
@@ -127,6 +128,12 @@ export default function WebApp({
   const isHomeActive = activeTab === 'inicio' || activeTab === 'reels';
   const isDarkNavActive = isHomeActive;
   const [profileInitialSubTab, setProfileInitialSubTab] = React.useState<"publish" | "publications" | "products" | "saved" | "orders" | "performance" | "edit" | undefined>(undefined);
+
+  React.useEffect(() => {
+    trackFunnelStep("page_visit", {
+      path: typeof window !== "undefined" ? window.location.pathname : `/${activeTab}`,
+    });
+  }, [activeTab]);
 
   return (
     <div className="w-full flex-1 flex relative" id="web-app-layout">

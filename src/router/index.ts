@@ -488,12 +488,20 @@ export function parseRoute(pathname: string): AppRoute {
     return { type: 'profile', userId: isGenericUser ? undefined : rawUser };
   }
 
-  // /admin/resumen, /admin/usuarios, or /admin
-  const adminMatch = normalized.match(/^\/(?:src\/app\/|app\/)?admin(?:\/([^/]+))?$/i);
+  // /admin/resumen, /admin/usuarios, /admin/metrica, or /admin
+  const adminMatch = normalized.match(/^\/(?:src\/app\/|app\/(?:web\/)?)?admin(?:\/([^/]+))?(?:\/.*)?$/i);
   if (adminMatch) {
+    let decodedTab = 'resumen';
+    if (adminMatch[1]) {
+      try {
+        decodedTab = decodeURIComponent(adminMatch[1]).toLowerCase();
+      } catch {
+        decodedTab = adminMatch[1].toLowerCase();
+      }
+    }
     return {
       type: 'admin',
-      adminTab: adminMatch[1] ? decodeURIComponent(adminMatch[1]).toLowerCase() : 'resumen',
+      adminTab: decodedTab,
     };
   }
 
