@@ -1,0 +1,39 @@
+name: Compilar Servidor en la Nube
+
+on:
+  push:
+    branches: [ "main", "master", "fix/reels-video-performance" ]
+    paths:
+      - 'server.ts'
+      - 'src/server/**'
+      - 'Dockerfile'
+      - '.github/workflows/build-server.yml'
+  workflow_dispatch:
+
+jobs:
+  build-server:
+    name: Compilar Servidor
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar código actual
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Compilar solo el Servidor
+        run: |
+          npm run build:server
+          test -f dist/server.cjs
+
+      - name: Guardar artefacto Servidor
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-server-dist
+          path: dist/server.cjs

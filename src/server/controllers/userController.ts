@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
 import { User, Reel } from "../../types";
-import { MongoUser, MongoReel, MongoProduct } from "../models";
+import { MongoUser, MongoReel, MongoProduct, MongoOrder } from "../models";
 import { generateId } from "../utils/helpers";
 import { uploadBase64ToGCS } from "../services/mediaStorage";
 import { bucketName } from "../config/storage";

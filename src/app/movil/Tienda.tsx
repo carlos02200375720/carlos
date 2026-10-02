@@ -179,6 +179,7 @@ export default function Tienda({
   savedReelIds = [],
   onToggleSave,
   onBackToCatalog,
+  onNavigateToHistory,
 }: AndroidShopProps) {
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [searchQuery, setSearchQuery] = useState("");

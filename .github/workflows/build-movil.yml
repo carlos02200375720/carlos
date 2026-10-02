@@ -1,12 +1,17 @@
-name: Compilar Android App en la Nube
+name: Compilar App Móvil en la Nube
 
 on:
   push:
     branches: [ "main", "master", "fix/reels-video-performance" ]
+    paths:
+      - 'src/app/movil/**'
+      - 'capacitor.config.json'
+      - '.github/workflows/build-movil.yml'
   workflow_dispatch:
 
 jobs:
-  build-android:
+  build-movil:
+    name: Compilar App Móvil
     runs-on: ubuntu-latest
     env:
       VITE_APP_TARGET: android

@@ -1,0 +1,45 @@
+name: Compilar Web App en la Nube
+
+on:
+  push:
+    branches: [ "main", "master", "fix/reels-video-performance" ]
+    paths:
+      - 'src/app/web/**'
+      - 'src/router/**'
+      - 'index.html'
+      - 'public/**'
+      - 'vite.config.ts'
+      - 'vercel.json'
+      - '.github/workflows/build-web.yml'
+  workflow_dispatch:
+
+jobs:
+  build-web:
+    name: Compilar Web
+    runs-on: ubuntu-latest
+    env:
+      VITE_APP_TARGET: web
+      VITE_BACKEND_URL: https://elegan-backend-587849039182.us-east1.run.app
+
+    steps:
+      - name: Descargar código actual
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Compilar solo la Web App
+        run: |
+          npm run build:web
+          test -f dist/index.html
+
+      - name: Guardar artefacto Web
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-web-dist
+          path: dist/

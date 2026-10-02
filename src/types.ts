@@ -42,6 +42,8 @@ export type ReelMedia =
   | {
       type: "image";
       url: string;
+      hlsUrl?: string;
+      thumbnailUrl?: string;
     };
 
 export interface Reel {
