@@ -45,6 +45,7 @@ import ReelsAdminView from "./reels";
 import ProductoAdminView from "./producto";
 import PedidosAdminView from "./pedidos";
 import MetricaAdminView from "./metrica";
+import SistemaAdminView from "./sistema";
 import { apiFetch } from "../../config";
 import { sessionState } from "../../utils/sessionState";
 import { isSuperAdmin } from "../../superAdmin";
@@ -665,34 +666,6 @@ export default function AdminView({
         </div>
       )}
 
-      {/* Top Banner Header */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl px-6 py-4 text-white relative overflow-hidden shadow-xl shadow-slate-950/20">
-        <div className="absolute -right-16 -top-16 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute right-32 bottom-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
-
-        {/* Real-time Status Badges */}
-        <div className="relative z-10 flex flex-wrap items-center gap-4 text-xs font-mono text-slate-400">
-          <div className="flex items-center space-x-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-            <span className="text-slate-300 font-semibold">MongoDB Atlas:</span>
-            <span className="text-emerald-400 font-bold">
-              {systemHealth?.mongoConnected !== false ? "Conectado" : "Offline"}
-            </span>
-          </div>
-          <div className="text-slate-600">•</div>
-          <div className="flex items-center space-x-2">
-            <Server className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-slate-300 font-semibold">Servidor:</span>
-            <span className="text-amber-400 font-bold">Cloud Run (Activo)</span>
-          </div>
-          <div className="text-slate-600">•</div>
-          <div className="flex items-center space-x-2">
-            <span className="text-slate-300 font-semibold">Sesión Actual:</span>
-            <span className="text-white font-bold">@{currentUser.username}</span>
-          </div>
-        </div>
-      </div>
-
       {/* Floating Status Notification */}
       <AnimatePresence>
         {statusMessage && (
@@ -1131,40 +1104,14 @@ export default function AdminView({
         />
       )}
 
-      {/* Tab 6: Estado del Sistema & Configuración */}
+      {/* Tab 6: Estado del Sistema & Configuración (Con el banner exclusivo) */}
       {activeAdminTab === 'sistema' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-6" id="admin-tab-content-system">
-          <div>
-            <h2 className="text-lg font-black text-slate-900">Estado del Sistema y Base de Datos</h2>
-            <p className="text-xs text-slate-500">Verifica la conectividad con MongoDB Atlas, la caché de la aplicación y la infraestructura del servidor.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-2">
-              <span className="text-[10px] font-mono font-bold uppercase text-slate-400">Base de Datos</span>
-              <p className="text-sm font-bold text-slate-900">MongoDB Atlas Cluster</p>
-              <p className="text-xs text-slate-500">
-                Almacena colecciones de usuarios, reels, productos y órdenes con persistencia en la nube y replicación.
-              </p>
-              <div className="pt-2 flex items-center space-x-2 text-xs font-mono text-emerald-600 font-bold">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Conexión verificada y estable</span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-2">
-              <span className="text-[10px] font-mono font-bold uppercase text-slate-400">Servidor Multimedia</span>
-              <p className="text-sm font-bold text-slate-900">Transcodificación HLS & WebSockets</p>
-              <p className="text-xs text-slate-500">
-                Genera listas de reproducción adaptativas .m3u8 y notificaciones de presencia en tiempo real para usuarios conectados.
-              </p>
-              <div className="pt-2 flex items-center space-x-2 text-xs font-mono text-indigo-600 font-bold">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Transcodificador activo en /uploads/hls/</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <SistemaAdminView
+          systemHealth={systemHealth}
+          currentUser={currentUser}
+          onRefreshHealth={fetchOrdersAndHealth}
+          isRefreshing={isRefreshing}
+        />
       )}
 
       {/* Tab 7: Fotos de Portada y Perfil por Defecto */}
