@@ -632,25 +632,10 @@ export function ProductoIdTiendaView({
                           (selectedProduct.variants!.length === 1 && uniqueSwatches.length > 0));
 
                       if (isColorGroup) {
-                        const selectedColorVal =
-                          selectedVariants[v.name] ||
-                          uniqueSwatches.find((s) => s.imageUrl === selectedProductMediaUrl)
-                            ?.name ||
-                          "";
-
                         return (
                           <div key={idx} className="space-y-2 text-left">
                             <div className="flex items-center space-x-1.5 text-[11px] font-bold">
                               <span className="text-slate-600">{v.name}:</span>
-                              {selectedColorVal ? (
-                                <span className="text-slate-900 font-extrabold capitalize bg-slate-100 px-2 py-0.5 rounded-md">
-                                  {selectedColorVal}
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
-                                  Selecciona un {v.name.toLowerCase()}
-                                </span>
-                              )}
                             </div>
 
                             {/* Horizontal Carousel of Color Cards */}
@@ -739,20 +724,10 @@ export function ProductoIdTiendaView({
                       }
 
                       // Standard non-color option buttons (e.g. Talla)
-                      const selectedOptVal = selectedVariants[v.name];
                       return (
                         <div key={idx} className="space-y-1.5 text-left">
                           <div className="flex items-center space-x-1.5 text-[11px] font-bold">
                             <span className="text-slate-600">{v.name}:</span>
-                            {selectedOptVal ? (
-                              <span className="text-slate-900 font-extrabold bg-slate-100 px-2 py-0.5 rounded-md">
-                                {selectedOptVal}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
-                                Selecciona una {v.name.toLowerCase()}
-                              </span>
-                            )}
                           </div>
                           <div className="flex flex-wrap gap-2">
                             {v.options.map((opt, oIdx) => {
@@ -783,18 +758,6 @@ export function ProductoIdTiendaView({
                     <div className="space-y-2 text-left">
                       <div className="flex items-center space-x-1.5 text-[11px] font-bold">
                         <span className="text-slate-600">Color:</span>
-                        {selectedVariants["Color"] ||
-                        uniqueSwatches.find((s) => s.imageUrl === selectedProductMediaUrl)?.name ? (
-                          <span className="text-slate-900 font-extrabold capitalize bg-slate-100 px-2 py-0.5 rounded-md">
-                            {selectedVariants["Color"] ||
-                              uniqueSwatches.find((s) => s.imageUrl === selectedProductMediaUrl)
-                                ?.name}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
-                            Selecciona un color
-                          </span>
-                        )}
                       </div>
                       <div className="flex items-center gap-2.5 overflow-x-auto pb-3 pt-1 px-1 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden snap-x">
                         {uniqueSwatches.map((swatch, sIdx) => {
@@ -847,20 +810,6 @@ export function ProductoIdTiendaView({
                   <div className="space-y-1.5 text-left" id="product-shipping-options-group">
                     <div className="flex items-center flex-wrap gap-1.5 text-[11px] font-bold">
                       <span className="text-slate-600">Envío:</span>
-                      {selectedShippingOption ? (
-                        <span className="text-slate-900 font-extrabold bg-slate-100 px-2 py-0.5 rounded-md">
-                          {selectedShippingOption.carrier} (
-                          {selectedShippingOption.shippingCost === 0
-                            ? "GRATIS"
-                            : `$${selectedShippingOption.shippingCost.toFixed(2)}`}
-                          {selectedShippingOption.aging ? ` • ${selectedShippingOption.aging}` : ""}
-                          )
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-semibold">
-                          Selecciona un envío
-                        </span>
-                      )}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {configuredShippingButtons.map((option, sIdx) => {
