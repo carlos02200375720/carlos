@@ -58,6 +58,7 @@ export interface WebAppProps {
   handleSendPrivateMessage: (text: string) => void;
   handleClearUnreads: (userId: string) => void;
   refreshReels: () => void;
+  refreshProducts?: () => void;
   refreshAllData: () => void;
   setCurrentUser: React.Dispatch<React.SetStateAction<User>>;
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
@@ -111,6 +112,7 @@ export default function WebApp({
   handleSendPrivateMessage,
   handleClearUnreads,
   refreshReels,
+  refreshProducts,
   refreshAllData,
   setCurrentUser,
   setUsers,
@@ -237,6 +239,7 @@ export default function WebApp({
                 onRemoveFromCart={handleRemoveFromCart}
                 onUpdateCartQuantity={handleUpdateCartQuantity}
                 onCheckout={handleCheckoutCart}
+                onRefreshProducts={refreshProducts || refreshAllData}
                 onCreatorClick={handleCreatorProfileLink}
                 selectedProductDirectly={directSelectedProduct}
                 clearDirectProduct={() => setDirectSelectedProduct(null)}

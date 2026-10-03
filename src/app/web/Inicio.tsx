@@ -102,6 +102,16 @@ export default function Inicio({
   // and could repeatedly mount expensive media content.
   const displayedReels = reels;
 
+  // Auto-retry fetching reels if array is initially empty
+  useEffect(() => {
+    if (reels.length === 0 && onRefreshReels) {
+      const timer = setTimeout(() => {
+        onRefreshReels();
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [reels.length, onRefreshReels]);
+
   const [selectedCartIndices, setSelectedCartIndices] = useState<number[]>([]);
 
   useEffect(() => {
@@ -419,7 +429,20 @@ export default function Inicio({
 
       <div ref={containerRef} onScroll={handleScroll} className="w-full h-full min-h-0 flex-1 overflow-y-scroll snap-y snap-mandatory no-scrollbar relative" style={{ scrollbarWidth: "none", scrollSnapType: "y mandatory" }}>
         {displayedReels.length === 0 ? (
-          <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 p-8 text-center"><Play className="w-12 h-12 stroke-1 text-slate-600 mb-3 animate-pulse" /><p className="font-display font-medium text-slate-300">No hay videos disponibles</p><p className="text-xs text-slate-500 mt-1">Sube contenido o inicia una transmisión para empezar</p></div>
+          <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
+            <Play className="w-12 h-12 stroke-1 text-slate-600 mb-3 animate-pulse" />
+            <p className="font-display font-medium text-slate-300">No hay videos disponibles</p>
+            <p className="text-xs text-slate-500 mt-1">Sube contenido o inicia una transmisión para empezar</p>
+            {onRefreshReels && (
+              <button
+                type="button"
+                onClick={() => onRefreshReels()}
+                className="mt-4 px-4 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                Cargar publicaciones
+              </button>
+            )}
+          </div>
         ) : displayedReels.map((reel, index) => {
           const isCurrent = index === activeReelIndex;
           const reelProduct = reel.productId ? taggedProductsMap[reel.productId] : null;

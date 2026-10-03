@@ -511,10 +511,9 @@ export default function App() {
           console.warn("Android reels route also failed:", e);
         }
       }
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         const unique = deduplicateById(data) as Reel[];
         setReels(unique);
-        
       }
     } catch (err) {
       console.error("Error fetching reels:", err);
@@ -530,7 +529,7 @@ export default function App() {
       } catch (e) {
         console.warn("Primary products fetch failed, trying android products route:", e);
       }
-      if (!Array.isArray(data)) {
+      if (!Array.isArray(data) || data.length === 0) {
         try {
           const res = await apiFetch("/api/android/products");
           if (res.ok) data = await res.json();
@@ -538,10 +537,9 @@ export default function App() {
           console.warn("Android products route also failed:", e);
         }
       }
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         const unique = deduplicateById(data) as Product[];
         setProducts(unique);
-        
       }
     } catch (err) {
       console.error("Error fetching products:", err);
@@ -632,7 +630,7 @@ export default function App() {
           console.warn("Android fallback reels fetch failed:", e);
         }
       }
-      if (reelsSyncCompleted) {
+      if (reelsSyncCompleted && loadedReels.length > 0) {
         const uniqueReels = deduplicateById(loadedReels) as Reel[];
         setReels(uniqueReels);
         hasLoadedAnyCore = true;
@@ -647,7 +645,7 @@ export default function App() {
         loadedProducts = list;
         productsSyncCompleted = true;
       }
-      if (!productsSyncCompleted) {
+      if (!productsSyncCompleted || loadedProducts.length === 0) {
         try {
           const aRes = await apiFetch("/api/android/products");
           if (aRes.ok) {
@@ -661,10 +659,20 @@ export default function App() {
           console.warn("Android fallback products fetch failed:", e);
         }
       }
-      if (productsSyncCompleted) {
+      if (productsSyncCompleted && loadedProducts.length > 0) {
         const uniqueProducts = deduplicateById(loadedProducts) as Product[];
         setProducts(uniqueProducts);
         hasLoadedAnyCore = true;
+      }
+
+      // If either feed is empty during boot (e.g. database still connecting), auto-retry in the background
+      if (loadedReels.length === 0 || loadedProducts.length === 0) {
+        setTimeout(() => {
+          refreshAllData();
+        }, 1200);
+        setTimeout(() => {
+          refreshAllData();
+        }, 3000);
       }
 
       if (liveRes.status === "fulfilled" && Array.isArray(liveRes.value)) {

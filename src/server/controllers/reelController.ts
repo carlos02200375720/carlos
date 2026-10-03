@@ -19,6 +19,12 @@ import {
  */
 export async function getReels(req: Request, res: Response): Promise<void> {
   try {
+    if (mongoose.connection.readyState !== 1 && mongoose.connection.readyState === 2) {
+      await Promise.race([
+        new Promise((resolve) => mongoose.connection.once("connected", resolve)),
+        new Promise((resolve) => setTimeout(resolve, 3500)),
+      ]);
+    }
     if (mongoose.connection.readyState === 1) {
       const canonicalReels = await getCanonicalReelsFromMongo();
       if (canonicalReels.length > 0) {

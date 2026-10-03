@@ -130,6 +130,7 @@ export interface ShopProps {
   onProductSelect?: (product: Product) => void;
   onBackToCatalog?: () => void;
   onStepChange?: (step: "catalog" | "detail" | "cart" | "checkout" | "payment" | "thankyou", orderId?: string) => void;
+  onRefreshProducts?: () => void;
   savedReelIds?: string[];
   onToggleSave?: (id: string) => void;
   onGuestInteraction?: (action: string) => void;
@@ -160,6 +161,7 @@ export default function Tienda({
   onProductSelect,
   onBackToCatalog,
   onStepChange,
+  onRefreshProducts,
   savedReelIds = [],
   onToggleSave,
   onGuestInteraction,
@@ -206,6 +208,16 @@ export default function Tienda({
     }
     return false;
   });
+
+  // Auto-retry fetching products if array is initially empty
+  useEffect(() => {
+    if (products.length === 0 && onRefreshProducts) {
+      const timer = setTimeout(() => {
+        onRefreshProducts();
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [products.length, onRefreshProducts]);
 
   const [copiedProductLink, setCopiedProductLink] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -1000,20 +1012,32 @@ export default function Tienda({
                     <Search className="w-6 h-6 text-slate-400" />
                   </div>
                   <h3 className="font-display font-bold text-sm text-slate-800">
-                    No se encontraron productos
+                    {products.length === 0 ? "Cargando catálogo..." : "No se encontraron productos"}
                   </h3>
                   <p className="text-xs text-slate-400 max-w-xs mt-1">
-                    Intenta buscar con otros términos o limpia el campo de búsqueda.
+                    {products.length === 0
+                      ? "Conectando con el servidor para obtener los productos disponibles."
+                      : "Intenta buscar con otros términos o limpia el campo de búsqueda."}
                   </p>
-                  <button
-                    onClick={() => {
-                      setSearchQuery("");
-                      setSelectedCategory("todos");
-                    }}
-                    className="mt-4 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold rounded-full transition-colors cursor-pointer"
-                  >
-                    Ver todos los productos
-                  </button>
+                  {products.length === 0 && onRefreshProducts ? (
+                    <button
+                      type="button"
+                      onClick={() => onRefreshProducts()}
+                      className="mt-4 px-4 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 text-xs font-bold rounded-full transition-all cursor-pointer shadow-md"
+                    >
+                      Actualizar catálogo
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSelectedCategory("todos");
+                      }}
+                      className="mt-4 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold rounded-full transition-colors cursor-pointer"
+                    >
+                      Ver todos los productos
+                    </button>
+                  )}
                 </motion.div>
               ) : (
                 <>

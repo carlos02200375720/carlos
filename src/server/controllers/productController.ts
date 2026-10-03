@@ -19,6 +19,12 @@ import {
  * Get all e-commerce products
  */
 export async function getProducts(req: Request, res: Response): Promise<void> {
+  if (mongoose.connection.readyState !== 1 && mongoose.connection.readyState === 2) {
+    await Promise.race([
+      new Promise((resolve) => mongoose.connection.once("connected", resolve)),
+      new Promise((resolve) => setTimeout(resolve, 3500)),
+    ]);
+  }
   if (mongoose.connection.readyState === 1) {
     try {
       const dbProducts = await MongoProduct.find();
