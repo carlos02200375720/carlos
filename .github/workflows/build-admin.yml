@@ -1,0 +1,37 @@
+name: Compilar Admin App en la Nube
+
+on:
+  push:
+    branches: [ "main", "master", "fix/reels-video-performance" ]
+    paths:
+      - 'src/app/admin/**'
+      - '.github/workflows/build-admin.yml'
+  workflow_dispatch:
+
+jobs:
+  build-admin:
+    name: Compilar Admin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar código actual
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Compilar solo el Módulo Admin
+        run: |
+          npm run build:admin
+          test -f dist/admin.js
+
+      - name: Guardar artefacto Admin
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-admin-dist
+          path: dist/admin.js
