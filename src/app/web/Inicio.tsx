@@ -436,7 +436,6 @@ export default function Inicio({
               <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
                 <div className="relative flex items-end justify-center md:gap-3.5 lg:gap-5 w-full md:w-auto h-full md:max-h-full my-auto">
                   <div className="relative w-full h-full md:w-[540px] lg:w-[680px] xl:w-[780px] 2xl:w-[880px] md:max-w-[calc(100vw-340px)] md:h-full md:rounded-2xl md:border md:border-white/15 md:shadow-[0_16px_50px_rgba(0,0,0,0.9)] overflow-hidden flex items-center justify-center bg-black select-none shrink-0" id={`reel-card-${reel.id}`}>
-                    <div className="hidden md:flex absolute top-3.5 right-3.5 z-30 items-center space-x-2"><button type="button" onClick={handleToggleMute} className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md hover:bg-black/70 active:scale-95 text-white flex items-center justify-center transition-all border border-white/20 cursor-pointer shadow-lg" title={isMuted ? "Activar sonido" : "Silenciar video"} id={`desktop-frame-mute-btn-${reel.id}`}>{isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}</button></div>
                     <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none z-10" />
 
                     {/* Media element: Carousel (horizontal scroll) or Single Video/Image */}
