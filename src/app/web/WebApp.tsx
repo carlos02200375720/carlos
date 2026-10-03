@@ -8,7 +8,7 @@ import Perfil from "./perfil";
 import AdminView from "../admin/resumen";
 import { motion, AnimatePresence } from "motion/react";
 import { sessionState } from "../../utils/sessionState";
-import { navigateTo, parseRoute, getProfilePath, getProfileSavedPath, getProfileCompraPath, getProfileConfigPath, getProfileProductoPath, getProfileVentaPath, getProfilePublicacionesPath, getProfilePublicarPath, getProfileRendimientoPath, getProductPath, getInicioPath } from "../../router";
+import { navigateTo, parseRoute, getProfilePath, getProfileSavedPath, getProfileCompraPath, getProfileConfigPath, getProfileProductoPath, getProfileVentaPath, getProfilePublicacionesPath, getProfilePublicarPath, getProfileRendimientoPath, getProductPath, getInicioPath, getThankYouPath } from "../../router";
 import { isSuperAdmin } from "../../superAdmin";
 import { trackFunnelStep } from "../../utils/analyticsTracker";
 
@@ -185,7 +185,7 @@ export default function WebApp({
                     refreshReels();
                     navigateTo('/inicio');
                   } else if (tab === 'shop') {
-                    navigateTo('/tienda');
+                    navigateTo('/tienda/catalogo');
                   } else if (tab === 'messages') {
                     navigateTo('/messages');
                   } else if (tab === 'admin') {
@@ -196,7 +196,7 @@ export default function WebApp({
                 onUpdateCartQuantity={handleUpdateCartQuantity}
                 onNavigateToShop={() => {
                   setActiveTab('shop');
-                  navigateTo('/tienda');
+                  navigateTo('/tienda/catalogo');
                 }}
                 onNavigateToCheckout={(selectedIndices) => {
                   setShopInitialStep('checkout');
@@ -278,20 +278,20 @@ export default function WebApp({
                   setDirectSelectedProduct(null);
                   setIsProductDetailOpen(false);
                   setShopInitialStep('catalog');
-                  navigateTo('/tienda');
+                  navigateTo('/tienda/catalogo');
                 }}
-                onStepChange={(step) => {
+                onStepChange={(step, stepOrderId) => {
                   setShopInitialStep(step);
                   if (step === 'checkout') {
                     navigateTo('/tienda/verificacion');
                   } else if (step === 'cart') {
                     navigateTo('/tienda/carrito');
                   } else if (step === 'thankyou') {
-                    navigateTo('/tienda/gracia');
+                    navigateTo(getThankYouPath(stepOrderId));
                   } else if (step === 'catalog') {
                     setDirectSelectedProduct(null);
                     setIsProductDetailOpen(false);
-                    navigateTo('/tienda');
+                    navigateTo('/tienda/catalogo');
                   }
                 }}
               />

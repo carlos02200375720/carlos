@@ -7,7 +7,7 @@ import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { isSuperAdmin } from "./superAdmin";
 import { sessionState } from "./utils/sessionState";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
-import { useCurrentRoute, navigateTo, parseRoute, getProfilePath, getProfileSavedPath, getProfileCompraPath, getProfileConfigPath, getProfileProductoPath, getProfileVentaPath, getProfilePublicacionesPath, getProfilePublicarPath, getProfileRendimientoPath, getProductPath, getInicioPath, findReelByInicioParam } from "./router";
+import { useCurrentRoute, navigateTo, parseRoute, getProfilePath, getProfileSavedPath, getProfileCompraPath, getProfileConfigPath, getProfileProductoPath, getProfileVentaPath, getProfilePublicacionesPath, getProfilePublicarPath, getProfileRendimientoPath, getProductPath, getInicioPath, getThankYouPath, findReelByInicioParam } from "./router";
 
 const deduplicateById = <T extends { id?: string; _id?: string }>(items: T[]): T[] => {
   const seen = new Set<string>();
@@ -328,8 +328,8 @@ export default function App() {
       setShopInitialStep('catalog');
       setDirectSelectedProduct(null);
       setIsProductDetailOpen(false);
-      if (typeof window !== 'undefined' && window.location.pathname.toLowerCase() !== '/tienda') {
-        navigateTo('/tienda', { replace: true });
+      if (typeof window !== 'undefined' && window.location.pathname.toLowerCase() !== '/tienda/catalogo') {
+        navigateTo('/tienda/catalogo', { replace: true });
       }
     } else if (currentRoute.type === 'cart') {
       setActiveTab('shop');
@@ -346,8 +346,11 @@ export default function App() {
     } else if (currentRoute.type === 'thankyou') {
       setActiveTab('shop');
       setShopInitialStep('thankyou');
-      if (typeof window !== 'undefined' && window.location.pathname.toLowerCase() !== '/tienda/gracia') {
-        navigateTo('/tienda/gracia', { replace: true });
+      if (currentRoute.orderId) {
+        const canonicalThankYou = getThankYouPath(currentRoute.orderId);
+        if (typeof window !== 'undefined' && window.location.pathname.toLowerCase() !== canonicalThankYou.toLowerCase()) {
+          navigateTo(canonicalThankYou, { replace: true });
+        }
       }
     } else if (currentRoute.type === 'messages') {
       setActiveTab('messages');

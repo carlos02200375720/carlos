@@ -418,6 +418,41 @@ export function getOrders(req: Request, res: Response): void {
 }
 
 /**
+ * GET /api/orders/:id
+ * Fetch a single order by ID
+ */
+export async function getOrderById(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const cleanId = (id || "").trim();
+
+  // Search memory orders first
+  let order = orders.find((o) => o.id === cleanId || (o as any)._id === cleanId);
+
+  // If not found in memory, search MongoDB Atlas
+  if (!order && mongoose.connection.readyState === 1) {
+    try {
+      const queryOr: any[] = [{ id: cleanId }];
+      if (mongoose.isValidObjectId(cleanId)) {
+        queryOr.push({ _id: cleanId });
+      }
+      const dbOrder = await MongoOrder.findOne({ $or: queryOr }).lean();
+      if (dbOrder) {
+        order = dbOrder as any;
+      }
+    } catch (err) {
+      console.error("Error fetching order by ID from Mongo:", err);
+    }
+  }
+
+  if (!order) {
+    res.status(404).json({ error: "Pedido no encontrado" });
+    return;
+  }
+
+  res.json(order);
+}
+
+/**
  * POST /api/orders/:id/update-tracking
  * Update tracking number, carrier, and order fulfillment status
  */

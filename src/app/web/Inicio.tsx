@@ -364,7 +364,7 @@ export default function Inicio({
       navigateTo('/inicio');
     } else if (tab === 'shop') {
       if (onNavigateToShop) onNavigateToShop();
-      else navigateTo('/tienda');
+      else navigateTo('/tienda/catalogo');
     } else if (tab === 'messages') {
       navigateTo('/messages');
     } else if (tab === 'profile') {

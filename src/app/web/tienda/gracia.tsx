@@ -1,10 +1,12 @@
-import React from "react";
-import { CheckCircle2 } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { CheckCircle2, Truck, Copy, Check } from "lucide-react";
 import { motion } from "motion/react";
 import { Order, User } from "../../../types";
+import { apiFetch } from "../../../config";
 
 export interface GraciaTiendaViewProps {
   completedOrder: Order | null;
+  orderId?: string;
   onLoginSuccess?: (user: User) => void;
   onContinueShopping: () => void;
   onViewOrderHistory: () => void;
@@ -12,10 +14,62 @@ export interface GraciaTiendaViewProps {
 
 export function GraciaTiendaView({
   completedOrder,
+  orderId,
   onLoginSuccess,
   onContinueShopping,
   onViewOrderHistory,
 }: GraciaTiendaViewProps) {
+  const [activeOrder, setActiveOrder] = useState<Order | null>(completedOrder);
+  const [isLoading, setIsLoading] = useState<boolean>(!completedOrder && Boolean(orderId));
+  const [copiedId, setCopiedId] = useState(false);
+
+  useEffect(() => {
+    if (completedOrder) {
+      setActiveOrder(completedOrder);
+      setIsLoading(false);
+    }
+  }, [completedOrder]);
+
+  useEffect(() => {
+    if (!completedOrder && orderId) {
+      setIsLoading(true);
+      apiFetch(`/api/orders/${encodeURIComponent(orderId)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.id) {
+            setActiveOrder(data);
+          }
+        })
+        .catch((err) => console.warn("Error fetching order in GraciaView:", err))
+        .finally(() => setIsLoading(false));
+    }
+  }, [orderId, completedOrder]);
+
+  const itemsSubtotal = (activeOrder?.items || []).reduce(
+    (sum, item) => sum + (item.price || 0) * (item.quantity || 1),
+    0
+  );
+
+  const selectedShippingCost =
+    activeOrder?.shippingCost !== undefined
+      ? activeOrder.shippingCost
+      : activeOrder
+      ? Math.max(0, activeOrder.total - itemsSubtotal)
+      : 0;
+
+  const selectedCarrier =
+    activeOrder?.carrier ||
+    activeOrder?.items?.find((it) => it.carrier)?.carrier ||
+    "";
+
+  const handleCopyOrderId = () => {
+    if (!activeOrder?.id) return;
+    navigator.clipboard.writeText(activeOrder.id).then(() => {
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 2000);
+    });
+  };
+
   return (
     <div className="w-full px-2 sm:px-4 py-2 pb-20 md:pb-6">
       <motion.div
@@ -32,15 +86,22 @@ export function GraciaTiendaView({
           El vendedor ha verificado la transacción correctamente.
         </p>
 
+        {isLoading && (
+          <div className="py-8 text-center">
+            <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <p className="text-xs text-slate-500 mt-2 font-medium">Cargando detalles de tu compra...</p>
+          </div>
+        )}
+
         {/* Resumen de Productos Comprados */}
-        {completedOrder?.items && completedOrder.items.length > 0 && (
+        {activeOrder?.items && activeOrder.items.length > 0 && (
           <div className="bg-slate-50/80 rounded-xl p-3 sm:p-4 mt-5 text-left">
             <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-2.5">
               Productos Comprados (
-              {completedOrder.items.reduce((sum, item) => sum + item.quantity, 0)})
+              {activeOrder.items.reduce((sum, item) => sum + item.quantity, 0)})
             </span>
             <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-              {completedOrder.items.map((item, idx) => (
+              {activeOrder.items.map((item, idx) => (
                 <div
                   key={idx}
                   className="flex items-center space-x-3 bg-white p-2.5 rounded-lg border border-slate-100 shadow-2xs"
@@ -70,16 +131,28 @@ export function GraciaTiendaView({
         )}
 
         {/* Detalle de Pedido y Dirección Completa */}
-        {completedOrder && (
-          <div className="bg-slate-50/80 rounded-xl p-3 sm:p-4 mt-3 text-left space-y-2.5 text-xs">
-            <div className="flex justify-between border-b border-slate-200/60 pb-2">
-              <span className="text-slate-500 font-medium">Código de Pedido:</span>
-              <span className="font-mono font-bold text-slate-800">{completedOrder.id}</span>
+        {activeOrder && (
+          <div className="bg-slate-50/80 rounded-xl p-3 sm:p-4 mt-3 text-left space-y-2.5 text-xs border border-slate-100">
+            <div className="flex justify-between border-b border-slate-200/60 pb-2 items-center">
+              <span className="text-slate-500 font-medium">Código de Compra:</span>
+              <div className="flex items-center space-x-1.5">
+                <span className="font-mono font-extrabold text-slate-900 bg-slate-200/70 px-2 py-0.5 rounded text-[11px]">
+                  {activeOrder.id}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyOrderId}
+                  className="p-1 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer rounded"
+                  title="Copiar código de pedido"
+                >
+                  {copiedId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
             <div className="flex justify-between border-b border-slate-200/60 pb-2">
               <span className="text-slate-500 font-medium">Fecha:</span>
               <span className="font-mono text-slate-700">
-                {new Date(completedOrder.createdAt).toLocaleString()}
+                {new Date(activeOrder.createdAt).toLocaleString()}
               </span>
             </div>
             <div className="border-b border-slate-200/60 pb-2.5">
@@ -87,20 +160,49 @@ export function GraciaTiendaView({
                 Dirección de Envío Completa:
               </span>
               <p className="text-slate-800 font-medium text-xs leading-relaxed break-words whitespace-normal">
-                {completedOrder.shippingAddress}
+                {activeOrder.shippingAddress}
               </p>
             </div>
-            <div className="flex justify-between text-sm font-bold pt-0.5">
-              <span>Total Cargado:</span>
-              <span className="text-emerald-600 font-mono text-base">
-                ${completedOrder.total.toFixed(2)}
+
+            {/* Subtotal de los productos */}
+            <div className="flex justify-between border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500 font-medium">Subtotal Productos:</span>
+              <span className="font-mono font-bold text-slate-800">
+                ${itemsSubtotal.toFixed(2)}
+              </span>
+            </div>
+
+            {/* Precio del Envío Seleccionado */}
+            <div className="flex justify-between border-b border-slate-200/60 pb-2 items-center" id="thankyou-shipping-cost-row">
+              <div className="flex items-center space-x-1.5 flex-wrap">
+                <Truck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span className="text-slate-700 font-bold">Precio del Envío Seleccionado:</span>
+                {selectedCarrier && (
+                  <span className="text-[10px] bg-amber-100/90 text-amber-900 font-black px-1.5 py-0.5 rounded border border-amber-300/60">
+                    {selectedCarrier}
+                  </span>
+                )}
+              </div>
+              <span className="font-mono font-extrabold text-slate-900">
+                {selectedShippingCost === 0 ? (
+                  <span className="text-emerald-600 font-black">GRATIS ($0.00)</span>
+                ) : (
+                  `$${selectedShippingCost.toFixed(2)}`
+                )}
+              </span>
+            </div>
+
+            <div className="flex justify-between text-sm font-bold pt-1 items-center">
+              <span className="text-slate-900">Total Cargado:</span>
+              <span className="text-emerald-600 font-mono text-base font-black">
+                ${activeOrder.total.toFixed(2)}
               </span>
             </div>
           </div>
         )}
 
         {/* Auto-Created User Profile Card for Guest Checkout */}
-        {completedOrder?.autoCreatedUser && completedOrder.autoCreatedUser.created && (
+        {activeOrder?.autoCreatedUser && activeOrder.autoCreatedUser.created && (
           <div className="bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-slate-50 border-2 border-amber-500/40 rounded-2xl p-4 sm:p-5 mt-4 text-left shadow-sm">
             <div className="flex items-center space-x-2 text-amber-600 font-extrabold text-xs uppercase tracking-wider mb-2">
               <span className="text-base">🎉</span>
@@ -109,7 +211,7 @@ export function GraciaTiendaView({
             <p className="text-xs text-slate-700 leading-relaxed font-medium">
               Como eres un comprador nuevo, registramos automáticamente tu perfil con tu correo{" "}
               <strong className="text-slate-900 font-bold">
-                {completedOrder.autoCreatedUser.email}
+                {activeOrder.autoCreatedUser.email}
               </strong>
               .
             </p>
@@ -117,13 +219,13 @@ export function GraciaTiendaView({
               <div className="flex justify-between items-center">
                 <span className="text-slate-500 font-medium">Usuario asignado:</span>
                 <span className="font-bold text-slate-900 font-mono">
-                  @{completedOrder.autoCreatedUser.username}
+                  @{activeOrder.autoCreatedUser.username}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-500 font-medium">Contraseña enviada a tu correo:</span>
                 <span className="font-black text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-200 font-mono text-sm tracking-wider">
-                  {completedOrder.autoCreatedUser.tempPassword}
+                  {activeOrder.autoCreatedUser.tempPassword}
                 </span>
               </div>
             </div>
@@ -133,12 +235,12 @@ export function GraciaTiendaView({
               hacer el seguimiento de tus pedidos y actualizar tu contraseña por una más segura en
               tu perfil.
             </div>
-            {completedOrder.autoCreatedUser.user && (
+            {activeOrder.autoCreatedUser.user && (
               <button
                 type="button"
                 onClick={() => {
-                  if (onLoginSuccess && completedOrder.autoCreatedUser?.user) {
-                    onLoginSuccess(completedOrder.autoCreatedUser.user);
+                  if (onLoginSuccess && activeOrder.autoCreatedUser?.user) {
+                    onLoginSuccess(activeOrder.autoCreatedUser.user);
                   }
                 }}
                 className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow transition-all flex items-center justify-center space-x-2 cursor-pointer"

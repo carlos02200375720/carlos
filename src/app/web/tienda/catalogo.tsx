@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { ShoppingCart, ArrowLeft, Search, X, Check, Bookmark } from "lucide-react";
 import { Product, CartItem, Order, User } from "../../../types";
 import { motion, AnimatePresence } from "motion/react";
-import { getProductShareUrl, getProductPath, navigateTo, parseRoute } from "../../../router";
+import { getProductShareUrl, getProductPath, getThankYouPath, navigateTo, parseRoute } from "../../../router";
+import { apiFetch } from "../../../config";
 import ProductoIdTiendaView from "./productoid";
 import CarritoTiendaView from "./carrito";
 import VerificasionTiendaView from "./verificasion";
@@ -128,7 +129,7 @@ export interface ShopProps {
   onClearInitialStep?: () => void;
   onProductSelect?: (product: Product) => void;
   onBackToCatalog?: () => void;
-  onStepChange?: (step: "catalog" | "detail" | "cart" | "checkout" | "payment" | "thankyou") => void;
+  onStepChange?: (step: "catalog" | "detail" | "cart" | "checkout" | "payment" | "thankyou", orderId?: string) => void;
   savedReelIds?: string[];
   onToggleSave?: (id: string) => void;
   onGuestInteraction?: (action: string) => void;
@@ -422,7 +423,7 @@ export default function Tienda({
       return;
     }
     if (activeStep === "catalog") {
-      trackFunnelStep("tienda", { path: "/tienda" });
+      trackFunnelStep("tienda", { path: "/tienda/catalogo" });
     } else if (activeStep === "detail" && selectedProduct) {
       trackFunnelStep("producto_id", {
         path: getProductPath(selectedProduct),
@@ -431,7 +432,7 @@ export default function Tienda({
     } else if (activeStep === "checkout") {
       trackFunnelStep("verificacion", { path: "/tienda/verificacion" });
     } else if (activeStep === "thankyou") {
-      trackFunnelStep("gracia", { path: "/tienda/gracia" });
+      trackFunnelStep("gracia", { path: getThankYouPath(completedOrder?.id) });
     }
   }, [activeStep, selectedProduct?.id, showCartDrawer]);
 
@@ -465,7 +466,7 @@ export default function Tienda({
     if (onBackToCatalog) {
       onBackToCatalog();
     } else {
-      navigateTo("/tienda");
+      navigateTo("/tienda/catalogo");
     }
     onStepChange?.("catalog");
   };
@@ -500,6 +501,16 @@ export default function Tienda({
       } else if (parsed.type === "thankyou") {
         setShowCartDrawer(false);
         setActiveStep("thankyou");
+        if (parsed.orderId && (!completedOrder || completedOrder.id !== parsed.orderId)) {
+          apiFetch(`/api/orders/${encodeURIComponent(parsed.orderId)}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+              if (data && data.id) {
+                setCompletedOrder(data);
+              }
+            })
+            .catch(() => {});
+        }
       } else if (parsed.type === "product") {
         setShowCartDrawer(false);
         setActiveStep("detail");
@@ -540,9 +551,9 @@ export default function Tienda({
     } else if (activeStep === "checkout") {
       navigateTo("/tienda/verificacion");
     } else if (activeStep === "thankyou") {
-      navigateTo("/tienda/gracia");
+      navigateTo(getThankYouPath(completedOrder?.id));
     } else {
-      navigateTo("/tienda");
+      navigateTo("/tienda/catalogo");
     }
   };
 
@@ -632,8 +643,9 @@ export default function Tienda({
         (newOrder) => {
           setCompletedOrder(newOrder);
           setActiveStep("thankyou");
-          navigateTo("/tienda/gracia");
-          onStepChange?.("thankyou");
+          const targetUrl = getThankYouPath(newOrder.id);
+          navigateTo(targetUrl);
+          onStepChange?.("thankyou", newOrder.id);
         },
         effectiveCheckoutItems,
         {
@@ -1188,11 +1200,16 @@ export default function Tienda({
           {activeStep === "thankyou" && (
             <GraciaTiendaView
               completedOrder={completedOrder}
+              orderId={
+                typeof window !== "undefined" && parseRoute(window.location.pathname).type === "thankyou"
+                  ? (parseRoute(window.location.pathname) as any).orderId || completedOrder?.id
+                  : completedOrder?.id
+              }
               onLoginSuccess={onLoginSuccess}
               onContinueShopping={() => {
                 setActiveStep("catalog");
                 setSelectedProduct(null);
-                navigateTo("/tienda");
+                navigateTo("/tienda/catalogo");
                 onStepChange?.("catalog");
               }}
               onViewOrderHistory={() => {

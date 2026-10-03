@@ -7,7 +7,7 @@ export type AppRoute =
   | { type: 'product'; productId: string; productSlug?: string }
   | { type: 'store'; sellerId: string }
   | { type: 'checkout' }
-  | { type: 'thankyou' }
+  | { type: 'thankyou'; orderId?: string }
   | { type: 'cart' }
   | { type: 'messages' }
   | { type: 'profile'; userId?: string; profileTab?: string }
@@ -147,23 +147,23 @@ export function getProductPath(
   productOrId?: string | { id?: string; _id?: string; name?: string } | null,
   _productName?: string
 ): string {
-  if (!productOrId) return '/tienda';
+  if (!productOrId) return '/tienda/catalogo';
   if (typeof productOrId === 'object') {
     const id = (productOrId.id || productOrId._id || '').trim();
-    if (!id) return '/tienda';
+    if (!id) return '/tienda/catalogo';
     return `/tienda/${encodeURIComponent(id)}`;
   }
 
   const id = (productOrId || '').trim();
-  if (!id) return '/tienda';
+  if (!id) return '/tienda/catalogo';
   return `/tienda/${encodeURIComponent(id)}`;
 }
 
 /**
- * Returns the main shop catalog URL path `/tienda`
+ * Returns the main shop catalog URL path `/tienda/catalogo`
  */
 export function getShopPath(): string {
-  return '/tienda';
+  return '/tienda/catalogo';
 }
 
 /**
@@ -181,10 +181,16 @@ export function getCheckoutPath(): string {
 }
 
 /**
- * Returns the order thank you URL path `/tienda/gracia`
+ * Returns the order thank you URL path `/tienda/grasia/:orderId` (or `/tienda/grasia` without ID)
  */
-export function getThankYouPath(): string {
-  return '/tienda/gracia';
+export function getThankYouPath(
+  orderOrId?: string | { id?: string; _id?: string } | null
+): string {
+  if (!orderOrId) return '/tienda/grasia';
+  const id = typeof orderOrId === 'object' ? orderOrId.id || (orderOrId as any)._id : orderOrId;
+  const cleanId = (id || '').trim();
+  if (!cleanId) return '/tienda/grasia';
+  return `/tienda/grasia/${encodeURIComponent(cleanId)}`;
 }
 
 /**
@@ -252,8 +258,19 @@ export function parseRoute(pathname: string): AppRoute {
     return { type: 'checkout' };
   }
 
-  // /tienda/gracia (also supports /tienda/gracias, /shop/gracias, /gracia, /gracias, or /shop/thankyou)
-  if (/^\/(?:tienda\/|shop\/)?(?:gracia|gracias|thankyou|thank-you)$/i.test(normalized)) {
+  // /tienda/grasia/:orderId or /tienda/gracia/:orderId (with purchase order ID)
+  const thankyouWithOrderMatch = normalized.match(
+    /^\/(?:tienda\/|shop\/)?(?:gracia|gracias|grasia|grasias|thankyou|thank-you)\/([^/]+)$/i
+  );
+  if (thankyouWithOrderMatch) {
+    return {
+      type: 'thankyou',
+      orderId: decodeURIComponent(thankyouWithOrderMatch[1]).trim(),
+    };
+  }
+
+  // /tienda/gracia or /tienda/grasia (without order ID)
+  if (/^\/(?:tienda\/|shop\/)?(?:gracia|gracias|grasia|grasias|thankyou|thank-you)$/i.test(normalized)) {
     return { type: 'thankyou' };
   }
 

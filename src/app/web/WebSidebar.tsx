@@ -38,7 +38,7 @@ export default function WebSidebar({
       navigateTo('/inicio');
     } else if (tab === 'shop') {
       setActiveTab('shop');
-      navigateTo('/tienda');
+      navigateTo('/tienda/catalogo');
     } else if (tab === 'messages') {
       setActiveTab('messages');
       navigateTo('/messages');
@@ -104,7 +104,7 @@ export default function WebSidebar({
 
           {/* 2. Tienda */}
           <button
-            onClick={() => { setActiveTab('shop'); navigateTo('/tienda'); }}
+            onClick={() => { setActiveTab('shop'); navigateTo('/tienda/catalogo'); }}
             className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-2xl font-black text-xs transition-all cursor-pointer ${
               activeTab === 'shop'
                 ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"

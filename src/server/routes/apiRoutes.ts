@@ -99,6 +99,7 @@ export function createApiRouter(): Router {
   // Orders routes
   router.post("/orders", orderController.createOrder);
   router.get("/orders", orderController.getOrders);
+  router.get("/orders/:id", orderController.getOrderById);
   router.post("/orders/:id/update-tracking", orderController.updateTracking);
 
   // Chat routes
