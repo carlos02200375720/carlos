@@ -103,3 +103,6 @@ export async function getFeedPosts(limit: number = 20) {
   }
   return await res.json() as { posts: any[] };
 }
+
+export { syncGuestSession, getLocalGuestToken, setLocalGuestToken } from "../../utils/guestToken";
+

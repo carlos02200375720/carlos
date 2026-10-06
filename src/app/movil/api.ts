@@ -106,6 +106,11 @@ export const androidApiFetch = async (
           if (parsed.originalId || parsed.id) headers.set("x-user-id", parsed.originalId || parsed.id);
         }
       }
+
+      const storedGuestToken = localStorage.getItem("mall_guest_access_token");
+      if (storedGuestToken && !headers.has("x-guest-token")) {
+        headers.set("x-guest-token", storedGuestToken);
+      }
     } catch {
       // Ignore malformed local session data; the server can treat the request as guest.
     }
@@ -267,5 +272,25 @@ export const androidApi = {
       body: formData,
     });
     return readResponseBody(res);
+  },
+
+  syncGuestSession: async (deviceInfo?: string) => {
+    const existingToken = typeof window !== "undefined" ? localStorage.getItem("mall_guest_access_token") : null;
+    const res = await androidApiFetch("/auth/guest-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guestToken: existingToken || undefined,
+        platform: "android",
+        deviceInfo
+      }),
+    });
+    const data = await readResponseBody(res);
+    if (data?.guestToken && typeof window !== "undefined") {
+      try {
+        localStorage.setItem("mall_guest_access_token", data.guestToken);
+      } catch {}
+    }
+    return data;
   },
 };

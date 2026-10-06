@@ -6,6 +6,7 @@ import { AndroidApp } from "./app/movil";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { isSuperAdmin } from "./superAdmin";
 import { sessionState } from "./utils/sessionState";
+import { getLocalGuestToken, syncGuestSession } from "./utils/guestToken";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
 import { useCurrentRoute, navigateTo, parseRoute, getProfilePath, getProfileSavedPath, getProfileCompraPath, getProfileConfigPath, getProfileProductoPath, getProfileVentaPath, getProfilePublicacionesPath, getProfilePublicarPath, getProfileRendimientoPath, getProductPath, getInicioPath, getThankYouPath, findReelByInicioParam } from "./router";
 
@@ -135,8 +136,10 @@ export default function App() {
         isGuest: false,
       };
     }
+    const savedGuestToken = getLocalGuestToken();
     return {
       id: "current_user",
+      guestToken: savedGuestToken || undefined,
       username: "invitado",
       name: "Invitado",
       avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
@@ -708,10 +711,23 @@ export default function App() {
           })
           .catch((err) => console.error("Error switching session user on boot:", err));
       } else {
-        // Fetch default server current_user details
-        apiFetch("/api/users/current_user")
-          .then((res) => res.json())
-          .then((data) => {
+        // Sync unique guest token with MongoDB Atlas and local device
+        try {
+          const guestSession = await syncGuestSession(activePlatform);
+          if (guestSession && guestSession.user) {
+            setCurrentUser((prev) => {
+              if (prev.username && prev.username !== "invitado" && !prev.isGuest) {
+                return prev;
+              }
+              return guestSession.user;
+            });
+            if (guestSession.user.savedReelIds) {
+              setSavedReelIds(guestSession.user.savedReelIds);
+            }
+          } else {
+            // Fallback to server current_user endpoint
+            const res = await apiFetch("/api/users/current_user");
+            const data = await res.json();
             if (data && data.user) {
               setCurrentUser((prev) => {
                 if (prev.username && prev.username !== "invitado" && !prev.isGuest) {
@@ -721,8 +737,10 @@ export default function App() {
               });
               setSavedReelIds(data.user.savedReelIds || []);
             }
-          })
-          .catch((err) => console.error("Error fetching current user details:", err));
+          }
+        } catch (guestErr) {
+          console.warn("Notice: Error initializing guest token session:", guestErr);
+        }
       }
 
       setIsInitialLoading(false);
@@ -1522,12 +1540,14 @@ export default function App() {
       headers: { "Content-Type": "application/json" }
     })
       .then(() => {
-        return apiFetch("/api/users/current_user");
+        return syncGuestSession(activePlatform);
       })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.user && (data.user.isGuest || data.user.username === "invitado")) {
-          setCurrentUser(data.user);
+      .then((guestData) => {
+        if (guestData && guestData.user) {
+          setCurrentUser(guestData.user);
+          if (guestData.user.savedReelIds) {
+            setSavedReelIds(guestData.user.savedReelIds);
+          }
         }
       })
       .catch((err) => {

@@ -15,6 +15,8 @@ export interface User {
   savedProductIds?: string[];
   coverPhoto?: string;
   isGuest?: boolean;
+  guestToken?: string;
+  lastSeenAt?: string;
   password?: string;
   email?: string;
   privacyPolicy?: string;

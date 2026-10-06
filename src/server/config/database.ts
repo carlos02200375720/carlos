@@ -108,9 +108,42 @@ export async function connectToMongoDB(): Promise<void> {
         { id: "creador" },
         { name: /^creador$/i },
         { name: /^creator$/i },
-        { isGuest: true }
+        { isGuest: true, guestToken: { $exists: false } }
       ]
     });
+
+    // Purge guest tokens older than 60 days of inactivity
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    const expiredGuestsResult = await MongoUser.deleteMany({
+      isGuest: true,
+      guestToken: { $exists: true },
+      lastSeenAt: { $lt: sixtyDaysAgo }
+    });
+    if (expiredGuestsResult.deletedCount > 0) {
+      console.log(`⏱️ Purged ${expiredGuestsResult.deletedCount} expired guest tokens (inactive > 60 days) from MongoDB Atlas.`);
+    }
+
+    // Set recurring periodic purge (every 12 hours) to keep MongoDB Atlas free of expired guest tokens
+    if (!(global as any).__guestPurgeIntervalSet) {
+      (global as any).__guestPurgeIntervalSet = true;
+      setInterval(async () => {
+        try {
+          if (mongoose.connection.readyState === 1) {
+            const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+            const res = await MongoUser.deleteMany({
+              isGuest: true,
+              guestToken: { $exists: true },
+              lastSeenAt: { $lt: cutoff }
+            });
+            if (res.deletedCount > 0) {
+              console.log(`⏱️ Periodic cleanup: Purged ${res.deletedCount} expired guest tokens (> 60 days) from MongoDB Atlas.`);
+            }
+          }
+        } catch (e) {
+          console.warn("Notice: Error in periodic guest token purge:", e);
+        }
+      }, 12 * 60 * 60 * 1000);
+    }
 
     // Permanently purge any test reel or test publicacion from creador/creator
     await MongoReel.deleteMany({

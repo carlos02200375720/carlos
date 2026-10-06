@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
+import crypto from "crypto";
 import { User, Reel } from "../../types";
 import { MongoUser, MongoReel, MongoProduct, MongoOrder } from "../models";
 import { generateId } from "../utils/helpers";
@@ -183,6 +184,176 @@ export function hasSellerPermission(user: any): boolean {
 }
 
 /**
+ * POST /api/auth/guest-session (also GET /api/auth/guest-session)
+ * Handles first-time visitors and returning guest users.
+ * Generates and stores a unique access token in MongoDB Atlas for new guests,
+ * or retrieves existing guest profile and visit history for returning guests.
+ */
+export async function handleGuestSession(req: Request, res: Response): Promise<void> {
+  try {
+    const headerToken = (req.headers["x-guest-token"] as string || "").trim();
+    const bodyToken = (req.body?.guestToken || "").toString().trim();
+    const queryToken = (req.query?.guestToken as string || "").trim();
+    let token = bodyToken || headerToken || queryToken;
+
+    const platform = (req.body?.platform || req.headers["x-platform"] || "web").toString();
+    const deviceInfo = (req.body?.deviceInfo || req.headers["user-agent"] || "").toString();
+
+    const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+
+    // 1. If a token is provided, check MongoDB Atlas for existing guest
+    if (token && mongoose.connection.readyState === 1) {
+      const existingGuest = await MongoUser.findOne({ guestToken: token });
+      if (existingGuest) {
+        const lastSeenTime = existingGuest.lastSeenAt ? new Date(existingGuest.lastSeenAt).getTime() : 0;
+        const isExpired = lastSeenTime > 0 && (Date.now() - lastSeenTime > SIXTY_DAYS_MS);
+
+        if (isExpired) {
+          console.log(`⏱️ Guest token expired after 60 days of inactivity: @${existingGuest.username} (last seen: ${existingGuest.lastSeenAt}). Purged from database.`);
+          await MongoUser.deleteOne({ _id: existingGuest._id }).catch(() => {});
+          token = ""; // Reset token so a fresh new token is generated
+        } else {
+          // User visited within 60 days: keep the token and reset the 60-day countdown
+          const now = new Date();
+          const nextVisits = (existingGuest.visitCount || 1) + 1;
+          const updateFields: any = {
+            lastSeenAt: now,
+            visitCount: nextVisits,
+            isOnline: true
+          };
+          if (deviceInfo && !existingGuest.deviceInfo) {
+            updateFields.deviceInfo = deviceInfo;
+          }
+          await MongoUser.updateOne({ _id: existingGuest._id }, { $set: updateFields }).catch(() => {});
+          existingGuest.lastSeenAt = now;
+          existingGuest.visitCount = nextVisits;
+          existingGuest.isOnline = true;
+
+          console.log(`👤 Returning guest recognized: @${existingGuest.username} (token: ${token.slice(0, 16)}..., visits: ${existingGuest.visitCount}, 60-day countdown reset to ${now.toISOString()})`);
+
+          res.json({
+            success: true,
+            isNew: false,
+            guestToken: existingGuest.guestToken,
+            user: {
+              id: "current_user",
+              originalId: existingGuest.id,
+              guestToken: existingGuest.guestToken,
+              username: existingGuest.username,
+              name: existingGuest.name,
+              avatar: existingGuest.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+              bio: existingGuest.bio || "Explorando la plataforma",
+              isOnline: true,
+              followers: 0,
+              following: 0,
+              followingUserIds: existingGuest.followingUserIds || [],
+              savedReelIds: existingGuest.savedReelIds || [],
+              coverPhoto: existingGuest.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+              isGuest: true,
+              lastSeenAt: existingGuest.lastSeenAt,
+              canSell: false,
+              isAdmin: false,
+            }
+          });
+          return;
+        }
+      }
+    }
+
+    // 2. First-time visitor or token expired/not in DB: generate fresh unique access token
+    const randomHex = crypto.randomBytes ? crypto.randomBytes(16).toString("hex") : generateId() + generateId();
+    const generatedToken = `guest_tok_${randomHex}_${Date.now().toString(36)}`;
+    const guestId = "guest_" + generateId();
+    const shortCode = generateId().slice(-6);
+    const guestUsername = `invitado_${shortCode}`;
+
+    const newGuestDoc = {
+      id: guestId,
+      username: guestUsername,
+      name: "Invitado",
+      guestToken: generatedToken,
+      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+      bio: "Explorando la plataforma",
+      isOnline: true,
+      followers: 0,
+      following: 0,
+      followingUserIds: [],
+      savedReelIds: [],
+      coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+      isGuest: true,
+      platform,
+      deviceInfo,
+      lastSeenAt: new Date(),
+      firstVisitAt: new Date(),
+      visitCount: 1,
+    };
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const createdGuest = new MongoUser(newGuestDoc);
+        await createdGuest.save();
+        console.log(`✨ New guest created & stored in MongoDB Atlas: @${guestUsername} (token: ${generatedToken.slice(0, 16)}...)`);
+      } catch (saveErr) {
+        console.warn("⚠️ Error saving guest to MongoDB Atlas:", saveErr);
+      }
+    } else {
+      console.warn("⚠️ MongoDB Atlas connecting; returning guest token to store locally on client.");
+    }
+
+    res.json({
+      success: true,
+      isNew: true,
+      guestToken: generatedToken,
+      user: {
+        id: "current_user",
+        originalId: guestId,
+        guestToken: generatedToken,
+        username: guestUsername,
+        name: "Invitado",
+        avatar: newGuestDoc.avatar,
+        bio: newGuestDoc.bio,
+        isOnline: true,
+        followers: 0,
+        following: 0,
+        followingUserIds: [],
+        savedReelIds: [],
+        coverPhoto: newGuestDoc.coverPhoto,
+        isGuest: true,
+        lastSeenAt: newGuestDoc.lastSeenAt,
+        canSell: false,
+        isAdmin: false,
+      }
+    });
+  } catch (err: any) {
+    console.error("❌ Error in handleGuestSession:", err);
+    res.status(500).json({ error: "Error procesando sesión de invitado", details: err?.message });
+  }
+}
+
+/**
+ * Automatically purges guest user tokens from MongoDB Atlas that have been inactive for more than 60 days.
+ * Registered accounts are untouched.
+ */
+export async function purgeExpiredGuestTokens(): Promise<number> {
+  if (mongoose.connection.readyState !== 1) return 0;
+  try {
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    const result = await MongoUser.deleteMany({
+      isGuest: true,
+      guestToken: { $exists: true },
+      lastSeenAt: { $lt: sixtyDaysAgo }
+    });
+    if (result && result.deletedCount > 0) {
+      console.log(`⏱️ Purged ${result.deletedCount} inactive guest tokens (> 60 days) from MongoDB Atlas.`);
+    }
+    return result?.deletedCount || 0;
+  } catch (err) {
+    console.error("❌ Error purging expired guest tokens:", err);
+    return 0;
+  }
+}
+
+/**
  * GET /api/users
  */
 export async function getAllUsers(req: Request, res: Response): Promise<void> {
@@ -207,8 +378,11 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
 
   const headerUsername = (req.headers["x-user-username"] as string)?.trim().toLowerCase();
   const headerUserId = (req.headers["x-user-id"] as string)?.trim();
+  const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
   const queryUsername = (req.query.username as string)?.trim().toLowerCase();
   const queryUserId = (req.query.userId as string)?.trim();
+  const queryGuestToken = (req.query.guestToken as string)?.trim();
+  const guestTokenCandidate = headerGuestToken || queryGuestToken;
 
   let user: any = null;
 
@@ -236,6 +410,26 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
 
       if (!activeUser && activeOriginalUserId && activeOriginalUserId !== "user_guest" && activeOriginalUserId !== "current_user" && activeOriginalUserId !== "invitado") {
         activeUser = await MongoUser.findOne({ id: activeOriginalUserId });
+      }
+
+      // Check if this request represents a persistent guest with token in MongoDB Atlas
+      if (!activeUser && guestTokenCandidate) {
+        const foundGuest = await MongoUser.findOne({ guestToken: guestTokenCandidate });
+        if (foundGuest) {
+          const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+          const lastSeenTime = foundGuest.lastSeenAt ? new Date(foundGuest.lastSeenAt).getTime() : 0;
+          const isExpired = lastSeenTime > 0 && (Date.now() - lastSeenTime > SIXTY_DAYS_MS);
+          if (isExpired) {
+            await MongoUser.deleteOne({ _id: foundGuest._id }).catch(() => {});
+            console.log(`⏱️ Purged guest token inactive for > 60 days in current_user lookup: @${foundGuest.username}`);
+          } else {
+            // Returning guest accessed platform before 60 days: reset the 60-day countdown
+            const now = new Date();
+            await MongoUser.updateOne({ _id: foundGuest._id }, { $set: { lastSeenAt: now, isOnline: true } }).catch(() => {});
+            foundGuest.lastSeenAt = now;
+            activeUser = foundGuest;
+          }
+        }
       }
     }
 
@@ -268,6 +462,30 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
         canSell: activeUser.canSell === true || isConfiguredSuperadmin(activeUser),
         isAdmin: isConfiguredSuperadmin(activeUser),
         role: isConfiguredSuperadmin(activeUser) ? "superadmin" : (activeUser.canSell ? "seller" : "user")
+      };
+    } else if (activeUser && activeUser.isGuest) {
+      // Returning guest user found in MongoDB Atlas
+      user = {
+        id: "current_user",
+        originalId: activeUser.id,
+        guestToken: activeUser.guestToken,
+        username: activeUser.username,
+        name: activeUser.name,
+        avatar: activeUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+        bio: activeUser.bio || "Explorando la plataforma",
+        isOnline: true,
+        followers: 0,
+        following: 0,
+        followingUserIds: activeUser.followingUserIds || [],
+        savedReelIds: activeUser.savedReelIds || [],
+        coverPhoto: activeUser.coverPhoto || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+        isGuest: true,
+        lastSeenAt: activeUser.lastSeenAt,
+        password: "",
+        email: "",
+        privacyPolicy: "",
+        canSell: false,
+        isAdmin: false
       };
     } else {
       user = {
@@ -736,6 +954,15 @@ export async function toggleSaveReel(req: Request, res: Response): Promise<void>
         ])
       });
     }
+
+    if (!currentUserObj) {
+      const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
+      const bodyGuestToken = req.body?.guestToken;
+      const guestToken = headerGuestToken || bodyGuestToken;
+      if (guestToken) {
+        currentUserObj = await MongoUser.findOne({ guestToken });
+      }
+    }
   }
 
   if (!currentUserObj) {
@@ -1110,6 +1337,17 @@ export async function registerUser(req: Request, res: Response): Promise<void> {
       }
     }
 
+    const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
+    let guestSavedReels: string[] = [];
+    if (headerGuestToken && mongoose.connection.readyState === 1) {
+      try {
+        const priorGuest = await MongoUser.findOne({ guestToken: headerGuestToken });
+        if (priorGuest && Array.isArray(priorGuest.savedReelIds)) {
+          guestSavedReels = priorGuest.savedReelIds;
+        }
+      } catch (e) {}
+    }
+
     const newUserId = "user_" + generateId();
     const newUser: User = {
       id: newUserId,
@@ -1122,6 +1360,9 @@ export async function registerUser(req: Request, res: Response): Promise<void> {
       coverPhoto: resolvedCoverPhoto,
       followers: 0,
       following: 0,
+      followingUserIds: [],
+      savedReelIds: guestSavedReels,
+      guestToken: headerGuestToken || undefined,
       isOnline: true,
       password: password || "",
       isGuest: false,

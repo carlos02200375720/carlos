@@ -216,6 +216,11 @@ export const apiFetch = async (
           }
         }
       }
+
+      const storedGuestToken = localStorage.getItem("mall_guest_access_token");
+      if (storedGuestToken && !headers.has("x-guest-token")) {
+        headers.set("x-guest-token", storedGuestToken);
+      }
     } catch (e) {
       // Ignore runtime session parsing error
     }

@@ -63,6 +63,7 @@ export function createApiRouter(): Router {
   router.delete("/reels/:id", uploadController.deletePublicationMedia);
 
   // Users routes
+  router.all(["/auth/guest-session", "/users/guest-session", "/guest-session"], userController.handleGuestSession);
   router.get("/users", userController.getAllUsers);
   router.get("/users/:id", userController.getUserById);
   router.get("/users/:id/publications", userController.getUserPublications);

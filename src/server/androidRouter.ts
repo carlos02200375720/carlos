@@ -11,7 +11,7 @@ import {
   saveCanonicalReelToMongo,
   getUserCanonicalReelsFromMongo,
 } from "./services/reelService";
-import { isConfiguredSuperadmin } from "./controllers/userController";
+import { isConfiguredSuperadmin, handleGuestSession } from "./controllers/userController";
 
 export interface AndroidRouterDependencies {
   MongoUser: any;
@@ -138,11 +138,15 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
     }
   });
 
+  // Android Gateway: Guest Session route
+  router.all(["/auth/guest-session", "/users/guest-session", "/guest-session"], handleGuestSession);
+
   // Android: Current user status / auto session resolution
   router.get("/users/current_user", async (req: Request, res: Response) => {
     try {
       const headerUsername = req.headers["x-user-username"] as string;
       const headerUserId = req.headers["x-user-id"] as string;
+      const headerGuestToken = (req.headers["x-guest-token"] as string || req.query.guestToken as string || "").trim();
 
       let targetUser = null;
       if (mongoose.connection.readyState === 1) {
@@ -154,25 +158,36 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
               { email: headerUsername.toLowerCase() },
             ],
           });
-        } else if (headerUserId) {
+        } else if (headerUserId && headerUserId !== "current_user" && headerUserId !== "user_guest") {
           targetUser = await MongoUser.findOne({
             $or: [{ id: headerUserId }, { _id: mongoose.isValidObjectId(headerUserId) ? headerUserId : undefined }],
           });
         }
 
-        // Fallback to first real active user in Atlas if none specified
-        if (!targetUser) {
-          targetUser = await MongoUser.findOne({
-            id: { $nin: ["current_user", "user_guest"] },
-            username: { $ne: "invitado" },
-          });
+        // Check if guest token was sent
+        if (!targetUser && headerGuestToken) {
+          const foundGuest = await MongoUser.findOne({ guestToken: headerGuestToken });
+          if (foundGuest) {
+            const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+            const lastSeenTime = foundGuest.lastSeenAt ? new Date(foundGuest.lastSeenAt).getTime() : 0;
+            if (lastSeenTime > 0 && (Date.now() - lastSeenTime > SIXTY_DAYS_MS)) {
+              await MongoUser.deleteOne({ _id: foundGuest._id }).catch(() => {});
+              console.log(`⏱️ Purged guest token inactive for > 60 days in Android current_user: @${foundGuest.username}`);
+            } else {
+              const now = new Date();
+              await MongoUser.updateOne({ _id: foundGuest._id }, { $set: { lastSeenAt: now, isOnline: true } }).catch(() => {});
+              foundGuest.lastSeenAt = now;
+              targetUser = foundGuest;
+            }
+          }
         }
       }
 
       if (targetUser) {
         const userObj: User = {
-          id: targetUser.id,
-          originalId: targetUser._id ? targetUser._id.toString() : targetUser.id,
+          id: targetUser.isGuest ? "current_user" : targetUser.id,
+          originalId: targetUser.id || (targetUser._id ? targetUser._id.toString() : targetUser.id),
+          guestToken: targetUser.guestToken,
           username: targetUser.username,
           name: targetUser.name,
           bio: targetUser.bio || "",
@@ -182,8 +197,9 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
           following: targetUser.following || 0,
           followingUserIds: targetUser.followingUserIds || [],
           savedReelIds: targetUser.savedReelIds || [],
-          isGuest: false,
+          isGuest: targetUser.isGuest === true,
           isOnline: true,
+          lastSeenAt: targetUser.lastSeenAt,
           email: targetUser.email || "",
         };
         res.json({ success: true, user: userObj });

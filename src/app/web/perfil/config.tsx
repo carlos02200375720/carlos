@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Settings, ShieldCheck, Camera, Users } from "lucide-react";
+import { Settings, ShieldCheck, Camera, Users, Lock, LogIn, UserPlus, AlertCircle } from "lucide-react";
 import { motion } from "motion/react";
 import { User } from "../../../types";
 import { apiFetch } from "../../../config";
@@ -55,6 +55,129 @@ export function ConfigPerfilView({
   const [switchingUser, setSwitchingUser] = useState<User | null>(null);
   const [switchPassword, setSwitchPassword] = useState("");
   const [switchError, setSwitchError] = useState("");
+
+  // Guest authentication gate states
+  const [guestAuthTab, setGuestAuthTab] = useState<"login" | "register">("login");
+  const [guestLoginUsername, setGuestLoginUsername] = useState("");
+  const [guestLoginPassword, setGuestLoginPassword] = useState("");
+  const [guestLoginError, setGuestLoginError] = useState("");
+  const [isGuestLoggingIn, setIsGuestLoggingIn] = useState(false);
+
+  const [guestRegName, setGuestRegName] = useState("");
+  const [guestRegUsername, setGuestRegUsername] = useState("");
+  const [guestRegEmail, setGuestRegEmail] = useState("");
+  const [guestRegPassword, setGuestRegPassword] = useState("");
+  const [guestRegError, setGuestRegError] = useState("");
+  const [isGuestRegistering, setIsGuestRegistering] = useState(false);
+
+  const isGuestUser = Boolean(
+    currentUser?.isGuest ||
+    currentUser?.username === "invitado" ||
+    currentUser?.id === "current_user" ||
+    currentUser?.id === "guest" ||
+    currentUser?.id === "invitado" ||
+    !currentUser?.id
+  );
+
+  const handleGuestLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isGuestLoggingIn) return;
+    setGuestLoginError("");
+
+    const cleanUsername = guestLoginUsername.trim().toLowerCase().replace(/^@/, "");
+    if (!cleanUsername) {
+      setGuestLoginError("Por favor ingresa tu nombre de usuario o correo.");
+      return;
+    }
+
+    try {
+      setIsGuestLoggingIn(true);
+      const res = await apiFetch("/api/users/current/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUsername: cleanUsername,
+          password: guestLoginPassword,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setGuestLoginError(data.error || "Credenciales incorrectas o usuario no encontrado.");
+        return;
+      }
+
+      if (data.user) {
+        sessionState.setAuthenticated(true);
+        sessionState.setUsername(data.user.username);
+        sessionState.setUser(data.user);
+        onProfileSaved?.(data.user);
+        onRefreshUsers?.();
+        onBackToSelf?.();
+      }
+    } catch (err) {
+      console.error("Error during guest login:", err);
+      setGuestLoginError("Error de conexión al iniciar sesión.");
+    } finally {
+      setIsGuestLoggingIn(false);
+    }
+  };
+
+  const handleGuestRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isGuestRegistering) return;
+    setGuestRegError("");
+
+    const cleanUsername = String(guestRegUsername)
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/^@/, "");
+
+    if (!guestRegName.trim() || !cleanUsername) {
+      setGuestRegError("El nombre completo y nombre de usuario son obligatorios.");
+      return;
+    }
+
+    const emailToUse = guestRegEmail.trim() || `${cleanUsername}@mallsocial.app`;
+
+    try {
+      setIsGuestRegistering(true);
+      const res = await apiFetch("/api/users/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: guestRegName.trim(),
+          username: cleanUsername,
+          email: emailToUse,
+          bio: "Nuevo creador en la plataforma",
+          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+          coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+          password: guestRegPassword.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setGuestRegError(data.error || "Error al registrar la cuenta.");
+        return;
+      }
+
+      if (data.user) {
+        sessionState.setAuthenticated(true);
+        sessionState.setUsername(data.user.username);
+        sessionState.setUser(data.user);
+        onProfileSaved?.(data.user);
+        onRefreshUsers?.();
+        onBackToSelf?.();
+      }
+    } catch (err) {
+      console.error("Error during guest register:", err);
+      setGuestRegError("Error de conexión al registrar cuenta.");
+    } finally {
+      setIsGuestRegistering(false);
+    }
+  };
 
   useEffect(() => {
     if (
@@ -206,6 +329,282 @@ export function ConfigPerfilView({
       profileRegisteringRef.current = false;
     }
   };
+
+  // Si el usuario es invitado, requerir registro o inicio de sesión antes de acceder a la configuración
+  if (isGuestUser) {
+    return (
+      <motion.div
+        key="guest-config-gate"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        transition={{ duration: 0.15 }}
+        className="max-w-xl mx-auto space-y-6 py-2"
+        id="guest-config-gate"
+      >
+        {/* Banner Informativo */}
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-white rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-xl text-center relative overflow-hidden">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto mb-3 shadow-inner">
+            <Lock className="w-7 h-7 stroke-[2.2]" />
+          </div>
+          <h3 className="font-display font-black text-lg sm:text-xl text-white tracking-tight">
+            Acceso a Configuración de Perfil
+          </h3>
+          <p className="text-xs sm:text-sm text-slate-300 mt-2 max-w-md mx-auto leading-relaxed">
+            Para acceder a la página de configuración y modificar tus datos personales o comerciales, primero debes <strong className="text-amber-400 font-bold">iniciar sesión</strong> o <strong className="text-amber-400 font-bold">registrarte</strong>.
+          </p>
+        </div>
+
+        {/* Card con Enlaces / Pestañas de Iniciar Sesión y Registro */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm">
+          {/* Barra Horizontal de Selección Login / Registro */}
+          <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl mb-6">
+            <button
+              type="button"
+              id="guest-gate-tab-login"
+              onClick={() => {
+                setGuestAuthTab("login");
+                setGuestLoginError("");
+                setGuestRegError("");
+              }}
+              className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                guestAuthTab === "login"
+                  ? "bg-white text-slate-950 shadow-xs font-black ring-1 ring-slate-200"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+            >
+              <LogIn className="w-4 h-4 text-amber-500" />
+              <span>Iniciar Sesión</span>
+            </button>
+
+            <button
+              type="button"
+              id="guest-gate-tab-register"
+              onClick={() => {
+                setGuestAuthTab("register");
+                setGuestLoginError("");
+                setGuestRegError("");
+              }}
+              className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                guestAuthTab === "register"
+                  ? "bg-white text-slate-950 shadow-xs font-black ring-1 ring-slate-200"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+            >
+              <UserPlus className="w-4 h-4 text-amber-500" />
+              <span>Registrarse</span>
+            </button>
+          </div>
+
+          {/* Formulario 1: Iniciar Sesión */}
+          {guestAuthTab === "login" ? (
+            <form onSubmit={handleGuestLogin} className="space-y-4" id="guest-gate-login-form">
+              {guestLoginError && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{guestLoginError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-600 block uppercase tracking-wider">
+                  Usuario o Correo
+                </label>
+                <input
+                  type="text"
+                  value={guestLoginUsername}
+                  onChange={(e) => setGuestLoginUsername(e.target.value)}
+                  placeholder="Ej: tu_usuario"
+                  required
+                  autoFocus
+                  className="w-full text-xs font-semibold px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-900 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-600 block uppercase tracking-wider">
+                  Contraseña
+                </label>
+                <input
+                  type="password"
+                  value={guestLoginPassword}
+                  onChange={(e) => setGuestLoginPassword(e.target.value)}
+                  placeholder="Tu contraseña"
+                  className="w-full text-xs font-semibold px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-900 font-mono transition-all"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isGuestLoggingIn}
+                className="w-full py-3 bg-amber-500 hover:bg-amber-400 active:scale-[0.99] disabled:bg-slate-200 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer mt-2"
+              >
+                {isGuestLoggingIn ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    <span>Iniciando sesión...</span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="w-4 h-4" />
+                    <span>Iniciar Sesión y Configurar Perfil</span>
+                  </>
+                )}
+              </button>
+
+              {/* Enlace para cambiar a Registro */}
+              <div className="text-center pt-2">
+                <p className="text-xs text-slate-500">
+                  ¿Aún no tienes una cuenta?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGuestAuthTab("register");
+                      setGuestLoginError("");
+                    }}
+                    className="text-amber-600 hover:text-amber-700 font-bold underline cursor-pointer"
+                  >
+                    Regístrate aquí
+                  </button>
+                </p>
+              </div>
+            </form>
+          ) : (
+            /* Formulario 2: Registrarse */
+            <form onSubmit={handleGuestRegister} className="space-y-4" id="guest-gate-register-form">
+              {guestRegError && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{guestRegError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-600 block uppercase tracking-wider">
+                  Nombre Completo
+                </label>
+                <input
+                  type="text"
+                  value={guestRegName}
+                  onChange={(e) => setGuestRegName(e.target.value)}
+                  placeholder="Ej: Carlos Gómez"
+                  required
+                  autoFocus
+                  className="w-full text-xs font-semibold px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-900 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-600 block uppercase tracking-wider">
+                  Nombre de Usuario
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">@</span>
+                  <input
+                    type="text"
+                    value={guestRegUsername}
+                    onChange={(e) => setGuestRegUsername(e.target.value)}
+                    placeholder="carlos_gomez"
+                    required
+                    className="w-full text-xs font-semibold pl-8 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-900 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-600 block uppercase tracking-wider">
+                  Correo Electrónico (Opcional)
+                </label>
+                <input
+                  type="email"
+                  value={guestRegEmail}
+                  onChange={(e) => setGuestRegEmail(e.target.value)}
+                  placeholder="ejemplo@correo.com"
+                  className="w-full text-xs font-semibold px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-900 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-600 block uppercase tracking-wider">
+                  Contraseña
+                </label>
+                <input
+                  type="password"
+                  value={guestRegPassword}
+                  onChange={(e) => setGuestRegPassword(e.target.value)}
+                  placeholder="Crea tu contraseña"
+                  className="w-full text-xs font-semibold px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-900 font-mono transition-all"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isGuestRegistering}
+                className="w-full py-3 bg-amber-500 hover:bg-amber-400 active:scale-[0.99] disabled:bg-slate-200 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer mt-2"
+              >
+                {isGuestRegistering ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    <span>Registrando cuenta...</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-4 h-4" />
+                    <span>Crear Cuenta y Acceder a Configuración</span>
+                  </>
+                )}
+              </button>
+
+              {/* Enlace para cambiar a Iniciar Sesión */}
+              <div className="text-center pt-2">
+                <p className="text-xs text-slate-500">
+                  ¿Ya tienes una cuenta registrada?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGuestAuthTab("login");
+                      setGuestRegError("");
+                    }}
+                    className="text-amber-600 hover:text-amber-700 font-bold underline cursor-pointer"
+                  >
+                    Inicia sesión aquí
+                  </button>
+                </p>
+              </div>
+            </form>
+          )}
+
+          {/* Opcional: Selección rápida de cuentas demo/creadores */}
+          {users.filter((u) => u.id !== "current_user" && u.username !== "invitado").length > 0 && (
+            <div className="mt-6 pt-5 border-t border-slate-100">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center">
+                O entra directamente como creador:
+              </p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {users
+                  .filter((u) => u.id !== "current_user" && u.username !== "invitado")
+                  .slice(0, 4)
+                  .map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        setGuestLoginUsername(u.username);
+                        setGuestAuthTab("login");
+                      }}
+                      className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <img src={u.avatar} alt="" className="w-3.5 h-3.5 rounded-full object-cover" />
+                      <span>@{u.username}</span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
