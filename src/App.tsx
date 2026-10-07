@@ -765,7 +765,8 @@ export default function App() {
   // Fetch Private Chats on Active User change
   useEffect(() => {
     if (activeChatUser) {
-      apiFetch(`/api/chats/${activeChatUser.id}`)
+      const callerId = currentUser.originalId || currentUser.id || "current_user";
+      apiFetch(`/api/chats/${encodeURIComponent(activeChatUser.id)}?userId=${encodeURIComponent(callerId)}`)
         .then((res) => res.json())
         .then((data) => {
           if (Array.isArray(data)) {
@@ -778,7 +779,7 @@ export default function App() {
     } else {
       setPrivateMessages([]);
     }
-  }, [activeChatUser]);
+  }, [activeChatUser, currentUser.id, currentUser.originalId]);
 
   // Connect WebSockets
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { Server as HttpServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import mongoose from "mongoose";
-import { MongoUser } from "../models";
+import { MongoUser, MongoChatMessage } from "../models";
 import { ChatMessage } from "../../types";
 import { generateId } from "../utils/helpers";
 import {
@@ -58,15 +58,8 @@ export function setupWebSocket(httpServer: HttpServer): WebSocketServer {
           }
 
           case "private_msg": {
-            if (activeOriginalUserId === "user_guest") {
-              ws.send(JSON.stringify({
-                type: "error",
-                message: "Un usuario no registrado no puede enviar mensajes."
-              }));
-              break;
-            }
             const { senderId, receiverId, text } = payload;
-            if (!senderId || !receiverId || !text) return;
+            if (!senderId || !receiverId || !text || !String(text).trim()) return;
 
             const actualSenderId = (senderId === "current_user" && activeOriginalUserId !== "user_guest") ? activeOriginalUserId : senderId;
 
@@ -74,13 +67,20 @@ export function setupWebSocket(httpServer: HttpServer): WebSocketServer {
               id: "m_" + generateId(),
               senderId: actualSenderId,
               receiverId,
-              text,
+              text: String(text).trim(),
               timestamp: new Date().toISOString()
             };
 
             chatMessages.push(newMsg);
 
-            // Send to recipient if connected (check receiverId directly or current_user)
+            // Persist to MongoDB Atlas
+            if (mongoose.connection.readyState === 1) {
+              MongoChatMessage.create(newMsg).catch((err: any) =>
+                console.error("Error saving message to MongoDB Atlas:", err)
+              );
+            }
+
+            // Send to recipient if connected (check receiverId directly or support aliases)
             let sentToRec = false;
             const recSocket = activeClients.get(receiverId);
             if (recSocket && recSocket.readyState === WebSocket.OPEN) {
@@ -89,6 +89,20 @@ export function setupWebSocket(httpServer: HttpServer): WebSocketServer {
                 message: newMsg
               }));
               sentToRec = true;
+            }
+
+            // If recipient is support, try aliases (user_u8d2dsa11, carlos, cg0220037@gmail.com)
+            const SUPPORT_USER_ID = "user_u8d2dsa11";
+            const SUPPORT_EMAIL = "cg0220037@gmail.com";
+            if (!sentToRec && (receiverId === SUPPORT_USER_ID || receiverId === SUPPORT_EMAIL || receiverId === "support")) {
+              const supportSocket = activeClients.get(SUPPORT_USER_ID) || activeClients.get("carlos") || activeClients.get(SUPPORT_EMAIL);
+              if (supportSocket && supportSocket.readyState === WebSocket.OPEN) {
+                supportSocket.send(JSON.stringify({
+                  type: "private_msg",
+                  message: newMsg
+                }));
+                sentToRec = true;
+              }
             }
 
             if (!sentToRec && receiverId === activeOriginalUserId) {

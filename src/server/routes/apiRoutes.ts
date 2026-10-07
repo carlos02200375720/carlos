@@ -104,6 +104,8 @@ export function createApiRouter(): Router {
   router.post("/orders/:id/update-tracking", orderController.updateTracking);
 
   // Chat routes
+  router.get("/chats/support/conversations", chatController.getSupportConversations);
+  router.post("/chats", chatController.sendChatMessage);
   router.get("/chats/:partnerId", chatController.getChatMessages);
 
   // Live streaming routes

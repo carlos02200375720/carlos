@@ -5,3 +5,4 @@ export { MongoReel } from "./Reel";
 export { MongoCart } from "./Cart";
 export { MongoOrder } from "./Order";
 export { MongoAppSettings } from "./AppSettings";
+export { MongoChatMessage } from "./Chat";
