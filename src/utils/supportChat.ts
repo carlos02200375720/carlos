@@ -3,6 +3,17 @@ import { isSuperAdmin } from "../superAdmin";
 
 export const SUPPORT_EMAIL = "cg0220037@gmail.com";
 export const SUPPORT_USER_ID = "user_u8d2dsa11";
+export const SUPPORT_ALIASES = [SUPPORT_USER_ID, SUPPORT_EMAIL, "support", "soporte", "carlos", "carlosg", "admin"];
+
+export function isSupportAlias(id?: string | null): boolean {
+  if (!id) return false;
+  const lower = id.trim().toLowerCase();
+  return (
+    lower === SUPPORT_EMAIL ||
+    lower === SUPPORT_USER_ID.toLowerCase() ||
+    SUPPORT_ALIASES.some((alias) => alias.toLowerCase() === lower)
+  );
+}
 
 export const DEFAULT_SUPPORT_USER: User = {
   id: SUPPORT_USER_ID,
@@ -12,6 +23,8 @@ export const DEFAULT_SUPPORT_USER: User = {
   avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80",
   bio: "Atención y soporte oficial de Mall Social. Escríbenos aquí para cualquier duda.",
   isOnline: true,
+  followers: 999,
+  following: 1,
 };
 
 /**

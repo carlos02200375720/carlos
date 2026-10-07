@@ -8,6 +8,7 @@ import { WebSocket } from "ws";
 
 const SUPPORT_USER_ID = "user_u8d2dsa11";
 const SUPPORT_EMAIL = "cg0220037@gmail.com";
+const SUPPORT_ALIASES = [SUPPORT_USER_ID, SUPPORT_EMAIL, "support", "soporte", "carlos", "carlosg", "admin"];
 
 /**
  * GET /api/chats/:partnerId
@@ -19,25 +20,48 @@ export async function getChatMessages(req: Request, res: Response): Promise<void
   const queryUserId = (req.query.userId as string)?.trim();
   const callerId = headerUserId || queryUserId || activeOriginalUserId || "current_user";
 
+  const isPartnerSupport = SUPPORT_ALIASES.includes(partnerId);
+  const isCallerSupport = SUPPORT_ALIASES.includes(callerId) || (callerId === "current_user" && activeOriginalUserId === "carlos");
+
   try {
     let messages: ChatMessage[] = [];
 
     if (mongoose.connection.readyState === 1) {
-      const dbDocs = await MongoChatMessage.find({
-        $or: [
-          { senderId: callerId, receiverId: partnerId },
-          { senderId: partnerId, receiverId: callerId },
-          // Also check support aliases if partnerId is support
-          ...(partnerId === SUPPORT_USER_ID || partnerId === SUPPORT_EMAIL || partnerId === "support"
-            ? [
-                { senderId: callerId, receiverId: { $in: [SUPPORT_USER_ID, SUPPORT_EMAIL, "support"] } },
-                { senderId: { $in: [SUPPORT_USER_ID, SUPPORT_EMAIL, "support"] }, receiverId: callerId },
-              ]
-            : []),
-        ],
-      })
-        .sort({ createdAt: 1 })
-        .lean();
+      let query: any;
+
+      if (isPartnerSupport) {
+        // Client chatting with Support
+        query = {
+          $or: [
+            { senderId: callerId, receiverId: { $in: SUPPORT_ALIASES } },
+            { senderId: { $in: SUPPORT_ALIASES }, receiverId: callerId },
+            ...(activeOriginalUserId && activeOriginalUserId !== callerId
+              ? [
+                  { senderId: activeOriginalUserId, receiverId: { $in: SUPPORT_ALIASES } },
+                  { senderId: { $in: SUPPORT_ALIASES }, receiverId: activeOriginalUserId },
+                ]
+              : []),
+          ],
+        };
+      } else if (isCallerSupport) {
+        // Admin replying to a Client (partnerId)
+        query = {
+          $or: [
+            { senderId: partnerId, receiverId: { $in: SUPPORT_ALIASES } },
+            { senderId: { $in: SUPPORT_ALIASES }, receiverId: partnerId },
+          ],
+        };
+      } else {
+        // Direct peer-to-peer fallback
+        query = {
+          $or: [
+            { senderId: callerId, receiverId: partnerId },
+            { senderId: partnerId, receiverId: callerId },
+          ],
+        };
+      }
+
+      const dbDocs = await (MongoChatMessage as any).find(query).sort({ createdAt: 1 }).lean();
 
       if (dbDocs && dbDocs.length > 0) {
         messages = dbDocs.map((d: any) => ({
@@ -50,22 +74,29 @@ export async function getChatMessages(req: Request, res: Response): Promise<void
       }
     }
 
-    // Merge with in-memory messages if not found in db
+    // Merge with in-memory messages if not found in db or supplement
     if (messages.length === 0) {
       messages = chatMessages.filter((m) => {
-        const isFromMe = m.senderId === callerId || (callerId === "current_user" && m.senderId === activeOriginalUserId);
-        const isToMe = m.receiverId === callerId || (callerId === "current_user" && m.receiverId === activeOriginalUserId);
+        if (isPartnerSupport) {
+          const isFromClient = m.senderId === callerId || (callerId === "current_user" && m.senderId === activeOriginalUserId);
+          const isToClient = m.receiverId === callerId || (callerId === "current_user" && m.receiverId === activeOriginalUserId);
+          const isFromSupport = SUPPORT_ALIASES.includes(m.senderId);
+          const isToSupport = SUPPORT_ALIASES.includes(m.receiverId);
+          return (isFromClient && isToSupport) || (isFromSupport && isToClient);
+        }
 
-        const isFromPartner =
-          m.senderId === partnerId ||
-          ((partnerId === SUPPORT_USER_ID || partnerId === SUPPORT_EMAIL) &&
-            (m.senderId === SUPPORT_USER_ID || m.senderId === SUPPORT_EMAIL || m.senderId === "support"));
+        if (isCallerSupport) {
+          const isFromClient = m.senderId === partnerId;
+          const isToClient = m.receiverId === partnerId;
+          const isFromSupport = SUPPORT_ALIASES.includes(m.senderId);
+          const isToSupport = SUPPORT_ALIASES.includes(m.receiverId);
+          return (isFromClient && isToSupport) || (isFromSupport && isToClient);
+        }
 
-        const isToPartner =
-          m.receiverId === partnerId ||
-          ((partnerId === SUPPORT_USER_ID || partnerId === SUPPORT_EMAIL) &&
-            (m.receiverId === SUPPORT_USER_ID || m.receiverId === SUPPORT_EMAIL || m.receiverId === "support"));
-
+        const isFromMe = m.senderId === callerId;
+        const isToMe = m.receiverId === callerId;
+        const isFromPartner = m.senderId === partnerId;
+        const isToPartner = m.receiverId === partnerId;
         return (isFromMe && isToPartner) || (isFromPartner && isToMe);
       });
     }
@@ -83,11 +114,11 @@ export async function getChatMessages(req: Request, res: Response): Promise<void
  */
 export async function getSupportConversations(req: Request, res: Response): Promise<void> {
   try {
-    const supportAliases = [SUPPORT_USER_ID, SUPPORT_EMAIL, "support", "carlos"];
+    const supportAliases = SUPPORT_ALIASES;
 
     let allSupportMessages: any[] = [];
     if (mongoose.connection.readyState === 1) {
-      allSupportMessages = await MongoChatMessage.find({
+      allSupportMessages = await (MongoChatMessage as any).find({
         $or: [
           { senderId: { $in: supportAliases } },
           { receiverId: { $in: supportAliases } },

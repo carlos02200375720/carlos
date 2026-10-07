@@ -91,11 +91,25 @@ export function setupWebSocket(httpServer: HttpServer): WebSocketServer {
               sentToRec = true;
             }
 
-            // If recipient is support, try aliases (user_u8d2dsa11, carlos, cg0220037@gmail.com)
+            // If recipient is support, try aliases (user_u8d2dsa11, carlos, cg0220037@gmail.com, etc.)
             const SUPPORT_USER_ID = "user_u8d2dsa11";
             const SUPPORT_EMAIL = "cg0220037@gmail.com";
-            if (!sentToRec && (receiverId === SUPPORT_USER_ID || receiverId === SUPPORT_EMAIL || receiverId === "support")) {
-              const supportSocket = activeClients.get(SUPPORT_USER_ID) || activeClients.get("carlos") || activeClients.get(SUPPORT_EMAIL);
+            const isSupportRecipient =
+              receiverId === SUPPORT_USER_ID ||
+              receiverId === SUPPORT_EMAIL ||
+              receiverId === "support" ||
+              receiverId === "soporte" ||
+              receiverId === "carlos" ||
+              receiverId === "carlosg";
+
+            if (!sentToRec && isSupportRecipient) {
+              const supportSocket =
+                activeClients.get(SUPPORT_USER_ID) ||
+                activeClients.get(SUPPORT_EMAIL) ||
+                activeClients.get("carlos") ||
+                activeClients.get("carlosg") ||
+                activeClients.get("soporte");
+
               if (supportSocket && supportSocket.readyState === WebSocket.OPEN) {
                 supportSocket.send(JSON.stringify({
                   type: "private_msg",

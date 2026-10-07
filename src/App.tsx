@@ -5,6 +5,7 @@ import { WebApp, SplashScreen, AuthModal } from "./app/web";
 import { AndroidApp } from "./app/movil";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { isSuperAdmin } from "./superAdmin";
+import { resolveSupportUser, isSupportAdmin, isSupportAlias, SUPPORT_EMAIL, SUPPORT_USER_ID } from "./utils/supportChat";
 import { sessionState } from "./utils/sessionState";
 import { getLocalGuestToken, syncGuestSession } from "./utils/guestToken";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
@@ -818,14 +819,28 @@ export default function App() {
 
           case "private_msg": {
             const msg: ChatMessage = payload.message;
-            // Append message if chat partner is currently selected
-            if (activeChatUser && (msg.senderId === activeChatUser.id || msg.receiverId === activeChatUser.id)) {
-              setPrivateMessages((prev) => [...prev, msg]);
+            const isSupportChat = activeChatUser && isSupportAlias(activeChatUser.id);
+            const isMsgFromSupport = isSupportAlias(msg.senderId);
+            const isMsgToSupport = isSupportAlias(msg.receiverId);
+
+            const matchesCurrentChat =
+              activeChatUser &&
+              (msg.senderId === activeChatUser.id ||
+                msg.receiverId === activeChatUser.id ||
+                (activeChatUser.originalId && (msg.senderId === activeChatUser.originalId || msg.receiverId === activeChatUser.originalId)) ||
+                (isSupportChat && (isMsgFromSupport || isMsgToSupport)));
+
+            if (matchesCurrentChat) {
+              setPrivateMessages((prev) => {
+                if (prev.some((m) => m.id === msg.id)) return prev;
+                return [...prev, msg];
+              });
             } else {
-              // Increment unread count
+              // Increment unread count for the sender
+              const countKey = isMsgFromSupport ? SUPPORT_USER_ID : msg.senderId;
               setUnreadCounts((prev) => ({
                 ...prev,
-                [msg.senderId]: (prev[msg.senderId] || 0) + 1
+                [countKey]: (prev[countKey] || 0) + 1,
               }));
             }
             break;
@@ -833,7 +848,10 @@ export default function App() {
 
           case "private_msg_sent": {
             const msg: ChatMessage = payload.message;
-            setPrivateMessages((prev) => [...prev, msg]);
+            setPrivateMessages((prev) => {
+              if (prev.some((m) => m.id === msg.id)) return prev;
+              return [...prev, msg];
+            });
             break;
           }
 
@@ -1407,17 +1425,47 @@ export default function App() {
   // Private Messages handler
   const handleSendPrivateMessage = (text: string) => {
     if (currentUser.username === "invitado" || currentUser.isGuest) {
-      setGuestInteractionAlert("Para enviar mensajes privados, por favor inicia sesión o crea una cuenta.");
+      setGuestInteractionAlert("Para enviar mensajes a Soporte, por favor inicia sesión o crea una cuenta.");
       return;
     }
-    if (!activeChatUser || !socketRef.current || !socketConnected) return;
 
-    socketRef.current.send(JSON.stringify({
-      type: "private_msg",
-      senderId: currentUser.id,
-      receiverId: activeChatUser.id,
-      text: text,
-    }));
+    const isAdmin = isSupportAdmin(currentUser);
+    const targetRecipient = !isAdmin ? resolveSupportUser(users) : activeChatUser;
+    if (!targetRecipient) return;
+
+    const actualSenderId = currentUser.originalId || currentUser.id;
+    const recipientId = targetRecipient.originalId || targetRecipient.id;
+
+    // Send via WebSocket if connected
+    if (socketRef.current && socketConnected && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: "private_msg",
+        senderId: actualSenderId,
+        receiverId: recipientId,
+        text: text,
+      }));
+    } else {
+      // REST fallback
+      apiFetch("/api/chats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senderId: actualSenderId,
+          receiverId: recipientId,
+          text: text,
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.message) {
+            setPrivateMessages((prev) => {
+              if (prev.some((m) => m.id === data.message.id)) return prev;
+              return [...prev, data.message];
+            });
+          }
+        })
+        .catch((err) => console.error("Error sending message via fallback:", err));
+    }
   };
 
   // Clear unreads
@@ -1504,9 +1552,17 @@ export default function App() {
   };
 
   const openPrivateChatDirectly = (partner: User) => {
-    setActiveChatUser(partner);
-    handleClearUnreads(partner.id);
+    if (!isSupportAdmin(currentUser)) {
+      // Para todos los clientes, el único chat disponible es Soporte al Cliente (cg0220037@gmail.com)
+      const supportUser = resolveSupportUser(users);
+      setActiveChatUser(supportUser);
+      handleClearUnreads(supportUser.id);
+    } else {
+      setActiveChatUser(partner);
+      handleClearUnreads(partner.id);
+    }
     setActiveTab('messages');
+    navigateTo('/messages');
   };
 
   const handleLogout = () => {

@@ -35,7 +35,8 @@ import {
   Link as LinkIcon,
   Check,
   UserCheck,
-  BarChart3
+  BarChart3,
+  Headphones
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Reel, Product, Order, NavigationTab } from "../../types";
@@ -580,6 +581,21 @@ export default function AdminView({
                 </button>
               );
             })}
+
+            {/* Direct Support Chat Navigation for Admin */}
+            <button
+              type="button"
+              onClick={() => {
+                onNavigateToTab('messages');
+                navigateTo('/messages');
+              }}
+              title="Bandeja de Soporte al Cliente (cg0220037@gmail.com)"
+              aria-label="Bandeja de Soporte al Cliente"
+              className="flex items-center justify-center p-2.5 rounded-xl font-bold text-xs transition-all whitespace-nowrap cursor-pointer text-amber-400 hover:text-white hover:bg-slate-800/70"
+              id="admin-tab-btn-support-chat"
+            >
+              <Headphones className="w-4 h-4" />
+            </button>
           </div>
 
           {/* Quick Actions & Platform Switcher */}
@@ -932,6 +948,23 @@ export default function AdminView({
                   Accesos Rápidos
                 </h3>
                 <div className="space-y-2">
+                  <button
+                    onClick={() => { onNavigateToTab('messages'); navigateTo('/messages'); }}
+                    className="w-full flex items-center justify-between p-3 rounded-2xl border border-amber-200/90 bg-amber-50/50 hover:bg-amber-100/50 transition-all text-left group"
+                    id="admin-shortcut-support-messages"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold shadow-xs">
+                        <Headphones className="w-4 h-4 stroke-[2.2]" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-slate-900">Bandeja de Soporte al Cliente</p>
+                        <p className="text-[10px] text-amber-800 font-semibold">Responder consultas como cg0220037@gmail.com</p>
+                      </div>
+                    </div>
+                    <ArrowUpRight className="w-4 h-4 text-amber-700 group-hover:text-amber-950" />
+                  </button>
+
                   <button
                     onClick={() => { onNavigateToTab('inicio'); navigateTo('/inicio'); }}
                     className="w-full flex items-center justify-between p-3 rounded-2xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all text-left group"
