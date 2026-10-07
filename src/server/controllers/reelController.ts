@@ -64,12 +64,16 @@ export async function likeReel(req: Request, res: Response): Promise<void> {
 
   const username = req.body?.username;
   let userId = req.body?.userId;
+  const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
+  const guestToken = (req.body?.guestToken || headerGuestToken || "").trim();
 
   if (!userId || userId === "current_user") {
     if (activeOriginalUserId && activeOriginalUserId !== "user_guest" && activeOriginalUserId !== "current_user") {
       userId = activeOriginalUserId;
     } else if (username && username !== "invitado") {
       userId = username;
+    } else if (guestToken) {
+      userId = guestToken;
     } else {
       userId = "current_user";
     }
@@ -77,12 +81,13 @@ export async function likeReel(req: Request, res: Response): Promise<void> {
 
   const userIdentifiers = new Set<string>();
   if (userId && userId !== "current_user") userIdentifiers.add(userId);
+  if (guestToken) userIdentifiers.add(guestToken);
   if (username && username !== "invitado") userIdentifiers.add(username);
   if (activeOriginalUserId && activeOriginalUserId !== "user_guest" && activeOriginalUserId !== "current_user") {
     userIdentifiers.add(activeOriginalUserId);
   }
   if (userIdentifiers.size === 0) {
-    userIdentifiers.add(userId || "current_user");
+    userIdentifiers.add(guestToken || userId || "current_user");
   }
 
   const alreadyLiked = reel.likedBy.some((id) => userIdentifiers.has(id));
@@ -97,6 +102,8 @@ export async function likeReel(req: Request, res: Response): Promise<void> {
         ? activeOriginalUserId
         : username && username !== "invitado"
         ? username
+        : guestToken
+        ? guestToken
         : userId || "current_user";
 
     reel.likedBy.push(primaryIdentifier);

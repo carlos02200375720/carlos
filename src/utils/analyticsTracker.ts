@@ -1,5 +1,6 @@
 import { apiFetch } from "../config";
 import { sessionState } from "./sessionState";
+import { getLocalGuestToken, getOrCreateGuestToken } from "./guestToken";
 
 export type FunnelStepType =
   | "page_visit"
@@ -24,6 +25,20 @@ export interface FunnelPeriodMetrics {
   };
 }
 
+export interface ActiveFunnelClient {
+  token: string;
+  userId?: string;
+  lastStep: FunnelStepType;
+  stageName: string;
+  stageLayer: number;
+  lastSeen: number;
+  lastPath?: string;
+  productId?: string;
+  highestLayer: number;
+  cartCount: number;
+  steps: FunnelStepType[];
+}
+
 export interface FunnelAnalyticsData {
   pageVisits: {
     day: number;
@@ -44,6 +59,7 @@ export interface FunnelAnalyticsData {
     year: FunnelPeriodMetrics;
     all: FunnelPeriodMetrics;
   };
+  activeClients?: ActiveFunnelClient[];
   updatedAt?: string;
 }
 
@@ -62,9 +78,14 @@ interface LocalFunnelEvent {
 }
 
 /**
- * Returns a persistent unique identifier for this browser/user
+ * Returns a persistent unique identifier for this browser/user.
+ * Seamlessly unified with the user's persistent guest token.
  */
-export function getOrCreateVisitorId(): { visitorId: string; userId?: string } {
+export function getOrCreateVisitorId(): {
+  visitorId: string;
+  userId?: string;
+  guestToken?: string;
+} {
   if (typeof window === "undefined") {
     return { visitorId: "server_visitor" };
   }
@@ -79,20 +100,12 @@ export function getOrCreateVisitorId(): { visitorId: string; userId?: string } {
     activeUserId !== "user_guest" &&
     activeUserId !== "invitado";
 
-  let anonId = "";
-  try {
-    anonId = window.localStorage.getItem(VISITOR_ID_KEY) || "";
-    if (!anonId) {
-      anonId = `vis_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      window.localStorage.setItem(VISITOR_ID_KEY, anonId);
-    }
-  } catch {
-    anonId = "vis_session";
-  }
+  const guestToken = getLocalGuestToken() || getOrCreateGuestToken();
 
   return {
-    visitorId: isLoggedUser ? activeUserId : anonId,
-    userId: isLoggedUser ? activeUserId : undefined,
+    visitorId: isLoggedUser ? activeUserId : guestToken,
+    userId: isLoggedUser ? activeUserId : guestToken,
+    guestToken,
   };
 }
 
@@ -141,7 +154,7 @@ export function trackFunnelStep(
   lastTrackedStepKey = dedupKey;
   lastTrackedStepTime = now;
 
-  const { visitorId, userId } = getOrCreateVisitorId();
+  const { visitorId, userId, guestToken } = getOrCreateVisitorId();
 
   appendLocalEvent({
     step,
@@ -159,6 +172,7 @@ export function trackFunnelStep(
       step,
       visitorId,
       userId,
+      guestToken,
       path: currentPath,
       productId: options?.productId,
     }),

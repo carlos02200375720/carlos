@@ -8,6 +8,7 @@ import { AndroidAuthModal } from "./components/AndroidAuthModal";
 import { MovilHamburgerButton, MovilHamburgerMenu } from "./components/MovilHamburgerMenu";
 import { getMediaUrl } from "../../config";
 import { getInicioShareUrl, findReelByInicioParam } from "../../router";
+import { getLocalGuestToken } from "../../utils/guestToken";
 
 export interface AndroidInicioProps {
   reels: Reel[];
@@ -451,7 +452,15 @@ export default function Inicio({
     );
   }
 
-  const isLiked = currentReel.likedBy?.includes(currentUser?.originalId || currentUser?.id) || false;
+  const currentGuestToken = currentUser?.guestToken || getLocalGuestToken();
+  const isLiked = Boolean(
+    currentReel.likedBy?.some((id) =>
+      id === currentUser?.originalId ||
+      id === currentUser?.id ||
+      id === currentUser?.username ||
+      (currentGuestToken && id === currentGuestToken)
+    )
+  );
   const isSaved = savedReelIds.includes(currentReel.id);
   const taggedProduct =
     (currentReel as any).product ||
@@ -480,12 +489,6 @@ export default function Inicio({
   };
 
   const handleDoubleTap = () => {
-    if (isGuest) {
-      if (onGuestInteraction) onGuestInteraction("dar Me Gusta");
-      setAuthDescription("dar 'Me gusta' a las publicaciones");
-      setShowAuthModal(true);
-      return;
-    }
     if (!isLiked) {
       onLikeReel(currentReel.id);
     }
@@ -495,12 +498,6 @@ export default function Inicio({
 
   const handleCommentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isGuest) {
-      if (onGuestInteraction) onGuestInteraction("comentar");
-      setAuthDescription("comentar en los Reels");
-      setShowAuthModal(true);
-      return;
-    }
     if (!commentInput.trim()) return;
     const commentFn = onAddComment || onCommentReel;
     if (commentFn) commentFn(currentReel.id, commentInput.trim());
@@ -664,17 +661,17 @@ export default function Inicio({
       <div className="absolute right-2.5 sm:right-3.5 bottom-6 sm:bottom-8 z-30 flex flex-col items-center space-y-3.5 select-none p-0" id={`android-reel-interaction-bar-${currentReel.id}`}>
         <div className="flex flex-col items-center"><button onClick={handleCreatorNav} className="relative rounded-full transform hover:scale-110 active:scale-95 transition-transform cursor-pointer drop-shadow-sm" id="android-mobile-creator-avatar-btn"><img src={displayAvatar} alt={displayUsername} className="w-[46px] h-[46px] sm:w-[50px] sm:h-[50px] rounded-full object-cover" /></button></div>
         <div className="flex flex-col items-center">
-          <button onClick={() => { if (isGuest) { onGuestInteraction?.("dar me gusta"); setAuthDescription("dar 'Me gusta'"); setShowAuthModal(true); } else { onLikeReel(currentReel.id); } }} className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${isLiked ? "text-rose-500" : "text-white hover:text-rose-400"}`} id="android-reel-like-btn">
+          <button onClick={() => onLikeReel(currentReel.id)} className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${isLiked ? "text-rose-500" : "text-white hover:text-rose-400"}`} id="android-reel-like-btn">
             <Heart strokeWidth={2.2} className={`w-8 h-7 sm:w-9 sm:h-8 scale-x-110 ${isLiked ? "fill-rose-500 text-rose-500 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]" : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"}`} />
           </button><span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">{currentReel.likes || 0}</span>
         </div>
         <div className="flex flex-col items-center">
-          <button onClick={() => { if (isGuest) { onGuestInteraction?.("comentar"); setAuthDescription("comentar en los Reels"); setShowAuthModal(true); } else { setShowComments(true); } }} className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center text-white hover:text-amber-400 hover:scale-115 active:scale-95 transition-all cursor-pointer" id="android-reel-comment-btn">
-            <MessageCircle strokeWidth={2.2} className="w-8 h-7 sm:w-9 sm:h-8 scale-x-110 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]" />
+          <button onClick={() => setShowComments(true)} className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center text-white hover:text-amber-400 hover:scale-115 active:scale-95 transition-all cursor-pointer" id="android-reel-comment-btn">
+            <MessageCircle strokeWidth={2.2} className="w-8 h-7 sm:w-9 h-8 scale-x-110 fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]" />
           </button><span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">{currentReel.comments?.length || 0}</span>
         </div>
         <div className="flex flex-col items-center">
-          <button onClick={() => { if (isGuest) { onGuestInteraction?.("guardar publicaciones"); setAuthDescription("guardar este Reel"); setShowAuthModal(true); } else { onToggleSaveReel(currentReel.id); } }} className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${isSaved ? "text-amber-400" : "text-white hover:text-amber-300"}`} id="android-reel-save-btn">
+          <button onClick={() => onToggleSaveReel(currentReel.id)} className={`w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center hover:scale-115 active:scale-95 transition-all cursor-pointer ${isSaved ? "text-amber-400" : "text-white hover:text-amber-300"}`} id="android-reel-save-btn">
             <Bookmark strokeWidth={2.2} className={`w-8 h-7 sm:w-9 sm:h-8 scale-x-110 ${isSaved ? "fill-amber-400 text-amber-400 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]" : "fill-white text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]"}`} />
           </button><span className="text-white text-xs font-bold mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">{currentReel.saves ?? 0}</span>
         </div>
@@ -689,7 +686,7 @@ export default function Inicio({
           <div className="text-white bg-transparent p-3 rounded-xl drop-shadow-md">
             <h3 className="font-display font-bold text-base tracking-wide flex items-center space-x-2.5">
               <span onClick={handleCreatorNav} className="cursor-pointer hover:underline text-white font-bold drop-shadow-sm pointer-events-auto">@{displayUsername}</span>
-              {currentUser?.id !== currentReel.creatorId && onToggleFollowUser && <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (isGuest) onGuestInteraction?.("seguir a creadores"); else onToggleFollowUser(currentReel.creatorId); }} className={`text-xs font-bold px-3 py-1 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-sm pointer-events-auto ${isFollowing ? "text-white/80 border-white/60" : "text-white border-white"}`}>{isFollowing ? "Siguiendo" : "+ Seguir"}</button>}
+              {currentUser?.id !== currentReel.creatorId && onToggleFollowUser && <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); onToggleFollowUser(currentReel.creatorId); }} className={`text-xs font-bold px-3 py-1 rounded-full transition-all cursor-pointer border bg-transparent backdrop-blur-sm pointer-events-auto ${isFollowing ? "text-white/80 border-white/60" : "text-white border-white"}`}>{isFollowing ? "Siguiendo" : "+ Seguir"}</button>}
             </h3>
             {currentReel.description && (
               <p className={`text-sm text-white/95 font-medium mt-1.5 leading-relaxed drop-shadow-sm pointer-events-auto break-words ${expandedDescriptions[currentReel.id] ? "whitespace-pre-line max-h-40 overflow-y-auto no-scrollbar" : ""}`}>

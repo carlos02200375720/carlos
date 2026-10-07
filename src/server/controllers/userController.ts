@@ -955,18 +955,35 @@ export async function toggleSaveReel(req: Request, res: Response): Promise<void>
       });
     }
 
-    if (!currentUserObj) {
-      const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
-      const bodyGuestToken = req.body?.guestToken;
-      const guestToken = headerGuestToken || bodyGuestToken;
-      if (guestToken) {
-        currentUserObj = await MongoUser.findOne({ guestToken });
+    const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
+    const bodyGuestToken = req.body?.guestToken;
+    const guestToken = headerGuestToken || bodyGuestToken;
+
+    if (!currentUserObj && guestToken) {
+      currentUserObj = await MongoUser.findOne({ guestToken });
+      if (!currentUserObj) {
+        currentUserObj = {
+          id: userId || `guest_${Date.now()}`,
+          username: username || "invitado",
+          name: "Invitado",
+          guestToken: guestToken,
+          savedReelIds: [],
+          followingUserIds: [],
+          isGuest: true,
+        };
+        try {
+          await MongoUser.updateOne(
+            { guestToken },
+            { $setOnInsert: currentUserObj },
+            { upsert: true }
+          );
+        } catch (e) {}
       }
     }
   }
 
   if (!currentUserObj) {
-    res.status(401).json({ error: "Debe iniciar sesión para realizar esta acción." });
+    res.status(401).json({ error: "No se pudo identificar al usuario o token." });
     return;
   }
 
@@ -985,8 +1002,9 @@ export async function toggleSaveReel(req: Request, res: Response): Promise<void>
 
   if (mongoose.connection.readyState === 1) {
     await MongoUser.findOneAndUpdate(
-      { id: currentUserObj.id },
-      { savedReelIds: currentUserObj.savedReelIds }
+      { $or: [{ id: currentUserObj.id }, { guestToken: currentUserObj.guestToken }] },
+      { $set: { savedReelIds: currentUserObj.savedReelIds } },
+      { upsert: true }
     );
   }
 
@@ -1064,8 +1082,38 @@ export async function toggleFollow(req: Request, res: Response): Promise<void> {
     };
   }
 
-  if (!currentUserObj || currentUserObj.isGuest || currentUserObj.username === "invitado") {
-    res.status(401).json({ error: "Debe iniciar sesión para seguir a creadores." });
+  if (!currentUserObj) {
+    const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
+    const bodyGuestToken = req.body?.guestToken;
+    const guestToken = headerGuestToken || bodyGuestToken;
+    if (guestToken && mongoose.connection.readyState === 1) {
+      currentUserObj = await MongoUser.findOne({ guestToken });
+    }
+    if (!currentUserObj && (guestToken || currentUserIdReq)) {
+      currentUserObj = {
+        id: currentUserIdReq || guestToken,
+        username: currentUsernameReq || "invitado",
+        name: "Invitado",
+        guestToken: guestToken || undefined,
+        followingUserIds: [],
+        following: 0,
+        isGuest: true,
+        canSell: false
+      };
+      if (guestToken && mongoose.connection.readyState === 1) {
+        try {
+          await MongoUser.updateOne(
+            { guestToken },
+            { $setOnInsert: currentUserObj },
+            { upsert: true }
+          );
+        } catch (e) {}
+      }
+    }
+  }
+
+  if (!currentUserObj) {
+    res.status(401).json({ error: "No se pudo identificar la sesión." });
     return;
   }
 

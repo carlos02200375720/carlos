@@ -30,6 +30,30 @@ export function setLocalGuestToken(token: string): void {
 }
 
 /**
+ * Retrieves existing guest access token or immediately generates and persists a new one.
+ * Ensures the user has a stable unique identifier from their first millisecond in the app.
+ */
+export function getOrCreateGuestToken(): string {
+  const existing = getLocalGuestToken();
+  if (existing) return existing;
+
+  if (typeof window === "undefined") {
+    return "guest_server_token";
+  }
+
+  try {
+    const randomHex =
+      Math.random().toString(36).substring(2, 10) +
+      Math.random().toString(36).substring(2, 10);
+    const newToken = `guest_tok_${randomHex}_${Date.now().toString(36)}`;
+    setLocalGuestToken(newToken);
+    return newToken;
+  } catch {
+    return `guest_tok_${Date.now().toString(36)}`;
+  }
+}
+
+/**
  * Clears the local guest access token from the device.
  */
 export function removeLocalGuestToken(): void {
@@ -54,7 +78,7 @@ export interface GuestSessionResult {
 export async function syncGuestSession(
   platform: "web" | "android" = "web"
 ): Promise<GuestSessionResult | null> {
-  const existingToken = getLocalGuestToken();
+  const existingToken = getLocalGuestToken() || getOrCreateGuestToken();
 
   try {
     const res = await apiFetch("/api/auth/guest-session", {

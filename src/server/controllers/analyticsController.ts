@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
 import { MongoAppSettings } from "../models";
-import { orders, broadcastToAll } from "../services/state";
+import { orders, broadcastToAll, cartMemoryStore } from "../services/state";
 
 export type FunnelStepType =
   | "page_visit"
@@ -16,6 +16,7 @@ export interface FunnelEventRecord {
   timestamp: number;
   visitorId: string;
   userId?: string;
+  guestToken?: string;
   path?: string;
   productId?: string;
 }
@@ -183,6 +184,75 @@ export function computeFunnelSummary() {
   const monthStats = getStepStats("all_visits", ONE_MONTH);
   const yearStats = getStepStats("all_visits", ONE_YEAR);
 
+  // Group events by visitor token to track user funnel stage & active cart items in real time
+  const stepLayerMap: Record<FunnelStepType, { layer: number; name: string }> = {
+    tienda: { layer: 1, name: "Capa 1: Tienda" },
+    producto_id: { layer: 2, name: "Capa 2: Producto" },
+    carrito: { layer: 3, name: "Capa 3: Carrito" },
+    verificacion: { layer: 4, name: "Capa 4: Verificación" },
+    gracia: { layer: 5, name: "Capa 5: Compra Finalizada" },
+    page_visit: { layer: 0, name: "Visita a la Plataforma" },
+  };
+
+  const clientMap = new Map<string, {
+    token: string;
+    userId?: string;
+    lastStep: FunnelStepType;
+    stageName: string;
+    stageLayer: number;
+    lastSeen: number;
+    lastPath?: string;
+    productId?: string;
+    highestLayer: number;
+    cartCount: number;
+    steps: FunnelStepType[];
+  }>();
+
+  events.forEach((ev) => {
+    const rawId = ev.guestToken || ev.visitorId || ev.userId || "anon";
+    const layerInfo = stepLayerMap[ev.step] || { layer: 0, name: "Visita" };
+    const cartItems = cartMemoryStore.get(rawId) || [];
+    const cartCount = Array.isArray(cartItems)
+      ? cartItems.reduce((acc, it) => acc + (Number(it.quantity) || 1), 0)
+      : 0;
+
+    let client = clientMap.get(rawId);
+    if (!client) {
+      client = {
+        token: rawId,
+        userId: ev.userId,
+        lastStep: ev.step,
+        stageName: layerInfo.name,
+        stageLayer: layerInfo.layer,
+        lastSeen: ev.timestamp,
+        lastPath: ev.path,
+        productId: ev.productId,
+        highestLayer: layerInfo.layer,
+        cartCount,
+        steps: [ev.step],
+      };
+      clientMap.set(rawId, client);
+    } else {
+      client.lastStep = ev.step;
+      client.stageName = layerInfo.name;
+      client.stageLayer = layerInfo.layer;
+      client.lastSeen = ev.timestamp;
+      if (ev.path) client.lastPath = ev.path;
+      if (ev.productId) client.productId = ev.productId;
+      if (layerInfo.layer > client.highestLayer) {
+        client.highestLayer = layerInfo.layer;
+      }
+      if (!client.steps.includes(ev.step)) {
+        client.steps.push(ev.step);
+      }
+      client.cartCount = cartCount;
+    }
+  });
+
+  const activeClients = Array.from(clientMap.values())
+    .sort((a, b) => b.lastSeen - a.lastSeen)
+    .slice(0, 50);
+
   return {
     pageVisits: {
       day: dayStats.visits,
@@ -203,6 +273,7 @@ export function computeFunnelSummary() {
       year: buildRealPeriodFunnel(ONE_YEAR),
       all: buildRealPeriodFunnel(ONE_YEAR * 50),
     },
+    activeClients,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -230,7 +301,7 @@ export async function getFunnelAnalytics(req: Request, res: Response): Promise<v
 export async function trackFunnelEvent(req: Request, res: Response): Promise<void> {
   try {
     await loadAnalyticsFromDb();
-    const { step, visitorId, userId, path, productId } = req.body || {};
+    const { step, visitorId, userId, guestToken, path, productId } = req.body || {};
     const validSteps: FunnelStepType[] = [
       "page_visit",
       "tienda",
@@ -242,12 +313,15 @@ export async function trackFunnelEvent(req: Request, res: Response): Promise<voi
 
     const normalizedStep: FunnelStepType = validSteps.includes(step) ? step : "page_visit";
 
+    const headerGuestToken = (req.headers["x-guest-token"] as string || "").trim();
+    const resolvedGuestToken = (guestToken || headerGuestToken || "").trim();
+
     const fallbackIp =
       (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
       req.socket?.remoteAddress ||
       "anon_ip";
     const resolvedVisitorId = String(
-      userId || visitorId || req.headers["x-user-id"] || fallbackIp
+      resolvedGuestToken || userId || visitorId || req.headers["x-user-id"] || fallbackIp
     );
 
     const newRecord: FunnelEventRecord = {
@@ -255,6 +329,7 @@ export async function trackFunnelEvent(req: Request, res: Response): Promise<voi
       timestamp: Date.now(),
       visitorId: resolvedVisitorId,
       userId: userId ? String(userId) : undefined,
+      guestToken: resolvedGuestToken || undefined,
       path: path ? String(path) : undefined,
       productId: productId ? String(productId) : undefined,
     };

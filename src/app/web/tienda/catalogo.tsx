@@ -1100,19 +1100,6 @@ export default function Tienda({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const isGuest =
-                                      !currentUser ||
-                                      currentUser.username === "invitado" ||
-                                      currentUser.isGuest ||
-                                      !currentUser.username;
-                                    if (isGuest) {
-                                      if (onGuestInteraction) {
-                                        onGuestInteraction("guardar este producto en tu perfil");
-                                      } else if (onToggleSave) {
-                                        onToggleSave(product.id);
-                                      }
-                                      return;
-                                    }
                                     if (onToggleSave) {
                                       onToggleSave(product.id);
                                     } else {

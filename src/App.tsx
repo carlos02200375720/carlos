@@ -7,7 +7,8 @@ import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
 import { isSuperAdmin } from "./superAdmin";
 import { resolveSupportUser, isSupportAdmin, isSupportAlias, SUPPORT_EMAIL, SUPPORT_USER_ID } from "./utils/supportChat";
 import { sessionState } from "./utils/sessionState";
-import { getLocalGuestToken, syncGuestSession } from "./utils/guestToken";
+import { getLocalGuestToken, getOrCreateGuestToken, syncGuestSession } from "./utils/guestToken";
+import { trackFunnelStep } from "./utils/analyticsTracker";
 import { INITIAL_USERS, INITIAL_PRODUCTS, INITIAL_REELS } from "./initialData";
 import { useCurrentRoute, navigateTo, parseRoute, getProfilePath, getProfileSavedPath, getProfileCompraPath, getProfileConfigPath, getProfileProductoPath, getProfileVentaPath, getProfilePublicacionesPath, getProfilePublicarPath, getProfileRendimientoPath, getProductPath, getInicioPath, getThankYouPath, findReelByInicioParam } from "./router";
 
@@ -101,8 +102,20 @@ export default function App() {
     } catch {}
     return INITIAL_PRODUCTS;
   });
-  // Cart is hydrated from MongoDB; no browser persistence.
-  const [cart, setCart] = useState<CartItem[]>([]);
+  // Cart is hydrated from MongoDB & keyed by authenticated userId or guest token
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const token = getLocalGuestToken() || getOrCreateGuestToken();
+        const cached = localStorage.getItem(`mall_cart_${token}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
 
   // Current User (Session source of truth)
@@ -137,9 +150,11 @@ export default function App() {
         isGuest: false,
       };
     }
-    const savedGuestToken = getLocalGuestToken();
+    const savedGuestToken =
+      getLocalGuestToken() || (typeof window !== "undefined" ? getOrCreateGuestToken() : undefined);
     return {
       id: "current_user",
+      originalId: savedGuestToken || undefined,
       guestToken: savedGuestToken || undefined,
       username: "invitado",
       name: "Invitado",
@@ -222,8 +237,14 @@ export default function App() {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [savedReelIds, setSavedReelIds] = useState<string[]>(() => {
     try {
-      const cached = null;
-      if (cached) return JSON.parse(cached);
+      if (typeof window !== "undefined") {
+        const token = getLocalGuestToken() || getOrCreateGuestToken();
+        const cached = localStorage.getItem(`mall_saved_reels_${token}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
     } catch (e) {}
     return [];
   });
@@ -1029,12 +1050,21 @@ export default function App() {
   // --- API HANDLERS ---
 
   const handleLikeReel = (reelId: string) => {
+    const userIdentifier =
+      currentUser.originalId ||
+      currentUser.guestToken ||
+      currentUser.id ||
+      getLocalGuestToken() ||
+      getOrCreateGuestToken();
+    const guestToken = currentUser.guestToken || getLocalGuestToken() || getOrCreateGuestToken();
+
     apiFetch(`/api/reels/${reelId}/like`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        userId: currentUser.originalId || currentUser.id,
-        username: currentUser.username
+        userId: userIdentifier,
+        guestToken,
+        username: currentUser.username,
       }),
     })
       .then((res) => res.json())
@@ -1053,19 +1083,29 @@ export default function App() {
   };
 
   const handleAddComment = (reelId: string, text: string) => {
-    if (!currentUser || currentUser.username === "invitado" || currentUser.isGuest || !currentUser.username) {
-      setGuestInteractionAlert("Para comentar en este reel, por favor inicia sesión o crea una cuenta de creador.");
-      return;
-    }
+    if (!text || !text.trim()) return;
+
+    const userIdentifier =
+      currentUser.originalId ||
+      currentUser.guestToken ||
+      currentUser.id ||
+      getLocalGuestToken() ||
+      getOrCreateGuestToken();
+    const guestToken = currentUser.guestToken || getLocalGuestToken() || getOrCreateGuestToken();
+    const commenterName =
+      currentUser.name && currentUser.name !== "Invitado"
+        ? currentUser.name
+        : currentUser.username || "Invitado";
 
     apiFetch(`/api/reels/${reelId}/comment`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        userId: currentUser.originalId || currentUser.id,
-        username: currentUser.username,
+        userId: userIdentifier,
+        guestToken,
+        username: commenterName,
         avatar: currentUser.avatar,
-        text: text,
+        text: text.trim(),
       }),
     })
       .then((res) => res.json())
@@ -1087,11 +1127,6 @@ export default function App() {
   };
 
   const handleToggleSaveReel = (reelId: string) => {
-    if (!currentUser || currentUser.username === "invitado" || currentUser.isGuest || !currentUser.username) {
-      setGuestInteractionAlert("Para guardar en tu perfil, por favor inicia sesión o regístrate en la app.");
-      return;
-    }
-
     const isSaved = savedReelIds.includes(reelId);
     const newSavedIds = isSaved
       ? savedReelIds.filter((id) => id !== reelId)
@@ -1099,11 +1134,25 @@ export default function App() {
 
     // Optimistic update for UI state
     setSavedReelIds(newSavedIds);
-    
+
     setCurrentUser((prev) => ({
       ...prev,
-      savedReelIds: newSavedIds
+      savedReelIds: newSavedIds,
     }));
+
+    const userIdentifier =
+      currentUser.originalId ||
+      currentUser.guestToken ||
+      currentUser.id ||
+      getLocalGuestToken() ||
+      getOrCreateGuestToken();
+    const guestToken = currentUser.guestToken || getLocalGuestToken() || getOrCreateGuestToken();
+
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`mall_saved_reels_${userIdentifier}`, JSON.stringify(newSavedIds));
+      }
+    } catch {}
 
     // Optimistic update for reel saves count if it's a reel
     setReels((prev) =>
@@ -1112,54 +1161,56 @@ export default function App() {
           const currentSaves = r.saves ?? 0;
           return {
             ...r,
-            saves: isSaved ? Math.max(0, currentSaves - 1) : currentSaves + 1
+            saves: isSaved ? Math.max(0, currentSaves - 1) : currentSaves + 1,
           };
         }
         return r;
       })
     );
 
-    // Sync to backend if logged in
-    if (currentUser && currentUser.username !== "invitado" && !currentUser.isGuest && currentUser.username) {
-      apiFetch("/api/users/current/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reelId,
-          productId: reelId,
-          id: reelId,
-          userId: currentUser.originalId || currentUser.id,
-          username: currentUser.username
-        })
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
-            if (data.savedReelIds) {
-              setSavedReelIds(data.savedReelIds);
-
-              setCurrentUser((prev) => ({
-                ...prev,
-                savedReelIds: data.savedReelIds
-              }));
-            }
-            if (typeof data.saves === "number") {
-              setReels((prev) =>
-                prev.map((r) => (r.id === reelId ? { ...r, saves: data.saves } : r))
-              );
-            }
+    // Sync to backend for either registered user or token-identified guest
+    apiFetch("/api/users/current/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reelId,
+        productId: reelId,
+        id: reelId,
+        userId: userIdentifier,
+        guestToken,
+        username: currentUser.username,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          if (data.savedReelIds) {
+            setSavedReelIds(data.savedReelIds);
+            setCurrentUser((prev) => ({
+              ...prev,
+              savedReelIds: data.savedReelIds,
+            }));
+            try {
+              if (typeof window !== "undefined") {
+                localStorage.setItem(
+                  `mall_saved_reels_${userIdentifier}`,
+                  JSON.stringify(data.savedReelIds)
+                );
+              }
+            } catch {}
           }
-        })
-        .catch((err) => console.error("Error toggling saved item:", err));
-    }
+          if (typeof data.saves === "number") {
+            setReels((prev) =>
+              prev.map((r) => (r.id === reelId ? { ...r, saves: data.saves } : r))
+            );
+          }
+        }
+      })
+      .catch((err) => console.error("Error toggling saved item:", err));
   };
 
   const handleToggleFollowUser = (targetUserId: string) => {
     if (!targetUserId) return;
-    if (!currentUser || currentUser.username === "invitado" || currentUser.isGuest || !currentUser.username) {
-      setGuestInteractionAlert("Para seguir a creadores, por favor inicia sesión o crea una cuenta.");
-      return;
-    }
 
     // Optimistic local state update for instant UI feedback on single click
     setCurrentUser((prev) => {
@@ -1175,15 +1226,26 @@ export default function App() {
       return {
         ...prev,
         followingUserIds: nextIds,
-        following: isAlreadyFollowing ? Math.max(0, (prev.following || 1) - 1) : (prev.following || 0) + 1
+        following: isAlreadyFollowing ? Math.max(0, (prev.following || 1) - 1) : (prev.following || 0) + 1,
       };
     });
 
-    const currentUserId = currentUser.originalId || currentUser.id;
+    const userIdentifier =
+      currentUser.originalId ||
+      currentUser.guestToken ||
+      currentUser.id ||
+      getLocalGuestToken() ||
+      getOrCreateGuestToken();
+    const guestToken = currentUser.guestToken || getLocalGuestToken() || getOrCreateGuestToken();
+
     apiFetch(`/api/users/${targetUserId}/follow`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ currentUserId, currentUsername: currentUser.username })
+      body: JSON.stringify({
+        currentUserId: userIdentifier,
+        guestToken,
+        currentUsername: currentUser.username,
+      }),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -1192,7 +1254,7 @@ export default function App() {
             const serverIds: string[] = data.followingUserIds || [];
             const targetsToRemove = new Set([
               targetUserId.toLowerCase(),
-              (data.targetUserId || "").toLowerCase()
+              (data.targetUserId || "").toLowerCase(),
             ]);
 
             let updatedIds: string[];
@@ -1205,7 +1267,7 @@ export default function App() {
             return {
               ...prev,
               followingUserIds: updatedIds,
-              following: data.currentUserFollowing !== undefined ? data.currentUserFollowing : prev.following
+              following: data.currentUserFollowing !== undefined ? data.currentUserFollowing : prev.following,
             };
           });
           setUsers((prev) =>
@@ -1222,11 +1284,24 @@ export default function App() {
       .catch((err) => console.error("Error toggling follow:", err));
   };
 
-  // Cart persistence is server-side only. Guest carts remain in React memory for this session.
-  const getCartUserId = (userObj?: User) => {
+  // Cart persistence is anchored by registered userId or guest token
+  const getCartUserId = (userObj?: User): string | null => {
     const target = userObj || currentUser;
+    // 1. If user is authenticated and registered, use their persistent account ID or username
     if (target && target.username && target.username !== "invitado" && !target.isGuest) {
       return target.originalId || (target.id !== "current_user" ? target.id : null) || target.username;
+    }
+    // 2. For guest users, their guest token is their persistent identifier
+    const guestToken =
+      target?.guestToken ||
+      currentUser?.guestToken ||
+      getLocalGuestToken() ||
+      (typeof window !== "undefined" ? getOrCreateGuestToken() : null);
+    if (guestToken) {
+      return guestToken;
+    }
+    if (target?.originalId && target.originalId !== "current_user") {
+      return target.originalId;
     }
     return null;
   };
@@ -1234,6 +1309,15 @@ export default function App() {
   const saveCartToMongo = (updatedCart: CartItem[], userObj: User = currentUser) => {
     const userId = getCartUserId(userObj);
     if (!userId) return;
+    try {
+      if (typeof window !== "undefined") {
+        if (updatedCart.length > 0) {
+          localStorage.setItem(`mall_cart_${userId}`, JSON.stringify(updatedCart));
+        } else {
+          localStorage.removeItem(`mall_cart_${userId}`);
+        }
+      }
+    } catch {}
     apiFetch(`/api/cart/${encodeURIComponent(userId)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1242,18 +1326,17 @@ export default function App() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.success) {
-          console.log(`💾 Cart persisted to MongoDB Atlas for user ${userId} (${updatedCart.length} items)`);
+          console.log(`💾 Cart persisted to MongoDB Atlas for ${userId} (${updatedCart.length} items)`);
         }
       })
       .catch((err) => console.warn("Notice: Cart sync to MongoDB failed:", err?.message || err));
   };
 
-  // Sync the cart exclusively from MongoDB when the authenticated user is available.
+  // Sync the cart from MongoDB Atlas using the authenticated user ID or guest access token
   useEffect(() => {
     let isCancelled = false;
     const userId = getCartUserId(currentUser);
     if (!userId) {
-      setCart([]);
       return;
     }
 
@@ -1266,7 +1349,18 @@ export default function App() {
         })
         .then((data) => {
           if (isCancelled) return;
-          if (data && Array.isArray(data.items)) setCart(data.items);
+          if (data && Array.isArray(data.items)) {
+            setCart(data.items);
+            try {
+              if (typeof window !== "undefined") {
+                if (data.items.length > 0) {
+                  localStorage.setItem(`mall_cart_${userId}`, JSON.stringify(data.items));
+                } else {
+                  localStorage.removeItem(`mall_cart_${userId}`);
+                }
+              }
+            } catch {}
+          }
         })
         .catch((err) => {
           if (isCancelled) return;
@@ -1283,9 +1377,12 @@ export default function App() {
       isCancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [currentUser]);
+  }, [currentUser?.id, currentUser?.username, currentUser?.guestToken]);
 
   const handleAddToCart = (product: Product) => {
+    // Record step 3 (Capa 3: Carrito) into the sales funnel for this visitor token
+    trackFunnelStep("carrito", { path: "/tienda/carrito", productId: product.id });
+
     setCart((prev) => {
       const existingIndex = prev.findIndex(
         (item) =>
@@ -1794,6 +1891,9 @@ export default function App() {
           sessionState.setAuthenticated(true);
           sessionState.setUsername(loggedUser.username);
           sessionState.setUser(loggedUser);
+          if (cart.length > 0) {
+            saveCartToMongo(cart, loggedUser);
+          }
           setUsers((prev) => {
             const idx = prev.findIndex((u) => u.id === loggedUser.id || u.username === loggedUser.username);
             if (idx >= 0) {

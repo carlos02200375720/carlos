@@ -865,7 +865,9 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
     try {
       const reelId = req.params.id;
       const { userId } = req.body;
-      const targetUserId = userId || req.headers["x-user-id"] || "current_user";
+      const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
+      const guestToken = (req.body?.guestToken || headerGuestToken || "").trim();
+      const targetUserId = userId || req.headers["x-user-id"] || guestToken || "current_user";
 
       let likes = 0;
       let likedBy: string[] = [];
@@ -1309,6 +1311,32 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
             ])
           });
         }
+
+        const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
+        const bodyGuestToken = req.body?.guestToken;
+        const guestToken = headerGuestToken || bodyGuestToken;
+
+        if (!currentUserObj && guestToken) {
+          currentUserObj = await MongoUser.findOne({ guestToken });
+          if (!currentUserObj) {
+            currentUserObj = {
+              id: userId || `guest_${Date.now()}`,
+              username: username || "invitado",
+              name: "Invitado",
+              guestToken: guestToken,
+              savedReelIds: [],
+              followingUserIds: [],
+              isGuest: true,
+            };
+            try {
+              await MongoUser.updateOne(
+                { guestToken },
+                { $setOnInsert: currentUserObj },
+                { upsert: true }
+              );
+            } catch (e) {}
+          }
+        }
       }
 
       if (!currentUserObj) {
@@ -1331,8 +1359,9 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
 
       if (mongoose.connection.readyState === 1) {
         await MongoUser.updateOne(
-          { id: currentUserObj.id },
-          { $set: { savedReelIds: currentUserObj.savedReelIds } }
+          { $or: [{ id: currentUserObj.id }, { guestToken: currentUserObj.guestToken }] },
+          { $set: { savedReelIds: currentUserObj.savedReelIds } },
+          { upsert: true }
         );
       }
 
