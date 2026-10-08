@@ -84,9 +84,14 @@ export function ConfigPerfilView({
     if (isGuestLoggingIn) return;
     setGuestLoginError("");
 
-    const cleanUsername = guestLoginUsername.trim().toLowerCase().replace(/^@/, "");
-    if (!cleanUsername) {
-      setGuestLoginError("Por favor ingresa tu nombre de usuario o correo.");
+    const cleanEmail = guestLoginUsername.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setGuestLoginError("Por favor ingresa un correo electrónico válido.");
+      return;
+    }
+
+    if (!guestLoginPassword.trim()) {
+      setGuestLoginError("Por favor ingresa tu contraseña.");
       return;
     }
 
@@ -96,8 +101,9 @@ export function ConfigPerfilView({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          targetUsername: cleanUsername,
-          password: guestLoginPassword,
+          targetUsername: cleanEmail,
+          email: cleanEmail,
+          password: guestLoginPassword.trim(),
         }),
       });
 
@@ -408,13 +414,13 @@ export function ConfigPerfilView({
 
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-slate-600 block uppercase tracking-wider">
-                  Usuario o Correo
+                  Correo Electrónico
                 </label>
                 <input
-                  type="text"
+                  type="email"
                   value={guestLoginUsername}
                   onChange={(e) => setGuestLoginUsername(e.target.value)}
-                  placeholder="Ej: tu_usuario"
+                  placeholder="ejemplo@correo.com"
                   required
                   autoFocus
                   className="w-full text-xs font-semibold px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-900 transition-all"
@@ -429,7 +435,8 @@ export function ConfigPerfilView({
                   type="password"
                   value={guestLoginPassword}
                   onChange={(e) => setGuestLoginPassword(e.target.value)}
-                  placeholder="Tu contraseña"
+                  placeholder="Tu contraseña registrada"
+                  required
                   className="w-full text-xs font-semibold px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-slate-900 font-mono transition-all"
                 />
               </div>
@@ -572,34 +579,6 @@ export function ConfigPerfilView({
                 </p>
               </div>
             </form>
-          )}
-
-          {/* Opcional: Selección rápida de cuentas demo/creadores */}
-          {users.filter((u) => u.id !== "current_user" && u.username !== "invitado").length > 0 && (
-            <div className="mt-6 pt-5 border-t border-slate-100">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center">
-                O entra directamente como creador:
-              </p>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {users
-                  .filter((u) => u.id !== "current_user" && u.username !== "invitado")
-                  .slice(0, 4)
-                  .map((u) => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => {
-                        setGuestLoginUsername(u.username);
-                        setGuestAuthTab("login");
-                      }}
-                      className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <img src={u.avatar} alt="" className="w-3.5 h-3.5 rounded-full object-cover" />
-                      <span>@{u.username}</span>
-                    </button>
-                  ))}
-              </div>
-            </div>
           )}
         </div>
       </motion.div>

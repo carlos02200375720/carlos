@@ -96,8 +96,14 @@ export function AndroidAuthModal({
     e.preventDefault();
     setLoginError("");
 
-    if (!loginInput.trim()) {
-      setLoginError("Ingresa tu nombre de usuario.");
+    const cleanEmail = loginInput.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setLoginError("Ingresa un correo electrónico válido.");
+      return;
+    }
+
+    if (!loginPassword.trim()) {
+      setLoginError("Ingresa tu contraseña.");
       return;
     }
 
@@ -107,8 +113,9 @@ export function AndroidAuthModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          targetUsername: loginInput.trim(),
-          password: loginPassword,
+          targetUsername: cleanEmail,
+          email: cleanEmail,
+          password: loginPassword.trim(),
         }),
       });
 
@@ -256,20 +263,22 @@ export function AndroidAuthModal({
             )}
             <div>
               <input
-                type="text"
-                placeholder="Nombre de usuario"
+                type="email"
+                placeholder="Correo electrónico"
                 value={loginInput}
                 onChange={(e) => setLoginInput(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
+                required
               />
             </div>
             <div>
               <input
                 type="password"
-                placeholder="Contraseña (opcional si no configurada)"
+                placeholder="Contraseña"
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
+                required
               />
             </div>
             <button

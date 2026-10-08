@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Play, ShoppingBag, User as UserIcon, MessageSquare, Sparkles, ShieldCheck, Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, NavigationTab } from "../../types";
+import { User, NavigationTab, isGuestUser } from "../../types";
 import { navigateTo, getProfilePath } from "../../router";
 import { isSuperAdmin } from "../../superAdmin";
 
@@ -157,7 +157,7 @@ export default function WebSidebar({
           >
             <UserIcon strokeWidth={2.6} className="w-5 h-5" />
             <span className="font-black tracking-wide">
-              {currentUser.username === "invitado" ? "Registro / Cuenta" : "Dashboard / Perfil"}
+              {isGuestUser(currentUser) ? "Mi Perfil (Registrarse)" : "Dashboard / Perfil"}
             </span>
           </button>
 
@@ -345,7 +345,7 @@ export default function WebSidebar({
                 >
                   <UserIcon strokeWidth={2.6} className="w-5 h-5" />
                   <span className="font-black tracking-wide">
-                    {currentUser.username === "invitado" ? "Perfil / Registro" : "Perfil"}
+                    {isGuestUser(currentUser) ? "Mi Perfil (Registrarse)" : "Perfil"}
                   </span>
                 </button>
 

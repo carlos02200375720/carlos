@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { User, Reel, Product, Order } from "../../types";
+import { User, Reel, Product, Order, isGuestUser } from "../../types";
 import { Play, ShoppingBag, Bookmark, Settings, LogOut, Edit3, Grid, Camera, Check, Sparkles, UserPlus, UserCheck, X, ExternalLink, Package, Plus, Trash2, ShieldCheck, Truck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { androidApiFetch } from "./api";
@@ -90,7 +90,7 @@ export default function Perfil({
   const isAdmin = (currentUser as any)?.role === "admin" || (currentUser as any)?.isAdmin === true;
   const isSellerOrAdmin = Boolean(activeUser.canSell === true || isSuperAdmin(activeUser));
   const canDelete = isMe || isAdmin || !selectedCreatorId;
-  const isGuest = activeUser.isGuest || activeUser.username === "invitado" || activeUser.id === "guest" || (isMe && (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || currentUser.id === "guest"));
+  const isGuest = isGuestUser(activeUser) || (isMe && isGuestUser(currentUser));
 
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     if (typeof window !== "undefined") {
@@ -210,10 +210,13 @@ export default function Perfil({
     setPublicationToDelete(target);
   };
 
-  if (isMe && isGuest) {
+  if ((isMe && isGuest) || (isGuestUser(currentUser) && (!selectedCreatorId || isMe || selectedCreatorId.toLowerCase().startsWith("invitado")))) {
     return (
       <AndroidLoginView
         users={users}
+        currentUser={currentUser}
+        initialTab="register"
+        restrictionNotice="Para acceder a tu perfil, tus publicaciones guardadas, el historial de tus compras y todas tus interacciones, debes registrarte en la plataforma. Toda tu información previa se transferirá automáticamente a tu cuenta."
         onRefreshUsers={onRefreshUsers || (() => {})}
         onLoginSuccess={(loggedUser) => {
           if (onProfileUpdate) onProfileUpdate(loggedUser);

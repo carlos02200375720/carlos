@@ -1,7 +1,7 @@
 import React from "react";
 import { Play, ShoppingBag, MessageSquare, User as UserIcon, ShieldCheck, Sparkles, X, Menu } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, NavigationTab } from "../../../types";
+import { User, NavigationTab, isGuestUser } from "../../../types";
 import { navigateTo, getProfilePath } from "../../../router";
 import { isSuperAdmin } from "../../../superAdmin";
 
@@ -172,7 +172,7 @@ export function MovilHamburgerMenu({
                 >
                   <UserIcon strokeWidth={2.6} className="w-5 h-5" />
                   <span className="font-black tracking-wide">
-                    {currentUser?.username === "invitado" ? "Perfil / Registro" : "Perfil"}
+                    {isGuestUser(currentUser) ? "Mi Perfil (Registrarse)" : "Perfil"}
                   </span>
                 </button>
 

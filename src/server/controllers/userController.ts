@@ -756,6 +756,9 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
     userIdentifiers.add(user.email);
     userIdentifiers.add(user.email.toLowerCase());
   }
+  if (user.guestToken) {
+    userIdentifiers.add(user.guestToken);
+  }
   if (activeOriginalUserId && activeOriginalUserId !== "user_guest" && (user.id === "current_user" || user.originalId === activeOriginalUserId)) {
     userIdentifiers.add(activeOriginalUserId);
   }
@@ -1305,16 +1308,43 @@ export async function updateCurrentUser(req: Request, res: Response): Promise<vo
  */
 export async function registerUser(req: Request, res: Response): Promise<void> {
   const { name, username, bio, avatar, coverPhoto, password, email } = req.body;
-  if (!name || !username) {
-    res.status(400).json({ error: "Nombre completo y nombre de usuario son obligatorios." });
+  if (!name || !String(name).trim()) {
+    res.status(400).json({ error: "El nombre completo es obligatorio." });
     return;
   }
-  if (!email || !email.trim()) {
+  if (!email || !String(email).trim()) {
     res.status(400).json({ error: "El correo electrónico es un requisito obligatorio." });
     return;
   }
+  if (!password || !String(password).trim()) {
+    res.status(400).json({ error: "La contraseña es obligatoria." });
+    return;
+  }
 
-  const cleanUsername = String(username).replace(/\s+/g, "").toLowerCase().replace("@", "");
+  const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
+  let cleanUsername = String(username || "").replace(/\s+/g, "").toLowerCase().replace(/@/g, "");
+
+  // If no username provided, look up prior guest record or auto-generate
+  if (!cleanUsername || cleanUsername === "invitado" || cleanUsername === "current_user") {
+    if (headerGuestToken && mongoose.connection.readyState === 1) {
+      try {
+        const priorGuest = await MongoUser.findOne({ guestToken: headerGuestToken });
+        if (priorGuest?.username && priorGuest.username !== "invitado") {
+          cleanUsername = priorGuest.username.toLowerCase();
+        }
+      } catch (e) {}
+    }
+  }
+
+  if (!cleanUsername || cleanUsername === "invitado" || cleanUsername === "current_user") {
+    const baseSlug = String(name)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+    cleanUsername = `${baseSlug || "cliente"}_${Math.random().toString(36).substring(2, 6)}`;
+  }
+
   const cleanEmail = String(email).trim().toLowerCase();
 
   const lockKey = `${cleanUsername}:${cleanEmail}`;
@@ -1345,12 +1375,18 @@ export async function registerUser(req: Request, res: Response): Promise<void> {
       });
 
       if (existing) {
-        if (existing.email && existing.email.toLowerCase() === cleanEmail) {
-          res.status(409).json({ error: "⚠️ Este correo electrónico ya está registrado con otra cuenta." });
+        const isSelfGuest = (headerGuestToken && existing.guestToken === headerGuestToken) || (existing.isGuest && existing.username === cleanUsername);
+        if (isSelfGuest) {
+          // Current guest transitioning to registered account: remove prior guest placeholder
+          await MongoUser.deleteOne({ _id: existing._id }).catch(() => {});
+        } else {
+          if (existing.email && existing.email.toLowerCase() === cleanEmail) {
+            res.status(409).json({ error: "⚠️ Este correo electrónico ya está registrado con otra cuenta." });
+            return;
+          }
+          res.status(409).json({ error: "⚠️ El nombre de usuario ya está registrado." });
           return;
         }
-        res.status(409).json({ error: "⚠️ El nombre de usuario ya está registrado." });
-        return;
       }
     }
 
@@ -1385,7 +1421,6 @@ export async function registerUser(req: Request, res: Response): Promise<void> {
       }
     }
 
-    const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
     let guestSavedReels: string[] = [];
     if (headerGuestToken && mongoose.connection.readyState === 1) {
       try {
@@ -1488,28 +1523,79 @@ export async function switchUser(req: Request, res: Response): Promise<void> {
       return emailPart || "cliente";
     };
 
+    const rawTarget = String(targetUsername || "").trim();
+    const explicitEmail = typeof req.body.email === "string" ? req.body.email.trim() : "";
+    const isEmailLogin = rawTarget.includes("@") || explicitEmail.includes("@");
+    const emailToSearch = (explicitEmail || (rawTarget.includes("@") ? rawTarget : "")).toLowerCase();
+
     let targetUser: any = null;
-    if (mongoose.connection.readyState === 1) {
-      const escapedClean = cleanUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      targetUser = await MongoUser.findOne({
-        $or: [
-          { username: cleanUsername },
-          { username: normalizedInputSlug },
-          { username: targetUsername },
-          { username: { $regex: new RegExp(`^${escapedClean}$`, "i") } },
-          { email: cleanUsername },
-          { email: String(targetUsername).trim().toLowerCase() },
-          { email: { $regex: new RegExp(`^${escapedClean}(?:@|$)`, "i") } },
-          { name: { $regex: new RegExp(`^${escapedClean}$`, "i") } },
-          { id: targetUsername },
-          { id: cleanUsername }
-        ],
-        id: { $ne: "current_user" }
-      });
+
+    if (isEmailLogin && emailToSearch) {
+      if (mongoose.connection.readyState === 1) {
+        const escapedEmail = emailToSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        targetUser = await MongoUser.findOne({
+          email: { $regex: new RegExp(`^${escapedEmail}$`, "i") },
+          id: { $ne: "current_user" }
+        });
+      }
 
       if (!targetUser) {
-        const allDbUsers = await MongoUser.find({ id: { $ne: "current_user" } });
-        targetUser = allDbUsers.find((u: any) => {
+        targetUser = memoryUsers.find((u) => u.email?.toLowerCase() === emailToSearch && u.id !== "current_user");
+      }
+
+      if (!targetUser) {
+        res.status(404).json({
+          error: "No existe ninguna cuenta registrada con este correo electrónico.",
+          code: "USER_NOT_FOUND"
+        });
+        return;
+      }
+    } else {
+      if (mongoose.connection.readyState === 1) {
+        const escapedClean = cleanUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        targetUser = await MongoUser.findOne({
+          $or: [
+            { username: cleanUsername },
+            { username: normalizedInputSlug },
+            { username: targetUsername },
+            { username: { $regex: new RegExp(`^${escapedClean}$`, "i") } },
+            { email: cleanUsername },
+            { email: String(targetUsername).trim().toLowerCase() },
+            { email: { $regex: new RegExp(`^${escapedClean}(?:@|$)`, "i") } },
+            { name: { $regex: new RegExp(`^${escapedClean}$`, "i") } },
+            { id: targetUsername },
+            { id: cleanUsername }
+          ],
+          id: { $ne: "current_user" }
+        });
+
+        if (!targetUser) {
+          const allDbUsers = await MongoUser.find({ id: { $ne: "current_user" } });
+          targetUser = allDbUsers.find((u: any) => {
+            const uName = (u.username || "").toLowerCase().replace(/^@/, "");
+            const uEmail = (u.email || "").toLowerCase();
+            const uFullSlug = (u.name || "")
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLowerCase()
+              .replace(/\s+/g, "")
+              .replace(/[^a-z0-9._-]/g, "");
+            return (
+              uName === cleanUsername ||
+              uName === normalizedInputSlug ||
+              uFullSlug === normalizedInputSlug ||
+              uEmail === cleanUsername ||
+              (strippedAtUsername && uName.replace(/@/g, "") === strippedAtUsername) ||
+              (strippedAtUsername && uEmail.replace(/@/g, "") === strippedAtUsername) ||
+              (uEmail && uEmail.split("@")[0] === cleanUsername) ||
+              (uName && uName.split("@")[0] === cleanUsername)
+            );
+          });
+        }
+      }
+
+      if (!targetUser) {
+        targetUser = memoryUsers.find((u) => {
           const uName = (u.username || "").toLowerCase().replace(/^@/, "");
           const uEmail = (u.email || "").toLowerCase();
           const uFullSlug = (u.name || "")
@@ -1519,6 +1605,8 @@ export async function switchUser(req: Request, res: Response): Promise<void> {
             .replace(/\s+/g, "")
             .replace(/[^a-z0-9._-]/g, "");
           return (
+            u.id === targetUsername ||
+            u.id === cleanUsername ||
             uName === cleanUsername ||
             uName === normalizedInputSlug ||
             uFullSlug === normalizedInputSlug ||
@@ -1530,31 +1618,6 @@ export async function switchUser(req: Request, res: Response): Promise<void> {
           );
         });
       }
-    }
-
-    if (!targetUser) {
-      targetUser = memoryUsers.find((u) => {
-        const uName = (u.username || "").toLowerCase().replace(/^@/, "");
-        const uEmail = (u.email || "").toLowerCase();
-        const uFullSlug = (u.name || "")
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase()
-          .replace(/\s+/g, "")
-          .replace(/[^a-z0-9._-]/g, "");
-        return (
-          u.id === targetUsername ||
-          u.id === cleanUsername ||
-          uName === cleanUsername ||
-          uName === normalizedInputSlug ||
-          uFullSlug === normalizedInputSlug ||
-          uEmail === cleanUsername ||
-          (strippedAtUsername && uName.replace(/@/g, "") === strippedAtUsername) ||
-          (strippedAtUsername && uEmail.replace(/@/g, "") === strippedAtUsername) ||
-          (uEmail && uEmail.split("@")[0] === cleanUsername) ||
-          (uName && uName.split("@")[0] === cleanUsername)
-        );
-      });
     }
 
     // Fallback: if buyer placed an order with this name/email/username, auto-recover and persist their profile
@@ -1634,7 +1697,7 @@ export async function switchUser(req: Request, res: Response): Promise<void> {
     }
 
     const expectedPassword = targetUser.password || "";
-    if (!isSessionRestore && expectedPassword && expectedPassword !== password && password !== "123") {
+    if (!isSessionRestore && expectedPassword && expectedPassword !== password) {
       res.status(401).json({ error: "La contraseña ingresada es incorrecta. Por favor verifícala." });
       return;
     }
@@ -1645,6 +1708,23 @@ export async function switchUser(req: Request, res: Response): Promise<void> {
       if (mongoose.connection.readyState === 1) {
         await MongoUser.updateOne({ id: targetUser.id }, { $set: { username: resolvedUsername } }).catch(() => {});
       }
+    }
+
+    const headerGuestToken = (req.headers["x-guest-token"] as string)?.trim();
+    if (headerGuestToken && mongoose.connection.readyState === 1) {
+      try {
+        const priorGuest = await MongoUser.findOne({ guestToken: headerGuestToken });
+        if (priorGuest && Array.isArray(priorGuest.savedReelIds) && priorGuest.savedReelIds.length > 0) {
+          const currentSaved = Array.isArray(targetUser.savedReelIds) ? targetUser.savedReelIds : [];
+          const merged = Array.from(new Set([...currentSaved, ...priorGuest.savedReelIds]));
+          targetUser.savedReelIds = merged;
+          await MongoUser.updateOne({ id: targetUser.id }, { $set: { savedReelIds: merged } }).catch(() => {});
+        }
+        if (!targetUser.guestToken) {
+          targetUser.guestToken = headerGuestToken;
+          await MongoUser.updateOne({ id: targetUser.id }, { $set: { guestToken: headerGuestToken } }).catch(() => {});
+        }
+      } catch (e) {}
     }
 
     setActiveOriginalUserId(targetUser.id);
@@ -1661,6 +1741,7 @@ export async function switchUser(req: Request, res: Response): Promise<void> {
       following: targetUser.following || 0,
       followingUserIds: targetUser.followingUserIds || [],
       savedReelIds: targetUser.savedReelIds || [],
+      guestToken: targetUser.guestToken || headerGuestToken || undefined,
       isGuest: false,
       password: targetUser.password || "",
       email: targetUser.email || "",

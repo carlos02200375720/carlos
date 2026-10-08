@@ -243,6 +243,24 @@ export function getAdminMetricaPath(): string {
 }
 
 /**
+ * Returns true if the user path segment represents a generic or guest user
+ */
+export function isGenericProfileUser(rawUser?: string): boolean {
+  if (!rawUser) return true;
+  const lower = rawUser.toLowerCase().trim().replace(/^@/, '');
+  return (
+    !lower ||
+    lower === 'usuario' ||
+    lower === 'invitado' ||
+    lower === 'guest' ||
+    lower === 'current_user' ||
+    lower === 'usuario_actual' ||
+    lower.startsWith('invitado_') ||
+    lower.startsWith('guest_')
+  );
+}
+
+/**
  * Parses the current pathname into a structured AppRoute
  */
 export function parseRoute(pathname: string): AppRoute {
@@ -346,12 +364,7 @@ export function parseRoute(pathname: string): AppRoute {
   );
   if (profileSavedMatch) {
     const rawUser = profileSavedMatch[1] ? decodeURIComponent(profileSavedMatch[1]) : undefined;
-    const isGenericUser =
-      !rawUser ||
-      rawUser.toLowerCase() === 'usuario' ||
-      rawUser.toLowerCase() === 'invitado' ||
-      rawUser.toLowerCase() === 'guest' ||
-      rawUser.toLowerCase() === 'current_user';
+    const isGenericUser = isGenericProfileUser(rawUser);
     return {
       type: 'profile',
       userId: isGenericUser ? undefined : rawUser,
@@ -365,12 +378,7 @@ export function parseRoute(pathname: string): AppRoute {
   );
   if (profileCompraMatch) {
     const rawUser = profileCompraMatch[1] ? decodeURIComponent(profileCompraMatch[1]) : undefined;
-    const isGenericUser =
-      !rawUser ||
-      rawUser.toLowerCase() === 'usuario' ||
-      rawUser.toLowerCase() === 'invitado' ||
-      rawUser.toLowerCase() === 'guest' ||
-      rawUser.toLowerCase() === 'current_user';
+    const isGenericUser = isGenericProfileUser(rawUser);
     return {
       type: 'profile',
       userId: isGenericUser ? undefined : rawUser,
@@ -384,12 +392,7 @@ export function parseRoute(pathname: string): AppRoute {
   );
   if (profileConfigMatch) {
     const rawUser = profileConfigMatch[1] ? decodeURIComponent(profileConfigMatch[1]) : undefined;
-    const isGenericUser =
-      !rawUser ||
-      rawUser.toLowerCase() === 'usuario' ||
-      rawUser.toLowerCase() === 'invitado' ||
-      rawUser.toLowerCase() === 'guest' ||
-      rawUser.toLowerCase() === 'current_user';
+    const isGenericUser = isGenericProfileUser(rawUser);
     return {
       type: 'profile',
       userId: isGenericUser ? undefined : rawUser,
@@ -403,12 +406,7 @@ export function parseRoute(pathname: string): AppRoute {
   );
   if (profileProductoMatch) {
     const rawUser = profileProductoMatch[1] ? decodeURIComponent(profileProductoMatch[1]) : undefined;
-    const isGenericUser =
-      !rawUser ||
-      rawUser.toLowerCase() === 'usuario' ||
-      rawUser.toLowerCase() === 'invitado' ||
-      rawUser.toLowerCase() === 'guest' ||
-      rawUser.toLowerCase() === 'current_user';
+    const isGenericUser = isGenericProfileUser(rawUser);
     return {
       type: 'profile',
       userId: isGenericUser ? undefined : rawUser,
@@ -422,12 +420,7 @@ export function parseRoute(pathname: string): AppRoute {
   );
   if (profileVentaMatch) {
     const rawUser = profileVentaMatch[1] ? decodeURIComponent(profileVentaMatch[1]) : undefined;
-    const isGenericUser =
-      !rawUser ||
-      rawUser.toLowerCase() === 'usuario' ||
-      rawUser.toLowerCase() === 'invitado' ||
-      rawUser.toLowerCase() === 'guest' ||
-      rawUser.toLowerCase() === 'current_user';
+    const isGenericUser = isGenericProfileUser(rawUser);
     return {
       type: 'profile',
       userId: isGenericUser ? undefined : rawUser,
@@ -441,12 +434,7 @@ export function parseRoute(pathname: string): AppRoute {
   );
   if (profilePublicacionesMatch) {
     const rawUser = profilePublicacionesMatch[1] ? decodeURIComponent(profilePublicacionesMatch[1]) : undefined;
-    const isGenericUser =
-      !rawUser ||
-      rawUser.toLowerCase() === 'usuario' ||
-      rawUser.toLowerCase() === 'invitado' ||
-      rawUser.toLowerCase() === 'guest' ||
-      rawUser.toLowerCase() === 'current_user';
+    const isGenericUser = isGenericProfileUser(rawUser);
     return {
       type: 'profile',
       userId: isGenericUser ? undefined : rawUser,
@@ -460,12 +448,7 @@ export function parseRoute(pathname: string): AppRoute {
   );
   if (profilePublicarMatch) {
     const rawUser = profilePublicarMatch[1] ? decodeURIComponent(profilePublicarMatch[1]) : undefined;
-    const isGenericUser =
-      !rawUser ||
-      rawUser.toLowerCase() === 'usuario' ||
-      rawUser.toLowerCase() === 'invitado' ||
-      rawUser.toLowerCase() === 'guest' ||
-      rawUser.toLowerCase() === 'current_user';
+    const isGenericUser = isGenericProfileUser(rawUser);
     return {
       type: 'profile',
       userId: isGenericUser ? undefined : rawUser,
@@ -479,12 +462,7 @@ export function parseRoute(pathname: string): AppRoute {
   );
   if (profileRendimientoMatch) {
     const rawUser = profileRendimientoMatch[1] ? decodeURIComponent(profileRendimientoMatch[1]) : undefined;
-    const isGenericUser =
-      !rawUser ||
-      rawUser.toLowerCase() === 'usuario' ||
-      rawUser.toLowerCase() === 'invitado' ||
-      rawUser.toLowerCase() === 'guest' ||
-      rawUser.toLowerCase() === 'current_user';
+    const isGenericUser = isGenericProfileUser(rawUser);
     return {
       type: 'profile',
       userId: isGenericUser ? undefined : rawUser,
@@ -496,12 +474,7 @@ export function parseRoute(pathname: string): AppRoute {
   const profileMatch = normalized.match(/^\/(?:perfil|profile)(?:\/([^/]+))?$/i);
   if (profileMatch) {
     const rawUser = profileMatch[1] ? decodeURIComponent(profileMatch[1]) : undefined;
-    const isGenericUser =
-      !rawUser ||
-      rawUser.toLowerCase() === 'usuario' ||
-      rawUser.toLowerCase() === 'invitado' ||
-      rawUser.toLowerCase() === 'guest' ||
-      rawUser.toLowerCase() === 'current_user';
+    const isGenericUser = isGenericProfileUser(rawUser);
     return { type: 'profile', userId: isGenericUser ? undefined : rawUser };
   }
 
@@ -618,7 +591,7 @@ export function getProfilePath(usernameOrUser?: string | { username?: string; na
   if (!usernameOrUser) return '/perfil';
   if (typeof usernameOrUser === 'string') {
     let clean = usernameOrUser.trim().replace(/^@/, '');
-    if (!clean || clean.toLowerCase() === 'invitado' || clean.toLowerCase() === 'guest' || clean.toLowerCase() === 'current_user') {
+    if (isGenericProfileUser(clean)) {
       return '/perfil';
     }
     if (clean.includes('@')) {
@@ -633,7 +606,7 @@ export function getProfilePath(usernameOrUser?: string | { username?: string; na
   }
   if (usernameOrUser.isGuest) return '/perfil';
   let clean = (usernameOrUser.username || '').trim().replace(/^@/, '');
-  if (!clean || clean.toLowerCase() === 'invitado' || clean.toLowerCase() === 'guest' || clean.toLowerCase() === 'current_user') {
+  if (isGenericProfileUser(clean)) {
     return '/perfil';
   }
   if (clean.includes('@')) {
@@ -643,7 +616,7 @@ export function getProfilePath(usernameOrUser?: string | { username?: string; na
       .toLowerCase()
       .replace(/\s+/g, '')
       .replace(/[^a-z0-9._-]/g, '');
-    clean = fromName && fromName !== 'invitado' ? fromName : clean.split('@')[0];
+    clean = fromName && !isGenericProfileUser(fromName) ? fromName : clean.split('@')[0];
   }
   return clean ? `/perfil/${encodeURIComponent(clean)}` : '/perfil';
 }

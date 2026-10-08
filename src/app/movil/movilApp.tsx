@@ -1,6 +1,6 @@
 import React from "react";
 import { Play, ShoppingBag, User as UserIcon, MessageSquare } from "lucide-react";
-import { User, Reel, Product, CartItem, Order, ChatMessage, NavigationTab } from "../../types";
+import { User, Reel, Product, CartItem, Order, ChatMessage, NavigationTab, isGuestUser } from "../../types";
 import Inicio from "./Inicio";
 import Tienda from "./Tienda";
 import SocialPanel from "./SocialPanel";
@@ -127,7 +127,7 @@ export default function AndroidApp({
   openPrivateChatDirectly,
   socket,
 }: AndroidAppProps) {
-  const isUserLoggedIn = (isLoggedIn && !currentUser.isGuest && currentUser.username !== "invitado" && currentUser.id !== "guest") || (!currentUser.isGuest && Boolean(currentUser.username) && currentUser.username !== "invitado" && currentUser.id !== "guest");
+  const isUserLoggedIn = (isLoggedIn && !isGuestUser(currentUser)) || (!isGuestUser(currentUser) && Boolean(currentUser.username));
   const isHomeActive = activeTab === 'inicio' || activeTab === 'reels';
   const isDarkNavActive = isHomeActive;
   const [navBarHeight, setNavBarHeight] = React.useState(56);
@@ -320,6 +320,9 @@ export default function AndroidApp({
                 {(!isUserLoggedIn && !selectedCreatorProfileId) ? (
                   <AndroidLoginView
                     users={users}
+                    currentUser={currentUser}
+                    initialTab="register"
+                    restrictionNotice="Para acceder a tu perfil, tus publicaciones guardadas, el historial de tus compras y todas tus interacciones, debes registrarte en la plataforma. Toda tu información previa se transferirá automáticamente a tu cuenta."
                     onRefreshUsers={refreshAllData}
                     onLoginSuccess={(loggedUser) => {
                       setCurrentUser(loggedUser);

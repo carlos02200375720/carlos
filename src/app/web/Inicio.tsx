@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from "react";
 import { Heart, MessageCircle, Share2, ShoppingBag, ShoppingCart, Volume2, VolumeX, Send, X, Play, Bookmark, Trash2, Check, ArrowLeft, Plus, Minus, ChevronLeft, ChevronRight, Menu, MessageSquare, User as UserIcon, ShieldCheck, Sparkles } from "lucide-react";
-import { Reel, ReelMedia, Product, Comment, User, CartItem, NavigationTab } from "../../types";
+import { Reel, ReelMedia, Product, Comment, User, CartItem, NavigationTab, isGuestUser } from "../../types";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch, getMediaUrl } from "../../config";
 import { ReelProgressBar } from "./components/ReelProgressBar";
@@ -293,7 +293,7 @@ export default function Inicio({
     }
   };
 
-  const isGuestUser = !currentUser || currentUser.isGuest || currentUser.username === "invitado" || !currentUser.username;
+  const isGuest = isGuestUser(currentUser);
 
   const handleDoubleTap = (reelId: string) => {
     onLikeReel(reelId);
@@ -761,7 +761,7 @@ export default function Inicio({
                   >
                     <UserIcon strokeWidth={2.6} className="w-5 h-5" />
                     <span className="font-black tracking-wide">
-                      {currentUser.username === "invitado" ? "Perfil / Registro" : "Perfil"}
+                      {isGuestUser(currentUser) ? "Mi Perfil (Registrarse)" : "Perfil"}
                     </span>
                   </button>
 

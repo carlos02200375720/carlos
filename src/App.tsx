@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Capacitor } from "@capacitor/core";
-import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession, NavigationTab } from "./types";
+import { User, Reel, Product, CartItem, Order, ChatMessage, LiveSession, NavigationTab, isGuestUser } from "./types";
 import { WebApp, SplashScreen, AuthModal } from "./app/web";
 import { AndroidApp } from "./app/movil";
 import { getApiUrl, getWebSocketUrl, BACKEND_URL, apiFetch } from "./config";
@@ -126,7 +126,7 @@ export default function App() {
     if (savedUserJson) {
       try {
         const parsed = JSON.parse(savedUserJson);
-        if (parsed && parsed.username && parsed.username !== "invitado" && !parsed.isGuest) {
+        if (parsed && !isGuestUser(parsed)) {
           if (isSuperAdmin(parsed)) {
             parsed.canSell = true;
             parsed.isAdmin = true;
@@ -137,7 +137,7 @@ export default function App() {
       } catch (e) {}
     }
     const savedUsername = sessionState.getUsername();
-    if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
+    if (savedUsername && !isGuestUser({ username: savedUsername })) {
       return {
         id: "current_user",
         username: savedUsername,
@@ -714,7 +714,7 @@ export default function App() {
         sessionState.setUsername("david");
       }
       const savedPassword = "";
-      if (savedUsername && savedUsername !== "invitado" && savedUsername !== "guest") {
+      if (savedUsername && !isGuestUser({ username: savedUsername, isGuest: sessionState.getUser()?.isGuest })) {
         apiFetch("/api/users/current/switch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -738,10 +738,13 @@ export default function App() {
           const guestSession = await syncGuestSession(activePlatform);
           if (guestSession && guestSession.user) {
             setCurrentUser((prev) => {
-              if (prev.username && prev.username !== "invitado" && !prev.isGuest) {
+              if (!isGuestUser(prev)) {
                 return prev;
               }
-              return guestSession.user;
+              return {
+                ...guestSession.user,
+                isGuest: true,
+              };
             });
             if (guestSession.user.savedReelIds) {
               setSavedReelIds(guestSession.user.savedReelIds);
@@ -752,10 +755,13 @@ export default function App() {
             const data = await res.json();
             if (data && data.user) {
               setCurrentUser((prev) => {
-                if (prev.username && prev.username !== "invitado" && !prev.isGuest) {
+                if (!isGuestUser(prev)) {
                   return prev;
                 }
-                return data.user;
+                return {
+                  ...data.user,
+                  isGuest: isGuestUser(data.user),
+                };
               });
               setSavedReelIds(data.user.savedReelIds || []);
             }
@@ -1288,7 +1294,7 @@ export default function App() {
   const getCartUserId = (userObj?: User): string | null => {
     const target = userObj || currentUser;
     // 1. If user is authenticated and registered, use their persistent account ID or username
-    if (target && target.username && target.username !== "invitado" && !target.isGuest) {
+    if (target && !isGuestUser(target)) {
       return target.originalId || (target.id !== "current_user" ? target.id : null) || target.username;
     }
     // 2. For guest users, their guest token is their persistent identifier
@@ -1521,7 +1527,7 @@ export default function App() {
 
   // Private Messages handler
   const handleSendPrivateMessage = (text: string) => {
-    if (currentUser.username === "invitado" || currentUser.isGuest) {
+    if (isGuestUser(currentUser)) {
       setGuestInteractionAlert("Para enviar mensajes a Soporte, por favor inicia sesión o crea una cuenta.");
       return;
     }
@@ -1584,8 +1590,7 @@ export default function App() {
     const targetUsername = matchedCreator?.username || creatorId;
     const isOwn =
       currentUser &&
-      !currentUser.isGuest &&
-      currentUser.username !== "invitado" &&
+      !isGuestUser(currentUser) &&
       (targetUsername.toLowerCase() === currentUser.username?.toLowerCase() ||
         creatorId === currentUser.id ||
         (Boolean(currentUser.originalId) && creatorId === currentUser.originalId));
@@ -1611,7 +1616,7 @@ export default function App() {
 
   // Go live action
   const handleGoLive = (title: string, onComplete: (session: LiveSession) => void) => {
-    if (currentUser.username === "invitado" || currentUser.isGuest) {
+    if (isGuestUser(currentUser)) {
       setGuestInteractionAlert("Para iniciar una transmisión en vivo, por favor inicia sesión o crea una cuenta.");
       return;
     }

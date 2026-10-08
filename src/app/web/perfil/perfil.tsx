@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { User, Product, Reel, Order } from "../../../types";
+import { User, Product, Reel, Order, isGuestUser } from "../../../types";
 import {
   Eye,
   Heart,
@@ -117,7 +117,8 @@ export default function Perfil({
     (!!currentUser.originalId && decodedCreatorId === currentUser.originalId) ||
     (!!currentUser.username && decodedCreatorId?.toLowerCase() === currentUser.username?.toLowerCase().replace(/^@/, "")) ||
     (!!currentUser.email && decodedCreatorId?.toLowerCase() === currentUser.email?.toLowerCase()) ||
-    (decodedCreatorId === "current_user" && currentUser.username !== "invitado" && !currentUser.isGuest);
+    (decodedCreatorId === "current_user" && !isGuestUser(currentUser)) ||
+    (isGuestUser(currentUser) && (decodedCreatorId?.toLowerCase().startsWith("invitado") || decodedCreatorId === "usuario" || decodedCreatorId === "guest"));
   const activeUserId = isSelf
     ? (currentUser.originalId || currentUser.username || currentUser.id)
     : selectedCreatorId;
@@ -311,7 +312,7 @@ export default function Perfil({
       }
       return;
     }
-    const isGuest = !currentUser || currentUser.isGuest || currentUser.username === "invitado" || !currentUser.username;
+    const isGuest = isGuestUser(currentUser);
     if (isGuest) return;
     const targetUser = profileUser || currentUser;
     if (activeSubTab === "saved") {
@@ -402,7 +403,7 @@ export default function Perfil({
 
   useEffect(() => {
     if (isSelf) {
-      if (currentUser && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest) {
+      if (currentUser && !isGuestUser(currentUser)) {
         setProfileUser(currentUser);
         setEditPrivacyPolicy(currentUser.privacyPolicy || "");
       } else {
@@ -426,7 +427,7 @@ export default function Perfil({
     if (!activeUserId) return;
 
     // If viewing own guest profile, don't trigger unnecessary network fetch
-    if (isSelf && (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || !currentUser.username)) {
+    if (isSelf && isGuestUser(currentUser)) {
       setProfileUser(currentUser);
       setLoading(false);
       return;
@@ -435,7 +436,7 @@ export default function Perfil({
     setLoading(true);
 
     const targetEndpoint =
-      isSelf && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest
+      isSelf && !isGuestUser(currentUser)
         ? `/api/users/${encodeURIComponent(currentUser.originalId || currentUser.username || currentUser.id)}`
         : `/api/users/${encodeURIComponent(activeUserId)}`;
 
@@ -443,7 +444,7 @@ export default function Perfil({
       .then((res) => res.json())
       .then((data) => {
         if (!data.error && data.user) {
-          if (isSelf && currentUser && currentUser.username && currentUser.username !== "invitado" && !currentUser.isGuest) {
+          if (isSelf && currentUser && !isGuestUser(currentUser)) {
             const resolvedPolicy =
               data.user.privacyPolicy !== undefined ? data.user.privacyPolicy : currentUser.privacyPolicy || "";
             setProfileUser({
@@ -608,8 +609,8 @@ export default function Perfil({
   };
 
   const isGuestMode =
-    isSelf &&
-    (!currentUser || currentUser.isGuest || currentUser.username === "invitado" || !currentUser.username);
+    isGuestUser(currentUser) &&
+    (isSelf || !selectedCreatorId || selectedCreatorId === currentUser.id || selectedCreatorId === currentUser.username || selectedCreatorId?.toLowerCase().startsWith("invitado") || selectedCreatorId === "usuario" || selectedCreatorId === "guest");
 
   if (isGuestMode) {
     return (
@@ -620,6 +621,9 @@ export default function Perfil({
       >
         <LoginView
           users={users}
+          currentUser={currentUser}
+          initialTab="register"
+          restrictionNotice="Para acceder a tu perfil, tus publicaciones guardadas, el historial de tus compras y todas tus interacciones, debes registrarte en la plataforma. Toda tu información previa se transferirá automáticamente a tu cuenta."
           onRefreshUsers={onRefreshUsers || (() => {})}
           onLoginSuccess={(user) => {
             setProfileUser(user);

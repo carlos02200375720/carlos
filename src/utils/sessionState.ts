@@ -12,12 +12,22 @@ export const sessionState = {
   getUserId: (): string | null => sessionUser?.id ?? sessionUsername ?? null,
   setUser: (user: User | null): void => {
     sessionUser = user;
-    sessionUsername = user?.username ?? null;
-    authenticated = !!user && !user.isGuest;
+    const isGuest = !!user && (user.isGuest === true || user.username === "invitado" || user.username?.startsWith("invitado_") || user.id === "guest");
+    sessionUsername = (user && !isGuest) ? user.username : null;
+    authenticated = !!user && !isGuest;
   },
-  getUsername: (): string | null => sessionUsername,
+  getUsername: (): string | null => {
+    if (sessionUser && (sessionUser.isGuest === true || sessionUser.username === "invitado" || sessionUser.username?.startsWith("invitado_"))) {
+      return null;
+    }
+    return sessionUsername;
+  },
   setUsername: (username: string | null): void => {
-    sessionUsername = username;
+    if (username && (username === "invitado" || username === "guest" || username.startsWith("invitado_"))) {
+      sessionUsername = null;
+    } else {
+      sessionUsername = username;
+    }
   },
   isAuthenticated: (): boolean => authenticated,
   setAuthenticated: (value: boolean): void => {

@@ -1,5 +1,5 @@
 import React from "react";
-import { User, Reel, Product, CartItem, Order, ChatMessage, NavigationTab } from "../../types";
+import { User, Reel, Product, CartItem, Order, ChatMessage, NavigationTab, isGuestUser } from "../../types";
 import WebSidebar from "./WebSidebar";
 import Inicio from "./Inicio";
 import Tienda from "./tienda";
@@ -323,7 +323,7 @@ export default function WebApp({
                     setCurrentUser(updatedUser);
                     sessionState.setUser(updatedUser);
                     setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-                    if (updatedUser.username && updatedUser.username !== "invitado" && !updatedUser.isGuest) {
+                    if (!isGuestUser(updatedUser)) {
                       setIsLoggedIn(true);
                       sessionState.setAuthenticated(true);
                       sessionState.setUsername(updatedUser.username);

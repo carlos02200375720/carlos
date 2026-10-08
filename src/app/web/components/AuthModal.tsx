@@ -345,13 +345,13 @@ export function AuthModal({
 
             <div>
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Usuario o Correo Electrónico
+                Correo Electrónico
               </label>
               <input
-                type="text"
+                type="email"
                 value={loginInput}
                 onChange={(e) => setLoginInput(e.target.value)}
-                placeholder="Tu usuario (@...) o correo"
+                placeholder="ejemplo@correo.com"
                 className="w-full text-xs font-medium px-3.5 py-2.5 bg-slate-950/60 border border-slate-700 rounded-xl focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-white placeholder-slate-500"
                 required
               />

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Reel, ReelMedia, Product, User, Comment, CartItem, NavigationTab } from "../../types";
+import { Reel, ReelMedia, Product, User, Comment, CartItem, NavigationTab, isGuestUser } from "../../types";
 import { Heart, MessageCircle, Share2, Bookmark, ShoppingBag, Volume2, VolumeX, Plus, Send, X, RefreshCw, Video, Minus, Trash2, CreditCard, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { MovilVideoPlay, MovilVideoPlayHandle } from "./components/videoplay";
@@ -194,7 +194,7 @@ export default function Inicio({
   const touchStartY = useRef<number>(0);
   const mouseStartX = useRef<number>(0);
   const isMouseDownRef = useRef<boolean>(false);
-  const isGuest = !currentUser || currentUser.isGuest || currentUser.username === "invitado";
+  const isGuest = isGuestUser(currentUser);
 
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const prevReelIdRef = useRef<string | null>(null);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { User as UserIcon, ShieldCheck, UserPlus, ArrowRight, Sparkles, Check, Play, ShoppingBag, MessageSquare, AlertCircle, Loader2 } from "lucide-react";
+import { User as UserIcon, ShieldCheck, UserPlus, ArrowRight, Sparkles, Check, Play, ShoppingBag, MessageSquare, AlertCircle, Loader2, Mail } from "lucide-react";
 import { User } from "../../types";
 import { androidApiFetch } from "./api";
 import { sessionState } from "../../utils/sessionState";
@@ -8,6 +8,9 @@ export interface AndroidLoginViewProps {
   onLoginSuccess: (user: User) => void;
   onRefreshUsers: () => void;
   users: User[];
+  currentUser?: User | null;
+  initialTab?: "login" | "register";
+  restrictionNotice?: string;
 }
 
 const PRESET_AVATARS = [
@@ -23,42 +26,62 @@ const PRESET_COVERS = [
   "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=800&q=80",
 ];
 
-export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users }: AndroidLoginViewProps) {
+export default function AndroidLoginView({
+  onLoginSuccess,
+  onRefreshUsers,
+  users,
+  currentUser,
+  initialTab,
+  restrictionNotice
+}: AndroidLoginViewProps) {
   const [activeTab, setActiveTab] = useState<"login" | "register">(() => {
+    if (initialTab) return initialTab;
+    if (currentUser?.isGuest || currentUser?.username === "invitado") return "register";
     return "login";
   });
 
-  // Login form state
-  const [usernameInput, setUsernameInput] = useState("");
+  // Login form state: strictly Correo Electrónico and Contraseña
+  const [emailInput, setEmailInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [loginError, setLoginError] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Register form state
+  // Register form state: strictly Nombre Completo, Correo, Contraseña
   const [regName, setRegName] = useState("");
-  const [regUsername, setRegUsername] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regEmail, setRegEmail] = useState("");
-  const [regBio, setRegBio] = useState("");
-  const [regAvatar, setRegAvatar] = useState(PRESET_AVATARS[0]);
-  const [regCoverPhoto, setRegCoverPhoto] = useState(PRESET_COVERS[0]);
   const [registerError, setRegisterError] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
+
+  const assignedUsername =
+    (currentUser?.username && currentUser.username !== "invitado" && currentUser.username !== "current_user" && currentUser.username !== "usuario_actual")
+      ? currentUser.username
+      : (sessionState.getUser()?.username && sessionState.getUser()?.username !== "invitado" && sessionState.getUser()?.username !== "current_user")
+      ? sessionState.getUser()!.username
+      : "";
 
   useEffect(() => {
     onRefreshUsers();
   }, []);
 
-  const handleLogin = async (e: React.FormEvent, targetUsername?: string, targetPassword?: string) => {
+  const handleLogin = async (e: React.FormEvent) => {
     if (e) e.preventDefault();
     if (isLoggingIn) return;
     setLoginError("");
 
-    const usernameToUse = targetUsername || usernameInput;
-    const passwordToUse = targetPassword !== undefined ? targetPassword : passwordInput;
+    const cleanEmail = emailInput.trim().toLowerCase();
+    if (!cleanEmail) {
+      setLoginError("Por favor, ingresa tu correo electrónico.");
+      return;
+    }
 
-    if (!usernameToUse.trim()) {
-      setLoginError("Por favor, ingresa tu usuario.");
+    if (!cleanEmail.includes("@")) {
+      setLoginError("Por favor, ingresa un correo electrónico válido.");
+      return;
+    }
+
+    if (!passwordInput.trim()) {
+      setLoginError("Por favor, ingresa tu contraseña.");
       return;
     }
 
@@ -68,19 +91,18 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          targetUsername: usernameToUse.trim(),
-          password: passwordToUse,
+          targetUsername: cleanEmail,
+          password: passwordInput.trim(),
         }),
       });
 
       const data = await res.json();
       if (!res.ok || data.error) {
-        setLoginError(data.error || "No se pudo iniciar sesión en Android.");
+        setLoginError(data.error || "El correo o contraseña no son correctos.");
         setIsLoggingIn(false);
       } else if (data.success && data.user) {
         sessionState.setAuthenticated(true);
         sessionState.setUsername(data.user.username);
-        if (passwordToUse) 
         sessionState.setUser(data.user);
         onLoginSuccess(data.user);
       }
@@ -95,8 +117,8 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
     if (isRegistering) return;
     setRegisterError("");
 
-    if (!regName.trim() || !regUsername.trim()) {
-      setRegisterError("Nombre y usuario son obligatorios.");
+    if (!regName.trim()) {
+      setRegisterError("El nombre completo es obligatorio.");
       return;
     }
 
@@ -110,26 +132,20 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
       return;
     }
 
-    const cleanUsername = regUsername.trim().toLowerCase().replace(/\s+/g, "").replace(/^@/, "");
-    if (cleanUsername === "invitado" || cleanUsername === "current_user" || cleanUsername === "usuario_actual") {
-      setRegisterError("Nombre de usuario reservado. Elige otro.");
-      return;
-    }
-
     setIsRegistering(true);
     try {
       const res = await androidApiFetch("/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          username: cleanUsername,
-          targetUsername: cleanUsername,
+          username: assignedUsername || undefined,
+          targetUsername: assignedUsername || undefined,
           password: regPassword.trim(),
           name: regName.trim(),
           email: regEmail.trim(),
-          bio: regBio.trim() || "Creador en la plataforma",
-          avatar: regAvatar,
-          coverPhoto: regCoverPhoto,
+          bio: "Miembro de la comunidad",
+          avatar: PRESET_AVATARS[0],
+          coverPhoto: PRESET_COVERS[0],
           isNewRegistration: true,
         }),
       });
@@ -151,8 +167,6 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
       setIsRegistering(false);
     }
   };
-
-  const registeredUsers = users.filter((u) => u.id !== "current_user" && u.username !== "invitado" && !u.isGuest);
 
   return (
     <div
@@ -244,25 +258,26 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
             {activeTab === "login" ? (
               <div className="space-y-5">
                 <div>
-                  <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">Bienvenido de vuelta</h2>
+                  <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">Iniciar Sesión</h2>
                   <p className="text-xs text-slate-500 mt-1">
-                    Ingresa tu nombre de usuario para acceder a tu perfil y ventas.
+                    Ingresa con tu correo electrónico y la contraseña que configuraste al momento del registro.
                   </p>
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                      Nombre de usuario
+                      Correo Electrónico
                     </label>
                     <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">@</span>
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
                       <input
-                        type="text"
-                        placeholder="tunombre"
-                        value={usernameInput}
-                        onChange={(e) => setUsernameInput(e.target.value)}
-                        className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl pl-8 pr-4 py-3 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors"
+                        type="email"
+                        placeholder="ejemplo@correo.com"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl pl-11 pr-4 py-3 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors"
+                        required
                       />
                     </div>
                   </div>
@@ -273,10 +288,11 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
                     </label>
                     <input
                       type="password"
-                      placeholder="••••••••"
+                      placeholder="Tu contraseña registrada"
                       value={passwordInput}
                       onChange={(e) => setPasswordInput(e.target.value)}
                       className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-3 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors"
+                      required
                     />
                   </div>
 
@@ -302,49 +318,25 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
                     )}
                   </button>
                 </form>
-
-                {/* Quick Switch Profiles */}
-                {registeredUsers.length > 0 && (
-                  <div className="pt-4 border-t border-slate-100">
-                    <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                      Cuentas creadas en este servidor:
-                    </span>
-                    <span className="block text-[9px] text-slate-400 mb-2.5">
-                      Haz clic para seleccionar un usuario, luego escribe su contraseña arriba.
-                    </span>
-                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1 no-scrollbar">
-                      {registeredUsers.map((u, uIdx) => (
-                        <button
-                          key={`${u.id}-${uIdx}`}
-                          type="button"
-                          onClick={() => {
-                            setUsernameInput(u.username);
-                            setPasswordInput("");
-                            setLoginError("");
-                          }}
-                          className="flex items-center space-x-2.5 p-2 bg-slate-50 hover:bg-amber-50/60 border border-slate-200 hover:border-amber-300 rounded-xl text-left transition-all cursor-pointer"
-                        >
-                          <img
-                            src={u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"}
-                            alt={u.name}
-                            className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <h4 className="text-[11px] font-bold text-slate-900 truncate leading-tight">{u.name}</h4>
-                            <p className="text-[9px] text-amber-600 font-semibold truncate">@{u.username}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             ) : (
               <div className="space-y-4 pb-2">
+                {restrictionNotice && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start space-x-2.5 text-amber-950">
+                    <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900">Acceso a Perfil Restringido</h4>
+                      <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
+                        {restrictionNotice}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div>
-                  <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">Comienza como Creador</h2>
+                  <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">Crea tu Cuenta</h2>
                   <p className="text-xs text-slate-500 mt-1">
-                    Regístrate para publicar productos, subir reels y chatear.
+                    Regístrate para acceder a tu perfil, publicaciones guardadas, compras e interacciones.
                   </p>
                 </div>
 
@@ -359,12 +351,13 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
                       value={regName}
                       onChange={(e) => setRegName(e.target.value)}
                       className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 transition-colors"
+                      required
                     />
                   </div>
 
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                      Correo Electrónico (Obligatorio)
+                      Correo Electrónico
                     </label>
                     <input
                       type="email"
@@ -372,28 +365,13 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
                       value={regEmail}
                       onChange={(e) => setRegEmail(e.target.value)}
                       className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 transition-colors"
+                      required
                     />
                   </div>
 
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                      Nombre de usuario (Único)
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">@</span>
-                      <input
-                        type="text"
-                        placeholder="juanperez"
-                        value={regUsername}
-                        onChange={(e) => setRegUsername(e.target.value)}
-                        className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl pl-8 pr-4 py-2.5 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 transition-colors"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                      Contraseña de Perfil
+                      Contraseña
                     </label>
                     <input
                       type="password"
@@ -401,67 +379,19 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
                       value={regPassword}
                       onChange={(e) => setRegPassword(e.target.value)}
                       className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 transition-colors"
+                      required
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                      Biografía de Ventas
-                    </label>
-                    <textarea
-                      placeholder="Cuéntanos qué vendes o qué tipo de contenido creas..."
-                      rows={2}
-                      value={regBio}
-                      onChange={(e) => setRegBio(e.target.value)}
-                      className="w-full bg-slate-50 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 text-xs border border-slate-200 focus:bg-white focus:outline-none focus:border-amber-500 resize-none transition-colors"
-                    />
-                  </div>
-
-                  {/* Avatar Preset Selector */}
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                      Avatar Predeterminado
-                    </label>
-                    <div className="flex space-x-2.5">
-                      {PRESET_AVATARS.map((av, idx) => (
-                        <img
-                          key={idx}
-                          src={av}
-                          alt={`Avatar ${idx}`}
-                          onClick={() => setRegAvatar(av)}
-                          className={`w-10 h-10 rounded-full object-cover cursor-pointer border-2 transition-all ${
-                            regAvatar === av ? "border-amber-500 scale-105 shadow-xs" : "border-slate-200 opacity-70"
-                          }`}
-                        />
-                      ))}
+                  {assignedUsername ? (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 flex items-center justify-between">
+                      <span className="text-[11px] text-slate-600 font-medium">Nombre de usuario asignado:</span>
+                      <span className="font-mono font-bold text-amber-600 text-xs">@{assignedUsername}</span>
                     </div>
-                  </div>
-
-                  {/* Cover Photo Picker */}
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                      Banner de Perfil
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {PRESET_COVERS.map((cover, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setRegCoverPhoto(cover)}
-                          className={`relative h-10 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
-                            regCoverPhoto === cover ? "border-amber-500 scale-102" : "border-slate-200 hover:border-slate-300"
-                          }`}
-                        >
-                          <img src={cover} alt="Preset cover" className="w-full h-full object-cover" />
-                          {regCoverPhoto === cover && (
-                            <div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center">
-                              <Check className="w-4 h-4 text-white drop-shadow" />
-                            </div>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  ) : null}
+                  <p className="text-[10px] text-slate-400 leading-tight">
+                    Podrás personalizar tu nombre de usuario, biografía y foto de perfil en la página de Configuración cuando quieras.
+                  </p>
 
                   {registerError && (
                     <div className="flex items-center space-x-2 text-[11px] text-rose-600 bg-rose-50 border border-rose-200 px-3.5 py-2 rounded-xl font-medium">
@@ -479,7 +409,7 @@ export default function AndroidLoginView({ onLoginSuccess, onRefreshUsers, users
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <>
-                        <span>Registrar y Entrar</span>
+                        <span>Crear Cuenta y Continuar</span>
                         <Sparkles className="w-4 h-4" />
                       </>
                     )}

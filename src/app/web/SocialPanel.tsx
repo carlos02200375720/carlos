@@ -15,7 +15,7 @@ import {
   UserCheck,
   Check
 } from "lucide-react";
-import { User, ChatMessage } from "../../types";
+import { User, ChatMessage, isGuestUser } from "../../types";
 import { motion, AnimatePresence } from "motion/react";
 import { resolveSupportUser, isSupportAdmin, isSupportAlias, SUPPORT_EMAIL, SUPPORT_USER_ID } from "../../utils/supportChat";
 import { apiFetch } from "../../config";
@@ -243,7 +243,7 @@ export default function SocialPanel({
   }, [isAdmin, apiConversations, messages, users, currentUser, unreadCounts, searchQuery, adminTabFilter]);
 
   const clientUnreads = unreadCounts[supportUser.id] || unreadCounts[SUPPORT_USER_ID] || unreadCounts[SUPPORT_EMAIL] || 0;
-  const isGuest = currentUser.isGuest || currentUser.username === "invitado";
+  const isGuest = isGuestUser(currentUser);
 
   return (
     <div

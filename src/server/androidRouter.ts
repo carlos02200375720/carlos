@@ -269,6 +269,11 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
         return;
       }
 
+      if (user.password && password && user.password !== password) {
+        res.status(401).json({ error: "La contraseña ingresada es incorrecta." });
+        return;
+      }
+
       const formattedUser: User = {
         id: user.id,
         originalId: user._id ? user._id.toString() : user.id,
@@ -376,13 +381,35 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
 
   const handleAndroidRegister = async (req: Request, res: Response) => {
     const { username, targetUsername, name, email, password, avatar, coverPhoto, bio } = req.body;
-    const rawUsername = username || targetUsername;
-    if (!rawUsername || !name) {
-      res.status(400).json({ error: "Nombre de usuario y nombre son obligatorios" });
+    if (!name || !String(name).trim()) {
+      res.status(400).json({ error: "El nombre es obligatorio" });
       return;
     }
 
-    const cleanUsername = String(rawUsername).trim().toLowerCase().replace(/\s+/g, "").replace(/^@/, "");
+    const headerGuestToken = (req.headers["x-guest-token"] as string || req.body?.guestToken || "").trim();
+    let rawUsername = username || targetUsername;
+    let cleanUsername = String(rawUsername || "").trim().toLowerCase().replace(/\s+/g, "").replace(/^@/, "");
+
+    if (!cleanUsername || cleanUsername === "invitado" || cleanUsername === "current_user") {
+      if (headerGuestToken && mongoose.connection.readyState === 1) {
+        try {
+          const priorGuest = await MongoUser.findOne({ guestToken: headerGuestToken });
+          if (priorGuest?.username && priorGuest.username !== "invitado") {
+            cleanUsername = priorGuest.username.toLowerCase();
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (!cleanUsername || cleanUsername === "invitado" || cleanUsername === "current_user") {
+      const baseSlug = String(name)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+      cleanUsername = `${baseSlug || "cliente"}_${Math.random().toString(36).substring(2, 6)}`;
+    }
+
     const cleanEmail = String(email || "").trim().toLowerCase();
 
     if (cleanUsername === "invitado" || cleanUsername === "current_user" || cleanUsername === "usuario_actual") {
@@ -416,8 +443,13 @@ export function createAndroidRouter(deps: AndroidRouterDependencies): Router {
           ],
         });
         if (existing) {
-          res.status(409).json({ error: "El nombre de usuario o correo ya está registrado" });
-          return;
+          const isSelfGuest = (headerGuestToken && existing.guestToken === headerGuestToken) || (existing.isGuest && existing.username === cleanUsername);
+          if (isSelfGuest) {
+            await MongoUser.deleteOne({ _id: existing._id }).catch(() => {});
+          } else {
+            res.status(409).json({ error: "El nombre de usuario o correo ya está registrado" });
+            return;
+          }
         }
       }
 

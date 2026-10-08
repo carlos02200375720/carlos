@@ -26,6 +26,34 @@ export interface User {
   canSell?: boolean;
 }
 
+/**
+ * Returns true if a user object or partial identity represents an unregistered guest.
+ * Considers isGuest flag, lack of email, and app-generated guest usernames (e.g. invitado, invitado_123456).
+ */
+export function isGuestUser(user?: Partial<User> | null): boolean {
+  if (!user) return true;
+  if (user.isGuest === true) return true;
+  // If explicitly registered (isGuest false and email present)
+  if (user.isGuest === false && Boolean(user.email)) return false;
+  const username = (user.username || "").trim().toLowerCase();
+  if (!username) return true;
+  if (
+    username === "invitado" ||
+    username === "guest" ||
+    username === "current_user" ||
+    username === "usuario_actual" ||
+    username.startsWith("invitado_") ||
+    username.startsWith("guest_")
+  ) {
+    if (user.isGuest === false && Boolean(user.email)) return false;
+    return true;
+  }
+  if (user.id === "guest" || (typeof user.id === "string" && user.id.startsWith("guest_") && !user.email)) {
+    return true;
+  }
+  return false;
+}
+
 export interface Comment {
   id: string;
   username: string;
